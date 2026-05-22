@@ -1,7 +1,7 @@
 import json
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from langchain_core.tools import tool
+from app.tools.fact_tools import extract_case_facts
 
 from app.security.disclaimer import disclaimer
 from app.security.sensitive_filter import detect_high_risk, mask_pii, sanitize_input
@@ -107,50 +107,6 @@ def _load_summary_prompt() -> str:
         return DEFAULT_SUMMARY_PROMPT
 
 
-@tool
-def extract_case_facts(
-    incident_time: Optional[str] = None,
-    incident_location: Optional[str] = None,
-    parties: Optional[List[Dict[str, Any]]] = None,
-    behavior_sequence: Optional[List[Dict[str, Any]]] = None,
-    consequence: Optional[str] = None,
-    evidence_mentioned: Optional[List[Dict[str, Any]]] = None,
-    arrest_status: Optional[str] = None,
-    surrender: Optional[bool] = None,
-    victim_forgiveness: Optional[bool] = None,
-    prior_record: Optional[bool] = None,
-) -> Dict[str, Any]:
-    """从咨询者描述中提取刑事案件关键事实要素。
-
-    Args:
-        incident_time: 事件发生时间，格式：YYYY-MM-DD 或 相对时间
-        incident_location: 事件发生地点（已脱敏）
-        parties: 当事人列表
-        behavior_sequence: 行为时间序列
-        consequence: 后果描述
-        evidence_mentioned: 提到的证据线索
-        arrest_status: 当前羁押状态
-        surrender: 是否自首
-        victim_forgiveness: 被害人是否谅解
-        prior_record: 是否有前科劣迹
-
-    Returns:
-        包含所有提取字段的字典
-    """
-    return {
-        "incident_time": incident_time,
-        "incident_location": incident_location,
-        "parties": parties or [],
-        "behavior_sequence": behavior_sequence or [],
-        "consequence": consequence,
-        "evidence_mentioned": evidence_mentioned or [],
-        "arrest_status": arrest_status,
-        "surrender": surrender,
-        "victim_forgiveness": victim_forgiveness,
-        "prior_record": prior_record,
-    }
-
-
 async def _analyze_coverage(facts_structured: Dict[str, Any], applied_laws: List[Dict[str, Any]]) -> Dict[str, Any]:
     """分析构成要件覆盖度。
 
@@ -174,11 +130,11 @@ async def _analyze_coverage(facts_structured: Dict[str, Any], applied_laws: List
         }
 
     # 延迟导入避免循环依赖
-    from app.agents.law_ref import _is_rag_result
+    from app.agents.law_ref import _is_unverified_rag_result
 
-    # 过滤掉 RAG 结果，只用 JSON 知识库的结果计算覆盖度
-    json_laws = [law for law in applied_laws if not _is_rag_result(law)]
-    rag_laws = [law for law in applied_laws if _is_rag_result(law)]
+    # 过滤掉未验证的 RAG 结果，只用 JSON 知识库验证过的结果计算覆盖度
+    json_laws = [law for law in applied_laws if not _is_unverified_rag_result(law)]
+    rag_laws = [law for law in applied_laws if _is_unverified_rag_result(law)]
 
     if not json_laws and rag_laws:
         _logger.warning(
@@ -357,6 +313,7 @@ async def _extract_structured_facts(facts_raw: List[str]) -> Dict[str, Any]:
 
     try:
         # 使用 LLMGateway 的 generate_with_tools 方法
+        _logger.debug("【_extract_structured_facts】开始调用 extract_case_facts 工具")
         result = await llm_gateway.generate_with_tools(
             system_prompt=_load_extract_case_facts_prompt(),
             user_message=user_message,
@@ -368,7 +325,15 @@ async def _extract_structured_facts(facts_raw: List[str]) -> Dict[str, Any]:
         if result.get("has_tool_call"):
             for tool_call in result["tool_calls"]:
                 if tool_call.get("name") == "extract_case_facts":
-                    return tool_call.get("args", {})
+                    extracted_args = tool_call.get("args", {})
+                    _logger.info(
+                        "【_extract_structured_facts】extract_case_facts 调用成功，返回字段数: %d",
+                        len(extracted_args),
+                    )
+                    _logger.debug("【_extract_structured_facts】提取结果: %s", extracted_args)
+                    return extracted_args
+
+            _logger.warning("【_extract_structured_facts】存在 tool_calls 但未找到 extract_case_facts")
 
         # 回退：尝试从 content 中解析 JSON
         content = result.get("content", "")
@@ -377,8 +342,10 @@ async def _extract_structured_facts(facts_raw: List[str]) -> Dict[str, Any]:
 
             json_match = re.search(r"\{[\s\S]*\}", content)
             if json_match:
+                _logger.info("【_extract_structured_facts】从 content 回退解析 JSON 成功")
                 return json.loads(json_match.group())
 
+        _logger.warning("【_extract_structured_facts】tool_calls 和 content 均无有效结果")
         return {}
     except Exception as e:
         _logger.error("【_extract_structured_facts】Function Calling 提取失败: %s", e)
