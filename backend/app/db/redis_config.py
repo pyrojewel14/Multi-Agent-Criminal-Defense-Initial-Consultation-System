@@ -12,8 +12,10 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_DB = int(os.getenv("REDIS_DB", "3"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
+REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "50"))
 
 _pool: Optional[redis.ConnectionPool] = None
+_redis_client: Optional[redis.Redis] = None
 
 
 def _get_pool() -> redis.ConnectionPool:
@@ -29,21 +31,41 @@ def _get_pool() -> redis.ConnectionPool:
             port=REDIS_PORT,
             db=REDIS_DB,
             password=REDIS_PASSWORD,
-            max_connections=10,
+            max_connections=REDIS_MAX_CONNECTIONS,
             decode_responses=True,
+            retry_on_timeout=True,
+            socket_connect_timeout=5,
+            socket_timeout=5,
         )
-        _logger.info("【_get_pool】Redis 连接池已创建: %s:%d db=%d", REDIS_HOST, REDIS_PORT, REDIS_DB)
+        _logger.info(
+            "【_get_pool】Redis 连接池已创建: %s:%d db=%d max_connections=%d",
+            REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_MAX_CONNECTIONS,
+        )
     return _pool
+
+
+async def get_redis() -> redis.Redis:
+    """获取单例 Redis 客户端，所有操作共享同一实例。
+
+    Returns:
+        Redis 客户端实例。
+    """
+    global _redis_client
+    if _redis_client is None:
+        pool = _get_pool()
+        _redis_client = redis.Redis(connection_pool=pool)
+    return _redis_client
 
 
 async def connect_redis() -> redis.Redis:
     """返回使用共享连接池的 Redis 客户端。
 
+    Deprecated: 请使用 get_redis() 获取单例客户端，避免反复创建实例导致连接泄漏。
+
     Returns:
         Redis 客户端实例。
     """
-    pool = _get_pool()
-    return redis.Redis(connection_pool=pool)
+    return await get_redis()
 
 
 async def redis_available() -> bool:
@@ -61,8 +83,11 @@ async def redis_available() -> bool:
 
 
 async def close_redis() -> None:
-    """关闭 Redis 连接池并释放所有连接。"""
-    global _pool
+    """关闭 Redis 客户端和连接池，释放所有连接。"""
+    global _pool, _redis_client
+    if _redis_client:
+        await _redis_client.aclose()
+        _redis_client = None
     if _pool:
         await _pool.aclose()
         _pool = None
@@ -70,14 +95,13 @@ async def close_redis() -> None:
 
 
 async def init_redis() -> None:
-    """初始化 Redis 连接池。
+    """初始化 Redis 连接池并验证连接。
 
     Raises:
         Exception: Redis 连接初始化失败时抛出。
     """
-    pool = _get_pool()
+    client = await get_redis()
     try:
-        client = redis.Redis(connection_pool=pool)
         await client.ping()
         _logger.info("【init_redis】Redis 连接初始化成功")
     except Exception as e:
@@ -95,7 +119,7 @@ async def get_redis_cache_str(key: str) -> Optional[str]:
         缓存的字符串值，不存在或错误返回 None。
     """
     try:
-        client = await connect_redis()
+        client = await get_redis()
         return await client.get(key)
     except Exception as e:
         _logger.error("【get_redis_cache_str】Redis 获取失败 key=%s: %s", key, e)
@@ -112,7 +136,7 @@ async def get_redis_cache_json(key: str) -> Optional[dict]:
         反序列化后的字典，不存在或错误返回 None。
     """
     try:
-        client = await connect_redis()
+        client = await get_redis()
         data = await client.get(key)
         if data:
             return json.loads(data)
@@ -134,7 +158,7 @@ async def set_redis_cache(key: str, value: Any, expire: int = 3600) -> bool:
         成功返回 True，失败返回 False。
     """
     try:
-        client = await connect_redis()
+        client = await get_redis()
         if isinstance(value, str):
             await client.set(key, value, ex=expire)
         elif isinstance(value, (dict, list)):

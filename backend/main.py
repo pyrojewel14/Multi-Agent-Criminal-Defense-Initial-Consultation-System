@@ -1,4 +1,3 @@
-import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -8,10 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.db.db_config import close_db, init_db
 from app.db.redis_config import close_redis, init_redis
 from app.errors.register import register_exception_handlers
-from app.rag.reorder_service import check_and_download_reranker_model
 from app.security.rbac import attach_user_to_request
 from app.utils.logger import get_logger
-from app.v1.router.auth_router import auth_router, lawyer_router, user_router
+from app.v1.router.auth import auth_router
+from app.v1.router.users import user_router
+from app.v1.router.lawyers import lawyer_management_router
 from app.v1.router.consultation import router as consultation_router
 from app.v1.router.consultation_history import consultation_router as history_router
 from app.v1.router.knowledge_router import knowledge_router
@@ -25,7 +25,7 @@ _logger = get_logger("Main")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     _logger.info("Starting up application...")
     await init_db()
     await init_redis()
@@ -58,7 +58,7 @@ register_exception_handlers(app)
 
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(user_router, prefix="/api/v1")
-app.include_router(lawyer_router, prefix="/api/v1")
+app.include_router(lawyer_management_router, prefix="/api/v1")
 app.include_router(lawyer_session_router, prefix="/api/v1")
 app.include_router(knowledge_router, prefix="/api/v1")
 app.include_router(consultation_router, prefix="/api/v1")

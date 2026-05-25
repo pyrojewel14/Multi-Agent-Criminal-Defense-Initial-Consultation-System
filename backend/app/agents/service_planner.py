@@ -1,5 +1,6 @@
 import json
-from typing import TYPE_CHECKING, Any, Dict, List
+import re
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from app.security.disclaimer import disclaimer
 from app.utils.llm_gateway import llm_gateway
@@ -265,40 +266,183 @@ def _extract_service_plan_structure(service_plan_content: str) -> Dict[str, Any]
         current_section = None
 
         for line in lines:
-            line = line.strip()
+            stripped = line.strip()
 
             # 检测紧急行动部分
-            if "立即行动" in line or "🔴" in line:
+            if "立即行动" in stripped or "🔴" in stripped:
                 current_section = "immediate"
-            elif "短期行动" in line or "🟡" in line:
+                continue
+            elif "短期行动" in stripped or "🟡" in stripped:
                 current_section = "short_term"
-            elif "后续行动" in line or "🔵" in line:
+                continue
+            elif "后续行动" in stripped or "🔵" in stripped:
                 current_section = "follow_up"
+                continue
 
             # 检测辩护策略部分
-            elif "主要辩护策略" in line or "策略类型" in line:
+            elif "主要辩护策略" in stripped or "策略类型" in stripped:
                 current_section = "defense_primary"
-            elif "备选辩护策略" in line:
+                continue
+            elif "备选辩护策略" in stripped:
                 current_section = "defense_alternative"
+                continue
+
+            # 检测服务阶段部分
+            elif "侦查阶段" in stripped:
+                current_section = "phase_investigation"
+                service_plan["service_phases"].append(
+                    {"phase": "侦查阶段", "description": _extract_phase_description(stripped)}
+                )
+                continue
+            elif "审查起诉阶段" in stripped:
+                current_section = "phase_prosecution"
+                service_plan["service_phases"].append(
+                    {"phase": "审查起诉阶段", "description": _extract_phase_description(stripped)}
+                )
+                continue
+            elif "审判阶段" in stripped:
+                current_section = "phase_trial"
+                service_plan["service_phases"].append(
+                    {"phase": "审判阶段", "description": _extract_phase_description(stripped)}
+                )
+                continue
 
             # 检测费用部分
-            elif "推荐方案" in line or "全程委托" in line:
+            elif "推荐方案" in stripped or "全程委托" in stripped:
                 current_section = "fee_recommended"
+                # 提取推荐方案文本（同行内容）
+                plan_text = _extract_inline_text(stripped, ["推荐方案", "全程委托"])
+                if plan_text:
+                    service_plan["fee_structure"]["recommended_plan"] = plan_text
+                continue
+            elif "分阶段" in stripped or "阶段报价" in stripped or "费用明细" in stripped:
+                current_section = "fee_breakdown"
+                continue
 
-            # 提取具体内容
-            if line.startswith("**") and line.endswith("**"):
-                action_text = line.strip("*").strip()
-                if current_section == "immediate":
-                    service_plan["urgent_actions"]["immediate"].append(action_text)
-                elif current_section == "short_term":
-                    service_plan["urgent_actions"]["short_term"].append(action_text)
-                elif current_section == "follow_up":
-                    service_plan["urgent_actions"]["follow_up"].append(action_text)
+            # 提取列表项内容（支持 **bold**、- 列表、数字列表）
+            item_text = _extract_list_item(stripped)
+            if item_text is None:
+                continue
+
+            # 根据当前分区分配内容
+            if current_section in ("immediate", "short_term", "follow_up"):
+                service_plan["urgent_actions"][current_section].append(item_text)
+
+            elif current_section == "defense_primary":
+                if not service_plan["defense_strategies"]["primary"]:
+                    service_plan["defense_strategies"]["primary"] = item_text
+                else:
+                    service_plan["defense_strategies"]["alternatives"].append(item_text)
+
+            elif current_section == "defense_alternative":
+                service_plan["defense_strategies"]["alternatives"].append(item_text)
+
+            elif current_section and current_section.startswith("phase_"):
+                # 追加描述到最近添加的阶段
+                if service_plan["service_phases"]:
+                    last_phase = service_plan["service_phases"][-1]
+                    if last_phase["description"]:
+                        last_phase["description"] += "；" + item_text
+                    else:
+                        last_phase["description"] = item_text
+
+            elif current_section == "fee_recommended":
+                if not service_plan["fee_structure"]["recommended_plan"]:
+                    service_plan["fee_structure"]["recommended_plan"] = item_text
+
+            elif current_section == "fee_breakdown":
+                # 尝试提取 "X万-Y万元" / "X-Y万" 费用区间
+                fee_range_match = re.search(r"(\d+\.?\d*\s*万\s*[-–—]\s*\d+\.?\d*\s*万?元?)", item_text)
+                if fee_range_match and not service_plan["fee_structure"]["total_fee_range"]:
+                    service_plan["fee_structure"]["total_fee_range"] = fee_range_match.group(1)
+                # 将分阶段项存入 breakdown
+                breakdown_match = re.match(r"[:：]\s*(.+)", item_text)
+                if breakdown_match:
+                    item_text = breakdown_match.group(1).strip()
+                if item_text:
+                    phase_key = f"phase_{len(service_plan['fee_structure']['breakdown']) + 1}"
+                    service_plan["fee_structure"]["breakdown"][phase_key] = item_text
+
+        # 如果 fee_structure.total_fee_range 仍为空，在整个内容中搜索
+        if not service_plan["fee_structure"]["total_fee_range"]:
+            range_match = re.search(
+                r"(\d+\.?\d*\s*万\s*[-–—]\s*\d+\.?\d*\s*万?元?)", service_plan_content
+            )
+            if range_match:
+                service_plan["fee_structure"]["total_fee_range"] = range_match.group(1)
 
     except Exception as e:
         _logger.warning("【_extract_service_plan_structure】提取服务计划结构时发生错误: %s", str(e))
 
     return service_plan
+
+
+def _extract_list_item(line: str) -> Optional[str]:
+    """从一行文本中提取列表项内容
+
+    支持格式：**bold**、- 列表、数字列表（1. xxx）
+
+    Args:
+        line: 单行文本
+
+    Returns:
+        提取的文本内容，如果不是列表项则返回 None
+    """
+    # **bold** 格式
+    bold_match = re.match(r"^\*\*(.+?)\*\*", line)
+    if bold_match:
+        return bold_match.group(1).strip()
+
+    # - 列表格式
+    dash_match = re.match(r"^[-•]\s+(.+)", line)
+    if dash_match:
+        return dash_match.group(1).strip()
+
+    # 数字列表格式 (1. xxx, 2. xxx, etc.)
+    num_match = re.match(r"^\d+[.、)\s]\s*(.+)", line)
+    if num_match:
+        return num_match.group(1).strip()
+
+    return None
+
+
+def _extract_phase_description(line: str) -> str:
+    """从阶段标题行提取描述文字
+
+    例如 "侦查阶段：会见嫌疑人、了解案情" → "会见嫌疑人、了解案情"
+
+    Args:
+        line: 包含阶段关键词的行
+
+    Returns:
+        阶段描述文本
+    """
+    # 尝试匹配 标题：描述 或 标题-描述 格式
+    for sep in ["：", ":", "—", "–", "-"]:
+        if sep in line:
+            parts = line.split(sep, 1)
+            if len(parts) > 1 and parts[1].strip():
+                return parts[1].strip()
+    return ""
+
+
+def _extract_inline_text(line: str, keywords: List[str]) -> str:
+    """从包含关键词的行中提取关键词之后的文本
+
+    Args:
+        line: 原始行
+        keywords: 关键词列表
+
+    Returns:
+        关键词之后的文本，无则返回空字符串
+    """
+    for kw in keywords:
+        if kw in line:
+            idx = line.find(kw) + len(kw)
+            remainder = line[idx:].strip().lstrip("：:—–-").strip()
+            if remainder:
+                return remainder
+    return ""
 
 
 def _get_current_timestamp() -> str:

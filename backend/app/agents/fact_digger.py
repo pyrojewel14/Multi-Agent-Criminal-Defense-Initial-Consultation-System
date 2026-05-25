@@ -1,10 +1,9 @@
 import json
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-
-from app.tools.fact_tools import extract_case_facts
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from app.security.disclaimer import disclaimer
 from app.security.sensitive_filter import detect_high_risk, mask_pii, sanitize_input
+from app.tools.fact_tools import extract_case_facts
 from app.utils.llm_gateway import llm_gateway
 from app.utils.logger import get_logger
 from app.utils.prompt_loader import prompt_loader

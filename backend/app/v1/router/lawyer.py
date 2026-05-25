@@ -2,25 +2,25 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, desc
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.success_response import success_response
 from app.db.db_config import get_db
 from app.models.user import Consultation, ConsultationMessage, ConsultationStatus, User
 from app.security.rbac import get_current_lawyer
-from app.core.success_response import success_response
 from app.utils.logger import get_logger
-from app.v1.schemas.consultation_schemas import (
-    LawyerSessionItem,
-    LawyerSessionDetail,
-    MessageHistoryItem,
+from app.v1.schemas.lawyer_schemas import (
     ApproveReportRequest,
     ApproveReportResponse,
+    InterventionResponse,
+    LawyerSessionDetail,
+    LawyerSessionItem,
+    LawyerSessionListResponse,
+    MessageHistoryItem,
     RejectSessionRequest,
     RejectSessionResponse,
-    InterventionResponse,
     RiskAlertItem,
-    LawyerSessionListResponse,
 )
 
 _logger = get_logger("Router.Lawyer")
@@ -56,13 +56,16 @@ async def get_sessions(
     """
     _logger.info(
         "【get_sessions】律师获取会话列表: lawyer_id=%s, status=%s, risk_level=%s, needs_review=%s, page=%s, page_size=%s",
-        lawyer_id, status, risk_level, needs_review, page, page_size
+        lawyer_id,
+        status,
+        risk_level,
+        needs_review,
+        page,
+        page_size,
     )
 
     query = select(Consultation).where(Consultation.assigned_lawyer_id == lawyer_id)
-    count_query = select(func.count()).select_from(Consultation).where(
-        Consultation.assigned_lawyer_id == lawyer_id
-    )
+    count_query = select(func.count()).select_from(Consultation).where(Consultation.assigned_lawyer_id == lawyer_id)
 
     if status:
         try:
@@ -98,23 +101,26 @@ async def get_sessions(
             client_real_name=client.real_name if client else None,
             user_type=consultation.user_type,
             status=consultation.status.value if consultation.status else None,
-            risk_level=getattr(consultation, 'risk_level', None),
-            alert_triggered=getattr(consultation, 'alert_triggered', False),
-            lawyer_review_needed=getattr(consultation, 'lawyer_review_needed', False),
+            risk_level=getattr(consultation, "risk_level", None),
+            alert_triggered=getattr(consultation, "alert_triggered", False),
+            lawyer_review_needed=getattr(consultation, "lawyer_review_needed", False),
             created_at=consultation.created_at,
             updated_at=consultation.updated_at,
         )
         session_items.append(session_item)
 
-    _logger.info("【get_sessions】会话列表查询成功: lawyer_id=%s, total=%s, returned=%s",
-                 lawyer_id, total, len(session_items))
+    _logger.info(
+        "【get_sessions】会话列表查询成功: lawyer_id=%s, total=%s, returned=%s", lawyer_id, total, len(session_items)
+    )
 
-    return success_response(data=LawyerSessionListResponse(
-        sessions=session_items,
-        total=total,
-        page=page,
-        page_size=page_size,
-    ))
+    return success_response(
+        data=LawyerSessionListResponse(
+            sessions=session_items,
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+    )
 
 
 @lawyer_session_router.get("/sessions/{session_id}", response_model=LawyerSessionDetail)
@@ -150,8 +156,12 @@ async def get_session_detail(
         raise HTTPException(status_code=404, detail="会话不存在")
 
     if consultation.assigned_lawyer_id != lawyer_id:
-        _logger.warning("【get_session_detail】无权访问: session_id=%s, lawyer_id=%s, assigned_lawyer=%s",
-                       session_id, lawyer_id, consultation.assigned_lawyer_id)
+        _logger.warning(
+            "【get_session_detail】无权访问: session_id=%s, lawyer_id=%s, assigned_lawyer=%s",
+            session_id,
+            lawyer_id,
+            consultation.assigned_lawyer_id,
+        )
         raise HTTPException(status_code=403, detail="无权访问此会话")
 
     client_result = await db.execute(select(User).where(User.id == consultation.client_id))
@@ -178,26 +188,41 @@ async def get_session_detail(
     ]
 
     facts_raw = None
-    if hasattr(consultation, 'facts_raw') and consultation.facts_raw:
+    if hasattr(consultation, "facts_raw") and consultation.facts_raw:
         import json
+
         try:
-            facts_raw = json.loads(consultation.facts_raw) if isinstance(consultation.facts_raw, str) else consultation.facts_raw
+            facts_raw = (
+                json.loads(consultation.facts_raw)
+                if isinstance(consultation.facts_raw, str)
+                else consultation.facts_raw
+            )
         except json.JSONDecodeError:
             facts_raw = None
 
     facts_structured = None
     if consultation.facts_structured:
         import json
+
         try:
-            facts_structured = json.loads(consultation.facts_structured) if isinstance(consultation.facts_structured, str) else consultation.facts_structured
+            facts_structured = (
+                json.loads(consultation.facts_structured)
+                if isinstance(consultation.facts_structured, str)
+                else consultation.facts_structured
+            )
         except json.JSONDecodeError:
             facts_structured = None
 
     applied_laws = None
     if consultation.applied_laws:
         import json
+
         try:
-            applied_laws = json.loads(consultation.applied_laws) if isinstance(consultation.applied_laws, str) else consultation.applied_laws
+            applied_laws = (
+                json.loads(consultation.applied_laws)
+                if isinstance(consultation.applied_laws, str)
+                else consultation.applied_laws
+            )
         except json.JSONDecodeError:
             applied_laws = None
 
@@ -209,15 +234,15 @@ async def get_session_detail(
         user_type=consultation.user_type,
         consent_given=consultation.consent_given,
         status=consultation.status.value if consultation.status else None,
-        risk_level=getattr(consultation, 'risk_level', None),
-        alert_triggered=getattr(consultation, 'alert_triggered', False),
-        lawyer_review_needed=getattr(consultation, 'lawyer_review_needed', False),
+        risk_level=getattr(consultation, "risk_level", None),
+        alert_triggered=getattr(consultation, "alert_triggered", False),
+        lawyer_review_needed=getattr(consultation, "lawyer_review_needed", False),
         facts_raw=facts_raw,
         facts_structured=facts_structured,
         applied_laws=applied_laws,
-        risk_assessment=getattr(consultation, 'risk_assessment', None),
-        report_draft=getattr(consultation, 'report_draft', None),
-        service_plan=getattr(consultation, 'service_plan', None),
+        risk_assessment=getattr(consultation, "risk_assessment", None),
+        report_draft=getattr(consultation, "report_draft", None),
+        service_plan=getattr(consultation, "service_plan", None),
         final_output=consultation.final_output,
         conversation_history=conversation_history,
         created_at=consultation.created_at,
@@ -257,7 +282,9 @@ async def approve_report(
     """
     _logger.info(
         "【approve_report】律师审核报告: session_id=%s, lawyer_id=%s, has_feedback=%s",
-        session_id, lawyer_id, request.feedback is not None
+        session_id,
+        lawyer_id,
+        request.feedback is not None,
     )
 
     result = await db.execute(select(Consultation).where(Consultation.id == session_id))
@@ -287,12 +314,14 @@ async def approve_report(
 
     _logger.info("【approve_report】报告审核成功: session_id=%s", session_id)
 
-    return success_response(data=ApproveReportResponse(
-        success=True,
-        message="报告已审核通过",
-        session_id=session_id,
-        approved_at=datetime.utcnow(),
-    ))
+    return success_response(
+        data=ApproveReportResponse(
+            success=True,
+            message="报告已审核通过",
+            session_id=session_id,
+            approved_at=datetime.utcnow(),
+        )
+    )
 
 
 @lawyer_session_router.post("/sessions/{session_id}/reject", response_model=RejectSessionResponse)
@@ -323,7 +352,10 @@ async def reject_session(
     """
     _logger.info(
         "【reject_session】律师退回会话: session_id=%s, lawyer_id=%s, target_node=%s, reason=%s",
-        session_id, lawyer_id, request.target_node, request.reason
+        session_id,
+        lawyer_id,
+        request.target_node,
+        request.reason,
     )
 
     valid_nodes = ["fact_digger", "risk_assessor"]
@@ -347,18 +379,22 @@ async def reject_session(
 
     _logger.info(
         "【reject_session】会话已退回: session_id=%s, target_node=%s, feedback=%s",
-        session_id, request.target_node, request.feedback
+        session_id,
+        request.target_node,
+        request.feedback,
     )
 
     await db.commit()
 
-    return success_response(data=RejectSessionResponse(
-        success=True,
-        message=f"会话已退回至 {request.target_node} 重新处理",
-        session_id=session_id,
-        target_node=request.target_node,
-        rejected_at=datetime.utcnow(),
-    ))
+    return success_response(
+        data=RejectSessionResponse(
+            success=True,
+            message=f"会话已退回至 {request.target_node} 重新处理",
+            session_id=session_id,
+            target_node=request.target_node,
+            rejected_at=datetime.utcnow(),
+        )
+    )
 
 
 @lawyer_session_router.post("/sessions/{session_id}/intervene", response_model=InterventionResponse)
@@ -412,13 +448,15 @@ async def intervene_session(
 
     _logger.info("【intervene_session】会话接管成功: session_id=%s, lawyer_id=%s", session_id, lawyer_id)
 
-    return success_response(data=InterventionResponse(
-        success=True,
-        message="已成功接管会话",
-        session_id=session_id,
-        intervened_at=datetime.utcnow(),
-        current_agent="Lawyer",
-    ))
+    return success_response(
+        data=InterventionResponse(
+            success=True,
+            message="已成功接管会话",
+            session_id=session_id,
+            intervened_at=datetime.utcnow(),
+            current_agent="Lawyer",
+        )
+    )
 
 
 @lawyer_session_router.get("/alerts", response_model=List[RiskAlertItem])
@@ -447,7 +485,11 @@ async def get_alerts(
     """
     _logger.info(
         "【get_alerts】获取高风险告警: lawyer_id=%s, is_read=%s, risk_level=%s, page=%s, page_size=%s",
-        lawyer_id, is_read, risk_level, page, page_size
+        lawyer_id,
+        is_read,
+        risk_level,
+        page,
+        page_size,
     )
 
     query = select(Consultation).where(
@@ -469,9 +511,10 @@ async def get_alerts(
         client_result = await db.execute(select(User).where(User.id == consultation.client_id))
         client = client_result.scalar_one_or_none()
 
-        risk_assessment = getattr(consultation, 'risk_assessment', None) or {}
+        risk_assessment = getattr(consultation, "risk_assessment", None) or {}
         if isinstance(risk_assessment, str):
             import json
+
             try:
                 risk_assessment = json.loads(risk_assessment)
             except json.JSONDecodeError:
@@ -485,7 +528,7 @@ async def get_alerts(
             risk_type=risk_assessment.get("risk_type", "未知"),
             risk_level=risk_assessment.get("risk_level", consultation.risk_level or "medium"),
             details=risk_assessment.get("details"),
-            is_read=getattr(consultation, 'alert_read', False),
+            is_read=getattr(consultation, "alert_read", False),
             created_at=consultation.created_at,
         )
         alerts.append(alert_item)

@@ -1,21 +1,25 @@
 from typing import Any, Dict, Literal, Optional
 
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
+from langgraph.types import StateSnapshot
 
-from app.state.consultation_state import ConsultationState
-from app.utils.logger import get_logger
-
-from app.agents.receptionist import receptionist_node
 from app.agents.fact_digger import fact_digger_node
+from app.agents.human_alert import human_alert_node
 from app.agents.law_ref import law_ref_node
+from app.agents.receptionist import receptionist_node
 from app.agents.risk_assessor import risk_assessor_node
 from app.agents.service_planner import service_planner_node
-from app.agents.human_alert import human_alert_node
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
+from app.state.consultation_state import ConsultationState
+from app.utils.logger import get_logger
 
 _logger = get_logger("Orchestrator")
 
 COVERAGE_THRESHOLD = 0.8
+
+# 需要等待外部输入的节点，执行后自动中断
+INTERRUPT_AFTER_NODES = ["receptionist", "wait_for_user", "human_review", "human_alert"]
 
 
 def check_consent(state: ConsultationState) -> Literal["continue", "end"]:
@@ -43,7 +47,7 @@ def check_facts_sufficient(state: ConsultationState) -> Literal["complete", "loo
 
     Returns:
         "complete" - 覆盖度 >= 80%，继续到 RiskAssessor
-        "loop" - 覆盖度 < 80%，继续追问
+        "loop" - 覆盖度 < 80%，等待用户输入后继续追问
         "alert" - 触发人工介入
         "max_loop" - 达到最大循环次数，强制进入 RiskAssessor
     """
@@ -149,6 +153,17 @@ async def human_review_node(state: ConsultationState) -> ConsultationState:
     return state
 
 
+async def wait_for_user_node(state: ConsultationState) -> ConsultationState:
+    """等待用户输入的中转节点。
+
+    当 FactDigger 判定覆盖度不足时，流程经此节点后中断，
+    等待用户发送下一条消息。恢复后自动进入 LawRef 检索法条，
+    再回到 FactDigger 继续收集事实。
+    """
+    _logger.info("【wait_for_user_node】等待用户输入，session_id: %s", state.get("session_id", "unknown"))
+    return state
+
+
 def _calculate_coverage_rate(state: ConsultationState) -> float:
     """计算当前事实覆盖度。
 
@@ -219,26 +234,30 @@ def _get_fact_value(facts_structured: Dict[str, Any], key: str) -> Any:
 class ConsultationOrchestrator:
     """LangGraph StateGraph wrapper for the complete multi-agent consultation workflow.
 
-    工作流拓扑：
-        START → Receptionist → [consent_given?]
-                                   ├── True  → FactDigger → [coverage?]
-                                   │                             ├── >= 80% → RiskAssessor → ServicePlanner → HumanReview
-                                   │                             │                         ↓                ↓
-                                   │                             │                    [lawyer_decision]
-                                   │                             │                         ↓
-                                   │                             ├── < 80%  → FactDigger (自循环)
-                                   │                             └── alert → HumanAlert → END
-                                   └── False → END
-    """
+    工作流拓扑（使用 checkpointer + interrupt_after 实现自动流转与人工断点）：
 
-    _workflow: Optional[StateGraph] = None
-    _compiled: Optional[Any] = None
+        START → Receptionist ──[interrupt]──→ [consent_given?]
+                                               ├── continue → FactDigger → [coverage?]
+                                               │     ├── complete → RiskAssessor → ServicePlanner → HumanReview ──[interrupt]
+                                               │     │                                                              ↓
+                                               │     │                                                        [lawyer_decision]
+                                               │     │                                                              ↓
+                                               │     ├── loop → WaitForUser ──[interrupt]──→ LawRef → FactDigger(循环)
+                                               │     ├── alert → HumanAlert ──[interrupt]──→ END
+                                               │     └── max_loop → RiskAssessor
+                                               └── end → END
+
+    核心方法：
+        start_workflow()  - 启动新会话，从 START 执行到第一个中断点
+        resume_workflow() - 恢复会话，从中断点继续执行到下一个中断点
+    """
 
     def __init__(self):
         self._logger = get_logger("Orchestrator")
-        self._active_sessions: Dict[str, ConsultationState] = {}
-        self._workflow = None
+        self._checkpointer = MemorySaver()
         self._compiled = None
+        # 保留 _active_sessions 用于 get_active_sessions 等兼容接口
+        self._active_sessions: Dict[str, ConsultationState] = {}
 
     def _build_workflow(self) -> StateGraph:
         """构建工作流 DAG，包含所有 Agent 节点和条件边。
@@ -255,25 +274,32 @@ class ConsultationOrchestrator:
         workflow.add_node("service_planner", service_planner_node)
         workflow.add_node("human_review", human_review_node)
         workflow.add_node("human_alert", human_alert_node)
+        workflow.add_node("wait_for_user", wait_for_user_node)
 
         workflow.set_entry_point("receptionist")
 
+        # Receptionist → 根据同意状态分流
         workflow.add_conditional_edges("receptionist", check_consent, {"continue": "fact_digger", "end": END})
 
-        workflow.add_edge("fact_digger", "law_ref")
-
-        workflow.add_edge("law_ref", "fact_digger")
-
+        # FactDigger → 根据覆盖度分流（移除了旧的无条件边 fact_digger → law_ref）
         workflow.add_conditional_edges(
             "fact_digger",
             check_facts_sufficient,
-            {"complete": "risk_assessor", "loop": "law_ref", "alert": "human_alert", "max_loop": "risk_assessor"},
+            {
+                "complete": "risk_assessor",
+                "loop": "wait_for_user",  # 覆盖度不足 → 等待用户输入
+                "alert": "human_alert",
+                "max_loop": "risk_assessor",
+            },
         )
 
+        # WaitForUser → LawRef → FactDigger（用户输入后自动检索法条再回到事实收集）
+        workflow.add_edge("wait_for_user", "law_ref")
+        workflow.add_edge("law_ref", "fact_digger")
+
+        # 后半段线性链 + 律师审核条件边
         workflow.add_edge("risk_assessor", "service_planner")
-
         workflow.add_edge("service_planner", "human_review")
-
         workflow.add_conditional_edges(
             "human_review",
             lawyer_decision,
@@ -284,86 +310,54 @@ class ConsultationOrchestrator:
 
         return workflow
 
-    def _compile_workflow(self) -> None:
-        """编译工作流图。"""
-        if self._workflow is None:
-            self._workflow = self._build_workflow()
+    def _ensure_compiled(self):
+        """确保工作流已编译（带 checkpointer 和 interrupt_after）。"""
         if self._compiled is None:
-            self._compiled = self._workflow.compile()
-        self._logger.debug("工作流编译完成")
+            workflow = self._build_workflow()
+            self._compiled = workflow.compile(
+                checkpointer=self._checkpointer,
+                interrupt_after=INTERRUPT_AFTER_NODES,
+            )
+            self._logger.debug("工作流编译完成（含 checkpointer + interrupt_after）")
 
-    async def run_node(self, node_name: str, state: ConsultationState) -> ConsultationState:
-        """执行单个 Agent 节点。
+    def _config(self, session_id: str) -> dict:
+        """生成 LangGraph checkpointer 配置。"""
+        return {"configurable": {"thread_id": session_id}}
 
-        Args:
-            node_name: 节点名称 (receptionist/fact_digger/law_ref/risk_assessor/service_planner/human_review/human_alert)
-            state: 当前咨询状态
+    # ------------------------------------------------------------------
+    # 核心方法：start / resume
+    # ------------------------------------------------------------------
 
-        Returns:
-            更新后的 ConsultationState
-
-        Raises:
-            ValueError: 节点名称无效
-        """
-        self._compile_workflow()
-
-        node_map = {
-            "receptionist": receptionist_node,
-            "fact_digger": fact_digger_node,
-            "law_ref": law_ref_node,
-            "risk_assessor": risk_assessor_node,
-            "service_planner": service_planner_node,
-            "human_review": human_review_node,
-            "human_alert": human_alert_node,
-        }
-
-        if node_name not in node_map:
-            raise ValueError(f"未知节点: {node_name}")
-
-        session_id = state.get("session_id", "unknown")
-        self._logger.info("执行单节点: %s, session_id: %s", node_name, session_id)
-
-        try:
-            if node_name == "fact_digger":
-                coverage_rate = _calculate_coverage_rate(state)
-                state["facts_coverage_rate"] = coverage_rate
-
-            result = await node_map[node_name](state)
-
-            self._logger.info("节点执行完成: %s, session_id: %s", node_name, session_id)
-            return result
-
-        except Exception as e:
-            self._logger.error("节点执行失败: %s, session_id: %s, error: %s", node_name, session_id, str(e))
-            raise
-
-    async def run(self, initial_state: ConsultationState) -> ConsultationState:
-        """执行完整的 Agent 工作流。
+    async def start_workflow(self, initial_state: ConsultationState) -> ConsultationState:
+        """启动新会话的工作流，从 START 执行到第一个中断点。
 
         Args:
-            initial_state: 初始咨询状态，包含 session_id, consent_given 等字段
+            initial_state: 初始咨询状态
 
         Returns:
-            所有 Agent 执行完成后的最终状态
+            执行到中断点时的状态
 
         Raises:
             LLMServiceException: LLM 服务异常
             LLMTimeoutException: LLM 调用超时
         """
-        self._compile_workflow()
+        self._ensure_compiled()
 
         session_id = initial_state.get("session_id", "unknown")
-        consent = initial_state.get("consent_given")
+        config = self._config(session_id)
 
-        self._logger.info("开始执行工作流: session_id=%s, consent=%s", session_id, consent)
+        self._logger.info("启动工作流: session_id=%s", session_id)
         self._active_sessions[session_id] = initial_state.copy()
 
         try:
-            result = await self._compiled.ainvoke(initial_state)
-
-            coverage_rate = _calculate_coverage_rate(result)
-            result["facts_coverage_rate"] = coverage_rate
-
+            result = await self._compiled.ainvoke(initial_state, config)
+            self._active_sessions[session_id] = result
+            self._logger.info(
+                "工作流中断: session_id=%s, current_agent=%s",
+                session_id,
+                result.get("current_agent", "unknown"),
+            )
+            return result
         except (LLMServiceException, LLMTimeoutException) as e:
             self._logger.error("工作流异常终止: session_id=%s, error=%s", session_id, e.code.value)
             self._cleanup_session(session_id)
@@ -373,16 +367,121 @@ class ConsultationOrchestrator:
             self._cleanup_session(session_id)
             raise
 
-        self._logger.info(
-            "工作流执行完成: session_id=%s, current_agent=%s", session_id, result.get("current_agent", "unknown")
-        )
+    async def resume_workflow(
+        self,
+        session_id: str,
+        state_updates: Optional[Dict[str, Any]] = None,
+    ) -> ConsultationState:
+        """从断点恢复工作流，执行到下一个中断点。
 
-        self._update_session_context(session_id, result)
+        先通过 aupdate_state 更新状态（如用户消息、律师决策等），
+        然后调用 ainvoke(None, config) 从断点继续执行。
 
-        return result
+        Args:
+            session_id: 会话 ID
+            state_updates: 需要合并到当前状态中的更新字段
+
+        Returns:
+            执行到下一个中断点时的状态
+
+        Raises:
+            ValueError: 会话不存在
+            LLMServiceException: LLM 服务异常
+            LLMTimeoutException: LLM 调用超时
+        """
+        self._ensure_compiled()
+
+        config = self._config(session_id)
+
+        # 检查会话是否存在
+        snapshot = await self._compiled.aget_state(config)
+        if snapshot.values is None or not snapshot.values:
+            raise ValueError(f"会话不存在: {session_id}")
+
+        # 如果有状态更新，先写入 checkpointer
+        if state_updates:
+            await self._compiled.aupdate_state(config, state_updates, as_node=None)
+
+        self._logger.info("恢复工作流: session_id=%s, next=%s", session_id, snapshot.next)
+
+        try:
+            result = await self._compiled.ainvoke(None, config)
+            self._active_sessions[session_id] = result
+            self._logger.info(
+                "工作流中断: session_id=%s, current_agent=%s",
+                session_id,
+                result.get("current_agent", "unknown"),
+            )
+            return result
+        except (LLMServiceException, LLMTimeoutException) as e:
+            self._logger.error("工作流异常终止: session_id=%s, error=%s", session_id, e.code.value)
+            self._cleanup_session(session_id)
+            raise
+        except Exception as e:
+            self._logger.error("工作流执行失败: session_id=%s, error=%s", session_id, str(e))
+            self._cleanup_session(session_id)
+            raise
+
+    # ------------------------------------------------------------------
+    # 状态查询
+    # ------------------------------------------------------------------
+
+    async def get_snapshot(self, session_id: str) -> Optional[StateSnapshot]:
+        """获取会话的 LangGraph 状态快照。
+
+        Args:
+            session_id: 会话 ID
+
+        Returns:
+            StateSnapshot，如果会话不存在返回 None
+        """
+        self._ensure_compiled()
+        config = self._config(session_id)
+        snapshot = await self._compiled.aget_state(config)
+        if snapshot.values is None or not snapshot.values:
+            return None
+        return snapshot
+
+    async def get_next_node(self, session_id: str) -> Optional[str]:
+        """获取会话的下一个待执行节点名称。
+
+        Args:
+            session_id: 会话 ID
+
+        Returns:
+            下一个节点名称，如果流程已结束返回 None
+        """
+        snapshot = await self.get_snapshot(session_id)
+        if snapshot is None:
+            return None
+        next_nodes = snapshot.next
+        if not next_nodes:
+            return None
+        return next_nodes[0]
+
+    async def is_workflow_finished(self, session_id: str) -> bool:
+        """判断工作流是否已执行完毕（到达 END）。
+
+        Args:
+            session_id: 会话 ID
+
+        Returns:
+            True 表示已结束
+        """
+        snapshot = await self.get_snapshot(session_id)
+        if snapshot is None:
+            return True
+        return len(snapshot.next) == 0
+
+    # ------------------------------------------------------------------
+    # 兼容接口（供现有代码逐步迁移）
+    # ------------------------------------------------------------------
 
     def get_session_context(self, session_id: str) -> Optional[ConsultationState]:
-        """获取会话上下文。
+        """获取会话上下文（同步，从内存缓存读取）。
+
+        注意：此方法从 _active_sessions 读取，可能不是最新状态。
+        如需最新状态，请使用 get_snapshot()。
 
         Args:
             session_id: 会话 ID
@@ -393,7 +492,10 @@ class ConsultationOrchestrator:
         return self._active_sessions.get(session_id)
 
     def update_session_context(self, session_id: str, updates: ConsultationState) -> bool:
-        """更新会话上下文。
+        """更新会话上下文（同步，写入内存缓存）。
+
+        注意：此方法仅更新 _active_sessions，不写入 checkpointer。
+        如需持久化到工作流，请使用 resume_workflow()。
 
         Args:
             session_id: 会话 ID
@@ -411,36 +513,23 @@ class ConsultationOrchestrator:
         return True
 
     def _update_session_context(self, session_id: str, state: ConsultationState) -> None:
-        """更新会话上下文（内部使用）。
-
-        Args:
-            session_id: 会话 ID
-            state: 当前状态
-        """
+        """更新会话上下文（内部使用）。"""
         self.update_session_context(session_id, state)
 
     def _cleanup_session(self, session_id: str) -> None:
-        """清理会话上下文。
-
-        Args:
-            session_id: 会话 ID
-        """
+        """清理会话上下文。"""
         if session_id in self._active_sessions:
             del self._active_sessions[session_id]
             self._logger.debug("会话上下文已清理: %s", session_id)
 
     def get_active_sessions(self) -> Dict[str, ConsultationState]:
-        """获取所有活跃会话。
-
-        Returns:
-            活跃会话字典
-        """
+        """获取所有活跃会话。"""
         return self._active_sessions.copy()
 
     async def process_lawyer_feedback(
         self, session_id: str, decision: str, feedback: Optional[str] = None
     ) -> ConsultationState:
-        """处理律师反馈。
+        """处理律师反馈，更新状态并通过工作流自动路由到下一节点。
 
         Args:
             session_id: 会话 ID
@@ -452,17 +541,14 @@ class ConsultationOrchestrator:
         """
         self._logger.info("处理律师反馈: session_id=%s, decision=%s", session_id, decision)
 
-        state = self.get_session_context(session_id)
-        if not state:
-            raise ValueError(f"会话不存在: {session_id}")
+        state_updates = {
+            "lawyer_decision": decision,
+            "lawyer_feedback": feedback,
+            "awaiting_lawyer_review": False,
+        }
 
-        state["lawyer_decision"] = decision
-        state["lawyer_feedback"] = feedback
-        state["awaiting_lawyer_review"] = False
-
-        self.update_session_context(session_id, state)
-
-        return state
+        result = await self.resume_workflow(session_id, state_updates)
+        return result
 
 
 orchestrator = ConsultationOrchestrator()
@@ -487,7 +573,7 @@ if __name__ == "__main__":
             "conversation_history": [],
         }
 
-        result = await orchestrator.run(test_state)
-        print(f"测试完成，最终节点: {result.get('current_agent', 'unknown')}")
+        result = await orchestrator.start_workflow(test_state)
+        print(f"工作流启动完成，当前节点: {result.get('current_agent', 'unknown')}")
 
     asyncio.run(test_workflow())

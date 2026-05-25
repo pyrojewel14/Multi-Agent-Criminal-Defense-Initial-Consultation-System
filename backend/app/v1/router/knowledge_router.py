@@ -14,7 +14,7 @@ from app.schemas.models import (
     MD5Record,
 )
 from app.security.rbac import RoleChecker, get_current_user
-from app.v1.router.knowledge_service import KnowledgeService, get_knowledge_service
+from app.v1.service.knowledge_service import KnowledgeService, get_knowledge_service
 
 knowledge_router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 

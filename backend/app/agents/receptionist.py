@@ -55,7 +55,7 @@ async def _generate_welcome(state: "ConsultationState") -> str:
         欢迎语回复文本。
     """
     prompt = prompt_loader.load("receptionist_prompt")
-    user_message = state.get("facts_raw", [""])[-1] if state.get("facts_raw") else ""
+    user_message = (state.get("facts_raw") or [""])[-1]
 
     response = await llm_gateway.generate(
         system_prompt=prompt,
@@ -102,7 +102,7 @@ async def _confirm_identity(state: "ConsultationState") -> "ConsultationState":
 
     identity_prompt = (
         f"{prompt}\n\n当前状态：用户已同意权利义务告知，现在请引导用户选择身份类型。"
-        f"\n用户当前输入：{state.get('facts_raw', [''])[-1]}"
+        f"\n用户当前输入：{(state.get('facts_raw') or [''])[-1]}"
     )
 
     response = await llm_gateway.generate(
@@ -206,7 +206,7 @@ async def receptionist_node(state: "ConsultationState") -> "ConsultationState":
     """
     _logger.info("【receptionist_node】Receptionist 节点被调用, session_id: %s", state.get("session_id", "unknown"))
 
-    user_message = state.get("facts_raw", [""])[-1] if state.get("facts_raw") else ""
+    user_message = (state.get("facts_raw") or [""])[-1]
 
     if not state.get("consent_given"):
         _logger.info("【receptionist_node】用户尚未同意，开始接待流程")

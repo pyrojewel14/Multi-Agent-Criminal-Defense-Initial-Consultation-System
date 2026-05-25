@@ -44,4 +44,4 @@ def extract_case_facts(
         "surrender": surrender,
         "victim_forgiveness": victim_forgiveness,
         "prior_record": prior_record,
-    }
+}

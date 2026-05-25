@@ -57,11 +57,11 @@ class DashScopeEmbeddingsWrapper(Embeddings):
         Returns:
             嵌入向量列表，每个向量为 float 列表。
         """
-        BATCH_SIZE = 10
+        batch_size = 10
         all_embeddings = []
 
-        for i in range(0, len(texts), BATCH_SIZE):
-            batch = texts[i : i + BATCH_SIZE]
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
             try:
                 response = self.client.embeddings.create(model=self.model_name, input=batch)
                 all_embeddings.extend([item.embedding for item in response.data])
@@ -374,8 +374,19 @@ class EmbedModelFactory(BaseModelFactory):
 chat_model_factory = ChatModelFactory()
 embed_model_factory = EmbedModelFactory()
 
-# 使用新接口创建模型实例
-# chat_model: 用于流式响应场景（如 WebSocket 实时对话）
-chat_model = chat_model_factory.create_streaming_model()
-# embed_model: 用于向量嵌入（不需要 streaming）
-embed_model = embed_model_factory.create_embedding_model()
+# 延迟初始化，避免导入时创建模型实例导致事件循环问题
+_chat_model = None
+_embed_model = None
+
+
+def __getattr__(name):
+    global _chat_model, _embed_model
+    if name == "chat_model":
+        if _chat_model is None:
+            _chat_model = chat_model_factory.create_streaming_model()
+        return _chat_model
+    if name == "embed_model":
+        if _embed_model is None:
+            _embed_model = embed_model_factory.create_embedding_model()
+        return _embed_model
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
