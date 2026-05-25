@@ -8,14 +8,15 @@ from app.db.db_config import close_db, init_db
 from app.db.redis_config import close_redis, init_redis
 from app.errors.register import register_exception_handlers
 from app.security.rbac import attach_user_to_request
+from app.utils.factory import chat_model_factory, embed_model_factory
 from app.utils.logger import get_logger
 from app.v1.router.auth import auth_router
-from app.v1.router.users import user_router
-from app.v1.router.lawyers import lawyer_management_router
 from app.v1.router.consultation import router as consultation_router
 from app.v1.router.consultation_history import consultation_router as history_router
 from app.v1.router.knowledge_router import knowledge_router
 from app.v1.router.lawyer import lawyer_session_router
+from app.v1.router.lawyers import lawyer_management_router
+from app.v1.router.users import user_router
 
 load_dotenv()
 
@@ -32,6 +33,8 @@ async def lifespan(_app: FastAPI):
     _logger.info("Database and Redis initialized")
     yield
     _logger.info("Shutting down application...")
+    chat_model_factory.close()
+    embed_model_factory.close()
     await close_redis()
     await close_db()
     _logger.info("Cleanup completed")

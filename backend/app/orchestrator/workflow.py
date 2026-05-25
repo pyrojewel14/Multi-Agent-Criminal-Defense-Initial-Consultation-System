@@ -11,6 +11,7 @@ from app.agents.receptionist import receptionist_node
 from app.agents.risk_assessor import risk_assessor_node
 from app.agents.service_planner import service_planner_node
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
+from app.security.disclaimer import disclaimer
 from app.state.consultation_state import ConsultationState
 from app.utils.logger import get_logger
 
@@ -119,7 +120,7 @@ async def human_review_node(state: ConsultationState) -> ConsultationState:
     service_plan = state.get("service_plan", {})
 
     if report_draft:
-        state["final_output"] = f"""【律师审核请求】
+        state["final_output"] = disclaimer.inject(f"""【律师审核请求】
 
 您好，以下是系统生成的初期咨询报告草案，请您审核：
 
@@ -129,9 +130,9 @@ async def human_review_node(state: ConsultationState) -> ConsultationState:
 1. 批准此报告
 2. 要求修改事实收集
 3. 要求修改风险评估
-"""
+""")
     else:
-        state["final_output"] = "报告草案尚未生成，请稍后重试。"
+        state["final_output"] = disclaimer.inject("报告草案尚未生成，请稍后重试。")
 
     state["awaiting_lawyer_review"] = True
     state["current_agent"] = "HumanReview"
@@ -167,6 +168,9 @@ async def wait_for_user_node(state: ConsultationState) -> ConsultationState:
 def _calculate_coverage_rate(state: ConsultationState) -> float:
     """计算当前事实覆盖度。
 
+    注意：跳过未验证的 RAG 检索结果，只使用 JSON 知识库的结果计算覆盖度，
+    与 fact_digger._analyze_coverage 保持一致。
+
     Args:
         state: 当前咨询状态
 
@@ -179,10 +183,19 @@ def _calculate_coverage_rate(state: ConsultationState) -> float:
     if not applied_laws:
         return 0.0
 
+    # 延迟导入避免循环依赖
+    from app.agents.law_ref import _is_unverified_rag_result
+
+    # 过滤掉未验证的 RAG 结果，只用 JSON 知识库验证过的结果计算覆盖度
+    json_laws = [law for law in applied_laws if not _is_unverified_rag_result(law)]
+
+    if not json_laws:
+        return 0.0
+
     total_elements = 0
     covered_elements = 0
 
-    for law in applied_laws:
+    for law in json_laws:
         elements = law.get("elements", [])
         total_elements += len(elements)
 
@@ -193,9 +206,8 @@ def _calculate_coverage_rate(state: ConsultationState) -> float:
                 element_key = str(element)
             fact_value = _get_fact_value(facts_structured, element_key)
 
+            # 与 _analyze_coverage 一致：空列表和 False 算作已覆盖（弱要素）
             if fact_value is not None and fact_value != "":
-                if isinstance(fact_value, list) and len(fact_value) == 0:
-                    continue
                 covered_elements += 1
 
     if total_elements == 0:
@@ -402,6 +414,7 @@ class ConsultationOrchestrator:
         if state_updates:
             await self._compiled.aupdate_state(config, state_updates, as_node=None)
 
+        snapshot = await self._compiled.aget_state(config)
         self._logger.info("恢复工作流: session_id=%s, next=%s", session_id, snapshot.next)
 
         try:

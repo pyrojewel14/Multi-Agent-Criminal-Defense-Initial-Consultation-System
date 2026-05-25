@@ -149,6 +149,10 @@ async def send_message(
         _logger.error("【send_message】消息处理异常: session_id=%s, error=%s", session_id, result.error)
         raise HTTPException(status_code=500, detail="消息处理失败，请稍后重试")
 
+    if result.result_state is None:
+        _logger.error("【send_message】result_state 为空: session_id=%s", session_id)
+        raise HTTPException(status_code=500, detail="消息处理失败，请稍后重试")
+
     if result.alert_triggered:
         raise HTTPException(
             status_code=403,

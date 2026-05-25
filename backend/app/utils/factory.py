@@ -48,6 +48,19 @@ class DashScopeEmbeddingsWrapper(Embeddings):
 
         self.client = OpenAI(api_key=self.api_key, base_url=base_url)
 
+    def close(self):
+        """关闭 OpenAI 客户端，释放连接池资源。"""
+        if hasattr(self, "client") and self.client is not None:
+            self.client.close()
+            _logger.info("【close】DashScopeEmbeddingsWrapper 客户端已关闭")
+
+    def __del__(self):
+        """析构时自动关闭客户端。"""
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """将多个文本转换为嵌入向量。
 
@@ -192,6 +205,24 @@ class ChatModelFactory(BaseModelFactory):
         """
         return self.create_model(streaming=False, temperature=temperature)
 
+    def clear_cache(self):
+        """清空模型缓存，释放已缓存的模型实例。"""
+        self._model_cache.clear()
+        _logger.info("【clear_cache】模型缓存已清空")
+
+    def close(self):
+        """关闭工厂，释放所有模型资源。"""
+        for cache_key, model in self._model_cache.items():
+            # ChatTongyi / ChatOllama 底层可能持有 httpx 客户端
+            client = getattr(model, "client", None)
+            if client and hasattr(client, "close"):
+                try:
+                    client.close()
+                except Exception as e:
+                    _logger.warning("【close】关闭模型客户端失败 (%s): %s", cache_key, e)
+        self._model_cache.clear()
+        _logger.info("【close】ChatModelFactory 已关闭，所有模型资源已释放")
+
     def _create_model(
         self,
         temperature: Optional[float] = None,
@@ -311,7 +342,13 @@ class EmbedModelFactory(BaseModelFactory):
     """嵌入模型工厂。
 
     支持 Ollama 和阿里云百炼两种后端。
+    提供模型缓存，同一配置的模型实例会被复用。
     """
+
+    def __init__(self):
+        """初始化嵌入模型工厂。"""
+        super().__init__()
+        self._model_cache = {}
 
     def generator(self) -> Optional[Embeddings]:
         """生成嵌入模型实例 - 已废弃，请使用 create_embedding_model()。"""
@@ -325,7 +362,7 @@ class EmbedModelFactory(BaseModelFactory):
         return self.create_embedding_model()
 
     def create_embedding_model(self) -> Optional[Embeddings]:
-        """根据 EMBED_MODEL_TYPE 生成对应的嵌入模型。
+        """根据 EMBED_MODEL_TYPE 生成对应的嵌入模型（带缓存）。
 
         Returns:
             嵌入模型实例。
@@ -334,13 +371,32 @@ class EmbedModelFactory(BaseModelFactory):
             ValueError: 当 EMBED_MODEL_TYPE 不支持时。
         """
         embed_type = os.getenv("EMBED_MODEL_TYPE", "OLLAMA").upper()
+        cache_key = embed_type
+
+        if cache_key in self._model_cache:
+            _logger.debug("【create_embedding_model】从缓存返回嵌入模型: %s", cache_key)
+            return self._model_cache[cache_key]
 
         if embed_type == "OLLAMA":
-            return self._create_ollama_embeddings()
+            model = self._create_ollama_embeddings()
         elif embed_type == "ALIYUN":
-            return self._create_aliyun_embeddings()
+            model = self._create_aliyun_embeddings()
         else:
             raise ValueError(f"不支持的 EMBED_MODEL_TYPE: {embed_type}，可选值: OLLAMA, ALIYUN")
+
+        self._model_cache[cache_key] = model
+        return model
+
+    def close(self):
+        """关闭工厂，释放所有嵌入模型资源。"""
+        for cache_key, model in self._model_cache.items():
+            if isinstance(model, DashScopeEmbeddingsWrapper):
+                try:
+                    model.close()
+                except Exception as e:
+                    _logger.warning("【close】关闭嵌入模型客户端失败 (%s): %s", cache_key, e)
+        self._model_cache.clear()
+        _logger.info("【close】EmbedModelFactory 已关闭，所有嵌入模型资源已释放")
 
     def _create_ollama_embeddings(self) -> Embeddings:
         """创建 Ollama 嵌入模型。
