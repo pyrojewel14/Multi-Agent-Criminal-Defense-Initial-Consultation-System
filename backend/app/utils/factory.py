@@ -239,8 +239,18 @@ class ChatModelFactory(BaseModelFactory):
         Returns:
             聊天模型实例。
         """
-        # 生成缓存键
-        cache_key = f"{streaming}:{temperature}:{top_p}"
+        # 先获取配置，确保缓存键包含完整的模型标识
+        config = self._get_llm_config()
+        llm_type = config.get("type", "ALIYUN").upper()
+
+        # 根据后端类型获取对应的模型名称
+        if llm_type == "OLLAMA":
+            model_name = config.get("ollama", {}).get("model") or os.getenv("OLLAMA_MODEL_NAME", "qwen3:7b")
+        else:
+            model_name = config.get("aliyun", {}).get("model") or os.getenv("ALIYUN_MODEL_NAME", "qwen3-max")
+
+        # 生成包含完整模型标识的缓存键
+        cache_key = f"{llm_type}:{model_name}:{streaming}:{temperature}:{top_p}"
 
         # 检查缓存
         if cache_key in self._model_cache:
@@ -248,13 +258,10 @@ class ChatModelFactory(BaseModelFactory):
             return self._model_cache[cache_key]
 
         # 创建新实例
-        config = self._get_llm_config()
-        llm_type = config.get("type", "ALIYUN").upper()
-
         if llm_type == "OLLAMA":
-            model = self._create_ollama_model(config, temperature, streaming, top_p)
+            model = self._create_ollama_model(config, model_name, temperature, streaming, top_p)
         else:
-            model = self._create_aliyun_model(config, temperature, streaming, top_p)
+            model = self._create_aliyun_model(config, model_name, temperature, streaming, top_p)
 
         # 缓存模型实例
         self._model_cache[cache_key] = model
@@ -265,6 +272,7 @@ class ChatModelFactory(BaseModelFactory):
     def _create_ollama_model(
         self,
         config: dict,
+        model_name: str,
         temperature: Optional[float],
         streaming: bool,
         top_p: Optional[float],
@@ -273,6 +281,7 @@ class ChatModelFactory(BaseModelFactory):
 
         Args:
             config: 模型配置字典。
+            model_name: 模型名称。
             temperature: 采样温度。
             streaming: 是否启用流式输出。
             top_p: 采样参数。
@@ -282,9 +291,7 @@ class ChatModelFactory(BaseModelFactory):
         """
         from langchain_ollama import ChatOllama
 
-        ollama_config = config.get("ollama", {})
-        model_name = ollama_config.get("model", os.getenv("OLLAMA_MODEL_NAME", "qwen3:7b"))
-        base_url = ollama_config.get("base_url", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
+        base_url = config.get("ollama", {}).get("base_url") or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
         _logger.info("【_create_ollama_model】ChatModel 使用 Ollama: model=%s, base_url=%s", model_name, base_url)
 
@@ -301,6 +308,7 @@ class ChatModelFactory(BaseModelFactory):
     def _create_aliyun_model(
         self,
         config: dict,
+        model_name: str,
         temperature: Optional[float],
         streaming: bool,
         top_p: Optional[float],
@@ -309,6 +317,7 @@ class ChatModelFactory(BaseModelFactory):
 
         Args:
             config: 模型配置字典。
+            model_name: 模型名称。
             temperature: 采样温度。
             streaming: 是否启用流式输出。
             top_p: 采样参数。
@@ -318,10 +327,8 @@ class ChatModelFactory(BaseModelFactory):
         """
         from langchain_community.chat_models.tongyi import ChatTongyi
 
-        aliyun_config = config.get("aliyun", {})
-        model_name = aliyun_config.get("model", os.getenv("ALIYUN_MODEL_NAME", "qwen3-max"))
-        api_key = aliyun_config.get("api_key", os.getenv("ALIYUN_ACCESS_KEY_SECRET"))
-        base_url = aliyun_config.get("base_url", os.getenv("ALIYUN_BASE_URL"))
+        api_key = config.get("aliyun", {}).get("api_key") or os.getenv("ALIYUN_ACCESS_KEY_SECRET")
+        base_url = config.get("aliyun", {}).get("base_url") or os.getenv("ALIYUN_BASE_URL")
 
         _logger.info("【_create_aliyun_model】ChatModel 使用阿里云百炼: model=%s", model_name)
 
