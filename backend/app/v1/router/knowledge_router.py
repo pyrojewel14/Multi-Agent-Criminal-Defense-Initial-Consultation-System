@@ -13,7 +13,7 @@ from app.schemas.models import (
     MD5ListResponse,
     MD5Record,
 )
-from app.security.rbac import RoleChecker, get_current_user
+from app.security.rbac import require_admin
 from app.v1.service.knowledge_service import KnowledgeService, get_knowledge_service
 
 knowledge_router = APIRouter(prefix="/knowledge", tags=["knowledge"])
@@ -23,7 +23,7 @@ knowledge_router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 async def add_vector_single(
     file: UploadFile = File(...),
     is_public: bool = Query(default=False, description="是否设为公共文档，公共文档可供所有用户检索"),
-    current_user: dict = Depends(RoleChecker(["admin"])),
+    current_user: dict = Depends(require_admin),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
     _: None = Depends(rate_limit(limit=5, window=60)),
 ):
@@ -42,7 +42,7 @@ async def add_vector_single(
 async def add_vector_multiple(
     files: List[UploadFile] = File(..., description="要上传的文件列表"),
     is_public: bool = Query(default=False, description="是否设为公共文档，公共文档可供所有用户检索"),
-    current_user: dict = Depends(RoleChecker(["admin"])),
+    current_user: dict = Depends(require_admin),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
     _: None = Depends(rate_limit(limit=3, window=60)),
 ):
@@ -61,7 +61,7 @@ async def add_vector_multiple(
 async def add_vector_multiple_stream(
     files: List[UploadFile] = File(..., description="要上传的文件列表"),
     is_public: bool = Query(default=False, description="是否设为公共文档，公共文档可供所有用户检索"),
-    current_user: dict = Depends(RoleChecker(["admin"])),
+    current_user: dict = Depends(require_admin),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
     _: None = Depends(rate_limit(limit=3, window=60)),
 ):
@@ -80,7 +80,7 @@ async def add_vector_multiple_stream(
 
 @knowledge_router.delete("/clean")
 async def clean_all_vectors(
-    current_user: dict = Depends(RoleChecker(["admin"])),
+    current_user: dict = Depends(require_admin),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
 ):
     """清空所有知识库文档，仅超管可操作。"""
@@ -91,7 +91,7 @@ async def clean_all_vectors(
 @knowledge_router.delete("/md5/clear")
 async def clear_all_md5(
     delete_documents: bool = True,
-    current_user: dict = Depends(RoleChecker(["admin"])),
+    current_user: dict = Depends(require_admin),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
 ):
     """清空所有 MD5 记录，仅超管可操作。
@@ -110,7 +110,7 @@ async def clear_all_md5(
 async def delete_single_md5(
     md5_value: str,
     delete_documents: bool = True,
-    current_user: dict = Depends(RoleChecker(["admin"])),
+    current_user: dict = Depends(require_admin),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
 ):
     """删除单个 MD5 记录及其对应的知识库内容，仅超管可操作。
@@ -134,7 +134,7 @@ async def delete_single_md5(
 async def delete_by_filename(
     filename: str,
     delete_documents: bool = True,
-    current_user: dict = Depends(RoleChecker(["admin"])),
+    current_user: dict = Depends(require_admin),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
 ):
     """通过文件名删除 MD5 记录及其对应的知识库文档，仅超管可操作。
@@ -156,7 +156,7 @@ async def delete_by_filename(
 
 @knowledge_router.get("/md5/list", response_model=MD5ListResponse)
 async def get_all_md5_records(
-    current_user: dict = Depends(RoleChecker(["admin"])),
+    current_user: dict = Depends(require_admin),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
     _: None = Depends(rate_limit(limit=10, window=60)),
 ):
@@ -169,7 +169,7 @@ async def get_all_md5_records(
 @knowledge_router.get("/md5/{md5_value}", response_model=MD5Record)
 async def get_md5_info(
     md5_value: str,
-    current_user: dict = Depends(RoleChecker(["admin"])),
+    current_user: dict = Depends(require_admin),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
     _: None = Depends(rate_limit(limit=10, window=60)),
 ):
@@ -188,7 +188,7 @@ async def get_md5_info(
 
 @knowledge_router.get("/list", response_model=KnowledgeListResponse)
 async def get_all_knowledge_list(
-    current_user: dict = Depends(RoleChecker(["admin"])),
+    current_user: dict = Depends(require_admin),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
     _: None = Depends(rate_limit(limit=10, window=60)),
 ):
@@ -201,7 +201,7 @@ async def get_all_knowledge_list(
 @knowledge_router.get("/detail", response_model=KnowledgeDocumentDetail)
 async def get_document_detail(
     filename: str,
-    current_user: dict = Depends(RoleChecker(["admin"])),
+    current_user: dict = Depends(require_admin),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
     _: None = Depends(rate_limit(limit=10, window=60)),
 ):
@@ -214,7 +214,7 @@ async def get_document_detail(
 @knowledge_router.get("/chunks", response_model=DocumentChunksResponse)
 async def get_document_chunks(
     filename: str,
-    current_user: dict = Depends(RoleChecker(["admin"])),
+    current_user: dict = Depends(require_admin),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
     _: None = Depends(rate_limit(limit=10, window=60)),
 ):

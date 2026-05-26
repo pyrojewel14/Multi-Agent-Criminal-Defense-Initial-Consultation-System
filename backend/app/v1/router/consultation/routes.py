@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.db_config import get_db
 from app.models.user import Consultation
 from app.orchestrator.workflow import orchestrator
-from app.security.rbac import get_current_user
+from app.security.rbac import get_current_user, require_lawyer
 from app.utils.logger import get_logger
 from app.v1.router.consultation.constants import HIGH_RISK_ALERT_MESSAGE
 from app.v1.schemas.consultation_schemas import (
@@ -351,7 +351,7 @@ async def get_session_state(
 async def lawyer_review(
     session_id: str,
     request: LawyerReviewRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_lawyer),
 ):
     """律师审核反馈
 
@@ -363,7 +363,7 @@ async def lawyer_review(
     Args:
         session_id: 会话ID
         request: 律师审核请求参数
-        current_user: 当前认证用户
+        current_user: 当前认证用户（律师或管理员）
 
     Returns:
         律师审核响应
@@ -375,14 +375,6 @@ async def lawyer_review(
         current_user["user_id"],
         current_user["role"],
     )
-
-    if current_user["role"] not in ["lawyer", "admin"]:
-        _logger.warning(
-            "【lawyer_review】权限不足: 只有律师或管理员可以审核 session_id=%s, role=%s",
-            session_id,
-            current_user["role"],
-        )
-        raise HTTPException(status_code=403, detail="只有律师或管理员可以审核")
 
     state = await consultation_service.get_session_state(session_id)
 

@@ -188,47 +188,6 @@ def require_lawyer() -> RoleChecker:
     return RoleChecker(["admin", "lawyer"])
 
 
-async def get_current_lawyer(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> str:
-    """获取当前已认证的律师用户 ID。
-
-    仅允许 lawyer 角色的用户访问。
-
-    Args:
-        credentials: HTTP Bearer 凭证依赖。
-
-    Returns:
-        律师用户 ID 字符串。
-
-    Raises:
-        HTTPException: 未提供凭证、凭证无效或角色不是 lawyer 时抛出 401/403 错误。
-    """
-    if not credentials:
-        _logger.warning("【get_current_lawyer】认证失败: 未提供凭证")
-        raise HTTPException(status_code=401, detail="请先登录")
-
-    token = credentials.credentials
-    payload = decode_token(token)
-
-    if not payload:
-        _logger.warning("【get_current_lawyer】认证失败: Token无效或已过期")
-        raise HTTPException(status_code=401, detail="无效或过期的 Token")
-
-    if payload.get("type") != "access":
-        _logger.warning("【get_current_lawyer】认证失败: Token类型错误: %s", payload.get("type"))
-        raise HTTPException(status_code=401, detail="无效的 Token 类型")
-
-    user_role = payload.get("role")
-    if user_role != "lawyer":
-        _logger.warning("【get_current_lawyer】权限不足: 需要 lawyer 角色，当前角色: %s", user_role)
-        raise HTTPException(status_code=403, detail="需要律师权限")
-
-    user_id = payload.get("sub")
-    _logger.info("【get_current_lawyer】律师认证成功: user_id=%s", user_id)
-    return user_id
-
-
 async def get_user_from_request(request: Request) -> Optional[dict]:
     """从请求状态中获取用户信息。
 

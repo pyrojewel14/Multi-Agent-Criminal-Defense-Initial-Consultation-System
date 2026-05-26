@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.success_response import success_response
 from app.db.db_config import get_db
 from app.models.user import Consultation, ConsultationMessage, ConsultationStatus, User
-from app.security.rbac import get_current_lawyer
+from app.security.rbac import require_lawyer
 from app.utils.logger import get_logger
 from app.v1.schemas.lawyer_schemas import (
     ApproveReportRequest,
@@ -25,7 +25,7 @@ from app.v1.schemas.lawyer_schemas import (
 
 _logger = get_logger("Router.Lawyer")
 
-lawyer_session_router = APIRouter(prefix="/api/v1/lawyer", tags=["lawyer"])
+lawyer_session_router = APIRouter(prefix="/lawyer", tags=["lawyer"])
 
 
 @lawyer_session_router.get("/sessions", response_model=LawyerSessionListResponse)
@@ -35,7 +35,7 @@ async def get_sessions(
     needs_review: Optional[bool] = Query(None, description="筛选需要审核的会话"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
-    lawyer_id: str = Depends(get_current_lawyer),
+    current_user: dict = Depends(require_lawyer),
     db: AsyncSession = Depends(get_db),
 ):
     """获取分配给当前律师的会话列表。
@@ -48,12 +48,13 @@ async def get_sessions(
         needs_review: 筛选需要律师审核的会话
         page: 页码，从1开始
         page_size: 每页记录数，最大100
-        lawyer_id: 当前律师ID（从JWT中获取）
+        current_user: 当前认证用户（律师或管理员）
         db: 数据库会话
 
     Returns:
         会话列表响应，包含会话项、总数量、页码和每页大小
     """
+    lawyer_id = current_user["user_id"]
     _logger.info(
         "【get_sessions】律师获取会话列表: lawyer_id=%s, status=%s, risk_level=%s, needs_review=%s, page=%s, page_size=%s",
         lawyer_id,
@@ -126,7 +127,7 @@ async def get_sessions(
 @lawyer_session_router.get("/sessions/{session_id}", response_model=LawyerSessionDetail)
 async def get_session_detail(
     session_id: str,
-    lawyer_id: str = Depends(get_current_lawyer),
+    current_user: dict = Depends(require_lawyer),
     db: AsyncSession = Depends(get_db),
 ):
     """获取会话详情。
@@ -136,7 +137,7 @@ async def get_session_detail(
 
     Args:
         session_id: 会话ID
-        lawyer_id: 当前律师ID（从JWT中获取）
+        current_user: 当前认证用户（律师或管理员）
         db: 数据库会话
 
     Returns:
@@ -146,6 +147,7 @@ async def get_session_detail(
         404: 会话不存在
         403: 无权访问此会话
     """
+    lawyer_id = current_user["user_id"]
     _logger.info("【get_session_detail】获取会话详情: session_id=%s, lawyer_id=%s", session_id, lawyer_id)
 
     result = await db.execute(select(Consultation).where(Consultation.id == session_id))
@@ -258,7 +260,7 @@ async def get_session_detail(
 async def approve_report(
     session_id: str,
     request: ApproveReportRequest,
-    lawyer_id: str = Depends(get_current_lawyer),
+    current_user: dict = Depends(require_lawyer),
     db: AsyncSession = Depends(get_db),
 ):
     """审核并批准报告。
@@ -269,7 +271,7 @@ async def approve_report(
     Args:
         session_id: 会话ID
         request: 审核报告请求，包含最终报告内容和可选反馈
-        lawyer_id: 当前律师ID（从JWT中获取）
+        current_user: 当前认证用户（律师或管理员）
         db: 数据库会话
 
     Returns:
@@ -280,6 +282,7 @@ async def approve_report(
         403: 无权操作此会话
         400: 会话状态不允许审核
     """
+    lawyer_id = current_user["user_id"]
     _logger.info(
         "【approve_report】律师审核报告: session_id=%s, lawyer_id=%s, has_feedback=%s",
         session_id,
@@ -328,7 +331,7 @@ async def approve_report(
 async def reject_session(
     session_id: str,
     request: RejectSessionRequest,
-    lawyer_id: str = Depends(get_current_lawyer),
+    current_user: dict = Depends(require_lawyer),
     db: AsyncSession = Depends(get_db),
 ):
     """退回会话重做。
@@ -339,7 +342,7 @@ async def reject_session(
     Args:
         session_id: 会话ID
         request: 退回请求，包含目标节点、退回原因和修改要求
-        lawyer_id: 当前律师ID（从JWT中获取）
+        current_user: 当前认证用户（律师或管理员）
         db: 数据库会话
 
     Returns:
@@ -350,6 +353,7 @@ async def reject_session(
         403: 无权操作此会话
         400: 无效的目标节点
     """
+    lawyer_id = current_user["user_id"]
     _logger.info(
         "【reject_session】律师退回会话: session_id=%s, lawyer_id=%s, target_node=%s, reason=%s",
         session_id,
@@ -400,7 +404,7 @@ async def reject_session(
 @lawyer_session_router.post("/sessions/{session_id}/intervene", response_model=InterventionResponse)
 async def intervene_session(
     session_id: str,
-    lawyer_id: str = Depends(get_current_lawyer),
+    current_user: dict = Depends(require_lawyer),
     db: AsyncSession = Depends(get_db),
 ):
     """人工接管会话。
@@ -410,7 +414,7 @@ async def intervene_session(
 
     Args:
         session_id: 会话ID
-        lawyer_id: 当前律师ID（从JWT中获取）
+        current_user: 当前认证用户（律师或管理员）
         db: 数据库会话
 
     Returns:
@@ -420,6 +424,7 @@ async def intervene_session(
         404: 会话不存在
         403: 无权操作此会话
     """
+    lawyer_id = current_user["user_id"]
     _logger.info("【intervene_session】律师接管会话: session_id=%s, lawyer_id=%s", session_id, lawyer_id)
 
     result = await db.execute(select(Consultation).where(Consultation.id == session_id))
@@ -465,7 +470,7 @@ async def get_alerts(
     risk_level: Optional[str] = Query(None, description="按风险等级筛选: low, medium, high, critical"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
-    lawyer_id: str = Depends(get_current_lawyer),
+    current_user: dict = Depends(require_lawyer),
     db: AsyncSession = Depends(get_db),
 ):
     """获取高风险告警列表。
@@ -477,12 +482,13 @@ async def get_alerts(
         risk_level: 按风险等级筛选（low, medium, high, critical）
         page: 页码，从1开始
         page_size: 每页记录数，最大100
-        lawyer_id: 当前律师ID（从JWT中获取）
+        current_user: 当前认证用户（律师或管理员）
         db: 数据库会话
 
     Returns:
         高风险告警列表
     """
+    lawyer_id = current_user["user_id"]
     _logger.info(
         "【get_alerts】获取高风险告警: lawyer_id=%s, is_read=%s, risk_level=%s, page=%s, page_size=%s",
         lawyer_id,
@@ -541,19 +547,20 @@ async def get_alerts(
 @lawyer_session_router.put("/alerts/{alert_id}/read")
 async def mark_alert_read(
     alert_id: str,
-    lawyer_id: str = Depends(get_current_lawyer),
+    current_user: dict = Depends(require_lawyer),
     db: AsyncSession = Depends(get_db),
 ):
     """标记告警为已读。
 
     Args:
         alert_id: 告警ID（格式: alert_{session_id}）
-        lawyer_id: 当前律师ID（从JWT中获取）
+        current_user: 当前认证用户（律师或管理员）
         db: 数据库会话
 
     Returns:
         操作成功消息
     """
+    lawyer_id = current_user["user_id"]
     _logger.info("【mark_alert_read】标记告警已读: alert_id=%s, lawyer_id=%s", alert_id, lawyer_id)
 
     if not alert_id.startswith("alert_"):
