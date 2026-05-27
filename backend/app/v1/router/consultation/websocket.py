@@ -77,21 +77,25 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         state = await consultation_service.get_session_state(session_id)
 
         if not state:
-            await websocket.send_json({
-                "type": "error",
-                "content": "会话不存在或已过期",
-            })
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "content": "会话不存在或已过期",
+                }
+            )
             await websocket.close()
             return
 
         heartbeat_task = asyncio.create_task(_heartbeat_loop(websocket, session_id))
 
-        await websocket.send_json({
-            "type": "ack",
-            "content": "连接已建立",
-            "session_id": session_id,
-            "current_agent": state.get("current_agent", "Receptionist"),
-        })
+        await websocket.send_json(
+            {
+                "type": "ack",
+                "content": "连接已建立",
+                "session_id": session_id,
+                "current_agent": state.get("current_agent", "Receptionist"),
+            }
+        )
 
         while True:
             data = await websocket.receive_text()
@@ -99,19 +103,23 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             try:
                 message_data = json.loads(data)
             except json.JSONDecodeError:
-                await websocket.send_json({
-                    "type": "error",
-                    "content": "无效的JSON格式",
-                })
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "content": "无效的JSON格式",
+                    }
+                )
                 continue
 
             message_type = message_data.get("type", "message")
 
             if message_type == "heartbeat":
-                await websocket.send_json({
-                    "type": "heartbeat_ack",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                })
+                await websocket.send_json(
+                    {
+                        "type": "heartbeat_ack",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
                 continue
 
             if message_type == "message":
@@ -120,19 +128,23 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 # 每轮重新获取最新状态，避免使用过期的局部变量
                 state = await consultation_service.get_session_state(session_id)
                 if not state:
-                    await websocket.send_json({
-                        "type": "error",
-                        "content": "会话不存在或已过期",
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "content": "会话不存在或已过期",
+                        }
+                    )
                     break
 
                 if not state.get("consent_given") and "同意" not in content and "确认" not in content:
-                    await websocket.send_json({
-                        "type": "message",
-                        "agent_name": "Receptionist",
-                        "content": "请先回复'同意'确认您已阅读并理解权利义务告知。",
-                        "session_id": session_id,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "message",
+                            "agent_name": "Receptionist",
+                            "content": "请先回复'同意'确认您已阅读并理解权利义务告知。",
+                            "session_id": session_id,
+                        }
+                    )
                     continue
 
                 current_agent = state.get("current_agent", "Receptionist")
@@ -142,32 +154,40 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
                 if result.error:
                     _logger.error("【websocket_endpoint】消息处理异常: %s", result.error)
-                    await websocket.send_json({
-                        "type": "error",
-                        "content": "消息处理失败，请稍后重试",
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "content": "消息处理失败，请稍后重试",
+                        }
+                    )
                     continue
 
                 if result.alert_triggered:
-                    await websocket.send_json({
-                        "type": "alert",
-                        "content": HIGH_RISK_ALERT_MESSAGE,
-                        "agent_name": current_agent,
-                        "session_id": session_id,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "alert",
+                            "content": HIGH_RISK_ALERT_MESSAGE,
+                            "agent_name": current_agent,
+                            "session_id": session_id,
+                        }
+                    )
                 else:
-                    await websocket.send_json({
-                        "type": "message",
-                        "agent_name": current_agent,
-                        "content": result.response_content,
-                        "session_id": session_id,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "message",
+                            "agent_name": current_agent,
+                            "content": result.response_content,
+                            "session_id": session_id,
+                        }
+                    )
 
-                    await websocket.send_json({
-                        "type": "ack",
-                        "content": "消息已处理",
-                        "agent_name": current_agent,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "ack",
+                            "content": "消息已处理",
+                            "agent_name": current_agent,
+                        }
+                    )
 
     except WebSocketDisconnect:
         _logger.info("【websocket_endpoint】客户端断开连接: session_id=%s", session_id)
@@ -192,9 +212,11 @@ async def _heartbeat_loop(websocket: WebSocket, _session_id: str) -> None:
     while True:
         try:
             await asyncio.sleep(30)
-            await websocket.send_json({
-                "type": "heartbeat",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
+            await websocket.send_json(
+                {
+                    "type": "heartbeat",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
         except Exception:
             break

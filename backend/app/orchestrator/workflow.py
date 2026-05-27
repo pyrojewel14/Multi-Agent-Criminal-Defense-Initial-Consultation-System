@@ -166,7 +166,9 @@ async def wait_for_user_node(state: ConsultationState) -> ConsultationState:
 
 
 def _calculate_coverage_rate(state: ConsultationState) -> float:
-    """计算当前事实覆盖度。
+    """
+    已废弃
+    计算当前事实覆盖度。
 
     注意：跳过未验证的 RAG 检索结果，只使用 JSON 知识库的结果计算覆盖度，
     与 fact_digger._analyze_coverage 保持一致。
