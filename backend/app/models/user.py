@@ -104,9 +104,18 @@ class Consultation(Base):
 
     status = Column(Enum(ConsultationStatus), default=ConsultationStatus.PENDING)
 
+    facts_raw = Column(Text, nullable=True)
     facts_structured = Column(Text, nullable=True)
     applied_laws = Column(Text, nullable=True)
     final_output = Column(Text, nullable=True)
+
+    risk_level = Column(String(20), nullable=True, index=True)
+    risk_assessment = Column(Text, nullable=True)
+    alert_triggered = Column(Boolean, default=False, index=True)
+    alert_read = Column(Boolean, default=False)
+    lawyer_review_needed = Column(Boolean, default=False, index=True)
+    report_draft = Column(Text, nullable=True)
+    service_plan = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
