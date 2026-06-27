@@ -24,6 +24,7 @@ class ConsultationState(TypedDict, total=False):
     lawyer_id: Optional[str]  # 可选的律师ID，分配给此案件的律师标识
     current_input: Optional[str]  # 用户最新一条输入消息，Agent 节点从中读取当前轮内容
     facts_coverage_rate: Optional[float]  # 构成要件覆盖度（0.0-1.0），FactDigger 用于判断是否继续追问
+    fact_law_loop_count: int  # FactDigger/LawRef 循环次数，用于防止工作流无限追问
     element_to_law_mapping: Optional[dict]  # 构成要件到法条的映射，LawRef 生成后供 FactDigger 计算覆盖度
     identity_info: Optional[dict]  # 用户身份详细信息（姓名脱敏、联系方式等），Receptionist 阶段收集
     user_role: Optional[str]  # 用户在系统中的角色（client/lawyer/admin），用于 RBAC 权限判断

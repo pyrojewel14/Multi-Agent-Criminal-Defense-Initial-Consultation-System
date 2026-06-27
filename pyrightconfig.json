@@ -1,0 +1,16 @@
+{
+    "include": [
+        "backend"
+    ],
+    "exclude": [
+        "**/__pycache__",
+        "**/.pytest_cache"
+    ],
+    "extraPaths": [
+        "backend"
+    ],
+    "venvPath": "/opt/anaconda3/envs",
+    "venv": "rag",
+    "pythonVersion": "3.12",
+    "typeCheckingMode": "basic"
+}

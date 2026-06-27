@@ -1,7 +1,11 @@
-from typing import Any, Dict, Literal, Optional
+from __future__ import annotations
 
+from typing import Any, Dict, Literal, Optional, cast
+
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StateSnapshot
 
 from app.agents.fact_digger import fact_digger_node
@@ -66,7 +70,7 @@ def check_facts_sufficient(state: ConsultationState) -> Literal["complete", "loo
         )
         return "max_loop"
 
-    coverage_rate = state.get("facts_coverage_rate", 0.0)
+    coverage_rate = state.get("facts_coverage_rate") or 0.0
 
     if coverage_rate >= COVERAGE_THRESHOLD:
         _logger.info("事实覆盖度 %.2f >= %.2f，流程完成", coverage_rate, COVERAGE_THRESHOLD)
@@ -269,7 +273,7 @@ class ConsultationOrchestrator:
     def __init__(self):
         self._logger = get_logger("Orchestrator")
         self._checkpointer = MemorySaver()
-        self._compiled = None
+        self._compiled: Optional[CompiledStateGraph[ConsultationState, Any, Any, ConsultationState]] = None
         # 保留 _active_sessions 用于 get_active_sessions 等兼容接口
         self._active_sessions: Dict[str, ConsultationState] = {}
 
@@ -328,15 +332,28 @@ class ConsultationOrchestrator:
         """确保工作流已编译（带 checkpointer 和 interrupt_after）。"""
         if self._compiled is None:
             workflow = self._build_workflow()
-            self._compiled = workflow.compile(
-                checkpointer=self._checkpointer,
-                interrupt_after=INTERRUPT_AFTER_NODES,
+            self._compiled = cast(
+                CompiledStateGraph[ConsultationState, Any, Any, ConsultationState],
+                workflow.compile(
+                    checkpointer=self._checkpointer,
+                    interrupt_after=INTERRUPT_AFTER_NODES,
+                ),
             )
             self._logger.debug("工作流编译完成（含 checkpointer + interrupt_after）")
 
-    def _config(self, session_id: str) -> dict:
+    def _compiled_graph(self) -> CompiledStateGraph[ConsultationState, Any, Any, ConsultationState]:
+        """获取已编译工作流，供类型检查器识别非 None。"""
+        self._ensure_compiled()
+        if self._compiled is None:
+            raise RuntimeError("工作流编译失败")
+        return self._compiled
+
+    def _config(self, session_id: str) -> RunnableConfig:
         """生成 LangGraph checkpointer 配置。"""
-        return {"configurable": {"thread_id": session_id}}
+        return cast(
+            RunnableConfig,
+            {"configurable": {"thread_id": session_id}},
+        )
 
     # ------------------------------------------------------------------
     # 核心方法：start / resume
@@ -355,7 +372,7 @@ class ConsultationOrchestrator:
             LLMServiceException: LLM 服务异常
             LLMTimeoutException: LLM 调用超时
         """
-        self._ensure_compiled()
+        compiled = self._compiled_graph()
 
         session_id = initial_state.get("session_id", "unknown")
         config = self._config(session_id)
@@ -364,7 +381,7 @@ class ConsultationOrchestrator:
         self._active_sessions[session_id] = initial_state.copy()
 
         try:
-            result = await self._compiled.ainvoke(initial_state, config)
+            result = cast(ConsultationState, await compiled.ainvoke(initial_state, config))
             self._active_sessions[session_id] = result
             self._logger.info(
                 "工作流中断: session_id=%s, current_agent=%s",
@@ -403,24 +420,24 @@ class ConsultationOrchestrator:
             LLMServiceException: LLM 服务异常
             LLMTimeoutException: LLM 调用超时
         """
-        self._ensure_compiled()
+        compiled = self._compiled_graph()
 
         config = self._config(session_id)
 
         # 检查会话是否存在
-        snapshot = await self._compiled.aget_state(config)
+        snapshot = await compiled.aget_state(config)
         if snapshot.values is None or not snapshot.values:
             raise ValueError(f"会话不存在: {session_id}")
 
         # 如果有状态更新，先写入 checkpointer
         if state_updates:
-            await self._compiled.aupdate_state(config, state_updates, as_node=None)
+            await compiled.aupdate_state(config, state_updates, as_node=None)
 
-        snapshot = await self._compiled.aget_state(config)
+        snapshot = await compiled.aget_state(config)
         self._logger.info("恢复工作流: session_id=%s, next=%s", session_id, snapshot.next)
 
         try:
-            result = await self._compiled.ainvoke(None, config)
+            result = cast(ConsultationState, await compiled.ainvoke(None, config))
             self._active_sessions[session_id] = result
             self._logger.info(
                 "工作流中断: session_id=%s, current_agent=%s",
@@ -450,9 +467,9 @@ class ConsultationOrchestrator:
         Returns:
             StateSnapshot，如果会话不存在返回 None
         """
-        self._ensure_compiled()
+        compiled = self._compiled_graph()
         config = self._config(session_id)
-        snapshot = await self._compiled.aget_state(config)
+        snapshot = await compiled.aget_state(config)
         if snapshot.values is None or not snapshot.values:
             return None
         return snapshot
