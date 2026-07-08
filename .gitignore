@@ -1,0 +1,112 @@
+# ==================== Git ====================
+.trae/
+backend/.gitignore
+
+# ==================== Docs ====================
+backend/data/
+Docs/多Agent刑事辩护初期咨询系统开发文档.md
+
+
+# ==================== Python ====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+*.manifest
+*.spec
+.Python
+*.whl
+
+# ==================== Virtual Environment ====================
+venv/
+.venv/
+env/
+.env
+*.env.local
+*.env.prod
+
+# ==================== IDE & Editors ====================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ==================== Django ====================
+*.log
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+local_settings.py
+
+# ==================== Testing ====================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+backend/tests/
+
+# ==================== Jupyter Notebook ====================
+.ipynb_checkpoints/
+*.ipynb
+
+# ==================== Logs ====================
+logs/
+*.log
+
+# ==================== Data & Models ====================
+data/chromadb/
+*.sqlite3
+*.db
+
+# ==================== Environment & Config ====================
+.env
+.env.*
+!.env.example
+*.local
+
+# ==================== OS ====================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ==================== Docker ====================
+.docker/
+docker-compose.override.yml
+
+# ==================== Secrets & Keys ====================
+*.pem
+*.key
+*.crt
+secrets/
+*.secret
+
+# ==================== Project TODO & generated docs ====================
+PROJECT_TODO.md
+docs/
+
+# ==================== Frontend & Presentation Artifacts ====================
+frontend/
+workspace/
+*.pptx
+
+# ==================== Misc ====================
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+cache/

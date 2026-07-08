@@ -1,5 +1,6 @@
 import json
 import os
+from inspect import isawaitable
 from typing import Any, Optional
 
 import redis.asyncio as redis
@@ -16,6 +17,21 @@ REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "50"))
 
 _pool: Optional[redis.ConnectionPool] = None
 _redis_client: Optional[redis.Redis] = None
+
+
+async def _close_async_resource(resource: Any, method_names: tuple[str, ...]) -> bool:
+    """Close an async Redis resource across redis-py versions."""
+    for method_name in method_names:
+        close_method = getattr(resource, method_name, None)
+        if close_method is None:
+            continue
+
+        result = close_method()
+        if isawaitable(result):
+            await result
+        return True
+
+    return False
 
 
 def _get_pool() -> redis.ConnectionPool:
@@ -86,10 +102,10 @@ async def close_redis() -> None:
     """关闭 Redis 客户端和连接池，释放所有连接。"""
     global _pool, _redis_client
     if _redis_client:
-        await _redis_client.aclose()
+        await _close_async_resource(_redis_client, ("aclose", "close"))
         _redis_client = None
     if _pool:
-        await _pool.aclose()
+        await _close_async_resource(_pool, ("aclose", "disconnect", "close"))
         _pool = None
         _logger.info("【close_redis】Redis 连接池已关闭")
 
