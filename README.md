@@ -25,16 +25,16 @@
 
 ## 核心功能
 
-- 多 Agent 咨询流程：`Receptionist`、`FactDigger`、`LawRef`、`RiskAssessor`、`ServicePlanner`、`HumanReview`、`HumanAlert` 由 LangGraph StateGraph 编排。
-- 知情同意门禁：创建会话后先停在接待节点，用户确认隐私和权利义务告知后才进入事实收集。
-- 结构化事实提取：`FactDigger` 使用 LLM tool calling 调用 `extract_case_facts`，输出时间、地点、当事人、行为经过、后果、证据、羁押状态等字段。
-- 覆盖度驱动追问：根据适用法条的构成要件计算 `facts_coverage_rate`，低于 `0.8` 时生成追问。
-- 法条检索与验证：`LawRef` 先用 RAG 召回，再用本地 JSON 法条库按法条编号验证和增强，最后用关键词匹配补召回。
-- 高风险人工介入：检测自认其罪、串供、伪造/销毁证据、未成年人相关表达等风险后触发 `HumanAlert`。
-- 律师审核断点：服务方案和报告草案生成后进入 `HumanReview`，律师可批准、退回事实收集或退回风险评估。
-- 认证与权限：JWT access / refresh token、`client` / `lawyer` / `admin` 角色检查、咨询记录按角色过滤。
-- 知识库管理：管理员可上传、批量上传、流式上传、查看、删除和清空知识库文档，文档进入 ChromaDB。
-- 会话与历史：咨询记录和消息写入 SQLite；工作流状态优先从 LangGraph checkpointer 获取，并有 Redis / 内存缓存兜底。
+- 多 Agent 流程：LangGraph 编排咨询、评估、规划与人工审核。
+- 知情同意门禁：用户确认告知后才进入事实收集。
+- 结构化事实提取：通过 tool calling 提取案情要素。
+- 覆盖度追问：事实覆盖率低于 `0.8` 时自动追问。
+- 法条检索：RAG 召回并结合本地法条库验证、补充。
+- 风险介入：识别高风险表达并触发人工处理。
+- 律师审核：支持批准或退回指定流程节点。
+- 认证权限：JWT 双令牌、角色鉴权与记录过滤。
+- 知识库：支持文档上传、查看、删除及 ChromaDB 入库。
+- 会话历史：SQLite 持久化，Redis / 内存缓存工作流状态。
 
 ## 技术栈
 
@@ -48,20 +48,9 @@
 - PyJWT、passlib、RBAC 依赖注入
 - pytest、pytest-asyncio、ruff
 
-前端：
-
-- Vue 3、TypeScript、Vite
-- TDesign Vue Next、Pinia、Vue Router
-- Axios、markdown-it、highlight.js、lucide-vue-next
-
 ## 系统架构
 
 ```text
-Frontend Vue 3
-  ├─ client: 在线咨询、同意确认、报告查看
-  ├─ lawyer: 会话详情、告警、审核
-  └─ admin: 用户、律师、咨询、知识库管理
-
 FastAPI backend
   ├─ /api/v1/auth           注册、登录、刷新、当前用户、登出
   ├─ /api/v1/sessions       Agent 会话创建、消息、同意、状态、审核、关闭
@@ -176,16 +165,6 @@ redis-server
 ```
 
 或使用本机服务管理器启动 Redis。后端启动时会执行 `init_redis()`，Redis 不可用会导致启动失败。
-
-前端：
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-前端默认由 Vite 启动。实际端口以 Vite 输出为准。
 
 测试：
 
@@ -346,7 +325,7 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 - RAG 检索依赖知识库内容和 embedding / reranker 模型配置；未通过 JSON 法条库验证的结果不会被当作可靠构成要件来源。
 - 当前没有数据库 migration 工具，表结构由 SQLAlchemy metadata 在启动时创建。
 - 评估已有离线 MVP，但还没有覆盖真实 LLM 输出质量、长期对话一致性和人工审核质量的完整指标体系。
-- 项目包含前端代码和测试代码，但当前 `.gitignore` 历史规则忽略了 `frontend/` 与 `backend/tests/`，作为正式展示仓库时建议单独整理版本控制范围。
+- 当前 `.gitignore` 历史规则忽略了 `backend/tests/`，作为正式展示仓库时建议单独整理版本控制范围。
 
 后续优化：
 
@@ -356,7 +335,6 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 - 增加律师审核操作的审计日志和报告版本管理。
 - 强化 WebSocket 认证、会话授权和速率限制。
 - 为高风险检测增加更系统的测试样本，降低误报与漏报。
-- 将事实覆盖度与法条构成要件映射做成可解释 UI，便于律师快速判断缺失信息。
 
 ## 文档
 

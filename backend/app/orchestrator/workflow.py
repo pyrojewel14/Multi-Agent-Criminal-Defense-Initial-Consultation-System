@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Literal, Optional, cast
+from typing import Any, Dict, Literal, Optional
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StateSnapshot
+from pydantic import TypeAdapter, ValidationError
 
 from app.agents.fact_digger import fact_digger_node
 from app.agents.human_alert import human_alert_node
@@ -25,6 +26,24 @@ COVERAGE_THRESHOLD = 0.8
 
 # 需要等待外部输入的节点，执行后自动中断
 INTERRUPT_AFTER_NODES = ["receptionist", "wait_for_user", "human_review", "human_alert"]
+
+WorkflowGraph = StateGraph[ConsultationState, None, ConsultationState, ConsultationState]
+CompiledWorkflowGraph = CompiledStateGraph[ConsultationState, None, ConsultationState, ConsultationState]
+_STATE_ADAPTER: TypeAdapter[ConsultationState] = TypeAdapter(ConsultationState)
+
+
+def _validate_workflow_state(value: object) -> ConsultationState:
+    """Validate LangGraph state values while preserving reserved metadata keys."""
+    if not isinstance(value, dict):
+        raise ValueError("工作流返回了无效状态: 结果不是字典")
+
+    known_state = {key: value[key] for key in ConsultationState.__annotations__ if key in value}
+    try:
+        _STATE_ADAPTER.validate_python(known_state)
+    except ValidationError as exc:
+        raise ValueError("工作流返回了无效状态") from exc
+
+    return ConsultationState(**value)
 
 
 def check_consent(state: ConsultationState) -> Literal["continue", "end"]:
@@ -80,7 +99,7 @@ def check_facts_sufficient(state: ConsultationState) -> Literal["complete", "loo
     return "loop"
 
 
-def lawyer_decision(state: ConsultationState) -> Literal["approved", "revise_facts", "revise_risk"]:
+def lawyer_decision(state: ConsultationState) -> Literal["approved", "revise_facts", "revise_risk", "wait"]:
     """条件边：根据律师审核决策决定流程走向。
 
     Args:
@@ -90,8 +109,9 @@ def lawyer_decision(state: ConsultationState) -> Literal["approved", "revise_fac
         "approved" - 报告已批准，结束流程
         "revise_facts" - 需要修改事实，返回 FactDigger
         "revise_risk" - 需要修改风险评估，返回 RiskAssessor
+        "wait" - 尚无有效律师决定，保持在 HumanReview 断点
     """
-    decision = state.get("lawyer_decision", "approved")
+    decision = state.get("lawyer_decision")
 
     if decision == "revise_facts":
         _logger.info("律师决策：需要修改事实，返回 FactDigger")
@@ -100,8 +120,12 @@ def lawyer_decision(state: ConsultationState) -> Literal["approved", "revise_fac
         _logger.info("律师决策：需要修改风险评估，返回 RiskAssessor")
         return "revise_risk"
 
-    _logger.info("律师决策：报告已批准，流程结束")
-    return "approved"
+    if decision == "approved":
+        _logger.info("律师决策：报告已批准，流程结束")
+        return "approved"
+
+    _logger.info("尚未收到有效律师决策，继续等待人工审核")
+    return "wait"
 
 
 async def human_review_node(state: ConsultationState) -> ConsultationState:
@@ -119,6 +143,24 @@ async def human_review_node(state: ConsultationState) -> ConsultationState:
     _logger.info("【human_review_node】律师审核节点开始执行")
 
     session_id = state.get("session_id", "unknown")
+    decision = state.get("lawyer_decision")
+
+    if decision in {"approved", "revise_facts", "revise_risk"}:
+        state["awaiting_lawyer_review"] = False
+        state["current_agent"] = "HumanReview"
+        if "conversation_history" not in state:
+            state["conversation_history"] = []
+        state["conversation_history"].append(
+            {
+                "agent": "HumanReview",
+                "action": "review_decision",
+                "session_id": session_id,
+                "decision": decision,
+                "feedback": state.get("lawyer_feedback"),
+            }
+        )
+        _logger.info("【human_review_node】收到律师决策: %s", decision)
+        return state
 
     report_draft = state.get("report_draft", "")
     service_plan = state.get("service_plan", {})
@@ -260,6 +302,7 @@ class ConsultationOrchestrator:
                                                │     │                                                              ↓
                                                │     │                                                        [lawyer_decision]
                                                │     │                                                              ↓
+                                               │     │                                                              ├── wait → HumanReview(保持中断)
                                                │     ├── loop → WaitForUser ──[interrupt]──→ LawRef → FactDigger(循环)
                                                │     ├── alert → HumanAlert ──[interrupt]──→ END
                                                │     └── max_loop → RiskAssessor
@@ -273,17 +316,17 @@ class ConsultationOrchestrator:
     def __init__(self):
         self._logger = get_logger("Orchestrator")
         self._checkpointer = MemorySaver()
-        self._compiled: Optional[CompiledStateGraph[ConsultationState, Any, Any, ConsultationState]] = None
+        self._compiled: Optional[CompiledWorkflowGraph] = None
         # 保留 _active_sessions 用于 get_active_sessions 等兼容接口
         self._active_sessions: Dict[str, ConsultationState] = {}
 
-    def _build_workflow(self) -> StateGraph:
+    def _build_workflow(self) -> WorkflowGraph:
         """构建工作流 DAG，包含所有 Agent 节点和条件边。
 
         Returns:
             配置完成的 StateGraph 实例
         """
-        workflow = StateGraph(ConsultationState)
+        workflow: WorkflowGraph = StateGraph(ConsultationState)
 
         workflow.add_node("receptionist", receptionist_node)
         workflow.add_node("fact_digger", fact_digger_node)
@@ -321,7 +364,12 @@ class ConsultationOrchestrator:
         workflow.add_conditional_edges(
             "human_review",
             lawyer_decision,
-            {"approved": END, "revise_facts": "fact_digger", "revise_risk": "risk_assessor"},
+            {
+                "approved": END,
+                "revise_facts": "fact_digger",
+                "revise_risk": "risk_assessor",
+                "wait": "human_review",
+            },
         )
 
         workflow.add_edge("human_alert", END)
@@ -332,16 +380,13 @@ class ConsultationOrchestrator:
         """确保工作流已编译（带 checkpointer 和 interrupt_after）。"""
         if self._compiled is None:
             workflow = self._build_workflow()
-            self._compiled = cast(
-                CompiledStateGraph[ConsultationState, Any, Any, ConsultationState],
-                workflow.compile(
-                    checkpointer=self._checkpointer,
-                    interrupt_after=INTERRUPT_AFTER_NODES,
-                ),
+            self._compiled = workflow.compile(
+                checkpointer=self._checkpointer,
+                interrupt_after=INTERRUPT_AFTER_NODES,
             )
             self._logger.debug("工作流编译完成（含 checkpointer + interrupt_after）")
 
-    def _compiled_graph(self) -> CompiledStateGraph[ConsultationState, Any, Any, ConsultationState]:
+    def _compiled_graph(self) -> CompiledWorkflowGraph:
         """获取已编译工作流，供类型检查器识别非 None。"""
         self._ensure_compiled()
         if self._compiled is None:
@@ -350,10 +395,8 @@ class ConsultationOrchestrator:
 
     def _config(self, session_id: str) -> RunnableConfig:
         """生成 LangGraph checkpointer 配置。"""
-        return cast(
-            RunnableConfig,
-            {"configurable": {"thread_id": session_id}},
-        )
+        config: RunnableConfig = {"configurable": {"thread_id": session_id}}
+        return config
 
     # ------------------------------------------------------------------
     # 核心方法：start / resume
@@ -381,7 +424,7 @@ class ConsultationOrchestrator:
         self._active_sessions[session_id] = initial_state.copy()
 
         try:
-            result = cast(ConsultationState, await compiled.ainvoke(initial_state, config))
+            result = _validate_workflow_state(await compiled.ainvoke(initial_state, config))
             self._active_sessions[session_id] = result
             self._logger.info(
                 "工作流中断: session_id=%s, current_agent=%s",
@@ -437,7 +480,7 @@ class ConsultationOrchestrator:
         self._logger.info("恢复工作流: session_id=%s, next=%s", session_id, snapshot.next)
 
         try:
-            result = cast(ConsultationState, await compiled.ainvoke(None, config))
+            result = _validate_workflow_state(await compiled.ainvoke(None, config))
             self._active_sessions[session_id] = result
             self._logger.info(
                 "工作流中断: session_id=%s, current_agent=%s",

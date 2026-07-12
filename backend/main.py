@@ -31,13 +31,17 @@ async def lifespan(_app: FastAPI):
     await init_db()
     await init_redis()
     _logger.info("Database and Redis initialized")
-    yield
-    _logger.info("Shutting down application...")
-    chat_model_factory.close()
-    embed_model_factory.close()
-    await close_redis()
-    await close_db()
-    _logger.info("Cleanup completed")
+    try:
+        yield
+    except Exception as e:
+        _logger.error(f"Error occurred: {e}")
+    finally:
+        _logger.info("Shutting down application...")
+        chat_model_factory.close()
+        embed_model_factory.close()
+        await close_redis()
+        await close_db()
+        _logger.info("Cleanup completed")
 
 
 app = FastAPI(

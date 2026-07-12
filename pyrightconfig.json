@@ -10,7 +10,7 @@
         "backend"
     ],
     "venvPath": "/opt/anaconda3/envs",
-    "venv": "rag",
+    "venv": "Agent_dev",
     "pythonVersion": "3.12",
     "typeCheckingMode": "basic"
 }

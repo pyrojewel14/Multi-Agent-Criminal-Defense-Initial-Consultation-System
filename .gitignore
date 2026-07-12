@@ -56,7 +56,6 @@ htmlcov/
 coverage.xml
 *.cover
 .hypothesis/
-backend/tests/
 
 # ==================== Jupyter Notebook ====================
 .ipynb_checkpoints/
@@ -111,3 +110,6 @@ temp/
 *.bak
 *.swp
 cache/
+
+# ===================codex=====================
+AGENTS.md
