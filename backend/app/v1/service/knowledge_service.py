@@ -100,18 +100,22 @@ class KnowledgeService:
         Returns:
             文件名。
         """
-        store = get_vector_store()
+        filename = file.filename
+        if not filename:
+            raise HTTPException(status_code=400, detail="文件名不能为空")
 
-        if file.size > MAX_FILE_SIZE:
+        if file.size is not None and file.size > MAX_FILE_SIZE:
             raise HTTPException(status_code=400, detail="文件大小不能超过 20MB")
 
         content = await file.read()
         await file.seek(0)
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail="文件大小不能超过 20MB")
 
         mime = magic.Magic(mime=True)
         file_type = mime.from_buffer(content)
 
-        file_extension = os.path.splitext(file.filename)[1].lower()
+        file_extension = os.path.splitext(filename)[1].lower()
 
         if file_type not in ALLOWED_MIME_TYPES and file_extension not in ALLOWED_EXTENSIONS:
             raise HTTPException(
@@ -119,8 +123,9 @@ class KnowledgeService:
                 detail=f"文件类型不支持，目前支持 PDF、TXT、Markdown、PPTX、DOCX 文件类型。检测到的文件类型: {file_type}，扩展名: {file_extension}"
             )
 
+        store = get_vector_store()
         await store.get_document(files=[file], user_id=user_id, is_public=is_public)
-        return file.filename
+        return filename
 
     async def handle_add_vector_multiple(self, files: List[UploadFile], user_id: str, is_public: bool = False) -> List[str]:
         """处理添加多个向量逻辑。

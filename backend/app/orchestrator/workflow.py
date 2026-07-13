@@ -33,7 +33,7 @@ _STATE_ADAPTER: TypeAdapter[ConsultationState] = TypeAdapter(ConsultationState)
 
 
 def _validate_workflow_state(value: object) -> ConsultationState:
-    """Validate LangGraph state values while preserving reserved metadata keys."""
+    """校验 LangGraph 状态值，同时保留框架使用的元数据键。"""
     if not isinstance(value, dict):
         raise ValueError("工作流返回了无效状态: 结果不是字典")
 
@@ -292,7 +292,7 @@ def _get_fact_value(facts_structured: Dict[str, Any], key: str) -> Any:
 
 
 class ConsultationOrchestrator:
-    """LangGraph StateGraph wrapper for the complete multi-agent consultation workflow.
+    """封装完整多 Agent 咨询流程的 LangGraph StateGraph。
 
     工作流拓扑（使用 checkpointer + interrupt_after 实现自动流转与人工断点）：
 

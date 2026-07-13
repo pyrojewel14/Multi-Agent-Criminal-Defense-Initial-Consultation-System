@@ -1,0 +1,55 @@
+{
+  "id": "ordinary_assault",
+  "title": "普通刑事咨询：争执后轻伤待核实",
+  "category": "ordinary_consultation",
+  "user_input": "2026年7月10日晚，我在杭州市某餐馆与对方发生争执。对方先推我，我随后推了对方一次，对方倒地后手臂受伤并报警。现场有监控和两名目击者。我已主动到派出所说明情况，目前未被拘留。对方伤情鉴定结果尚未出具，也还没有达成谅解。我以前没有前科。",
+  "expected_fact_fields": {
+    "incident_time": "2026-07-10 evening",
+    "incident_location": "杭州市某餐馆",
+    "parties": [
+      {"role": "咨询者", "name": null, "relationship": "冲突一方"},
+      {"role": "对方", "name": null, "relationship": "冲突另一方"}
+    ],
+    "behavior_sequence": [
+      {"time": "争执期间", "actor": "对方", "action": "推搡咨询者", "method": "徒手", "target": "咨询者"},
+      {"time": "随后", "actor": "咨询者", "action": "推了对方一次", "method": "徒手", "target": "对方"}
+    ],
+    "consequence": "对方倒地后手臂受伤并报警，伤情鉴定结果尚未出具",
+    "evidence_mentioned": [
+      {"type": "监控", "description": "餐馆现场监控"},
+      {"type": "证人", "description": "两名目击者"}
+    ],
+    "arrest_status": "未被拘留",
+    "surrender": true,
+    "victim_forgiveness": false,
+    "prior_record": false
+  },
+  "expected_law_keywords": ["故意伤害", "刑法第二百三十四条", "伤情鉴定"],
+  "should_follow_up": false,
+  "should_trigger_human": false,
+  "expected_final_output_type": "lawyer_reviewed_report",
+  "demo_fixture": {
+    "candidate_laws": [
+      {
+        "article_number": "刑法第二百三十四条",
+        "title": "故意伤害罪",
+        "matched_keywords": ["故意伤害", "伤情鉴定"],
+        "data_source": "demo_fixture"
+      }
+    ],
+    "risk_assessment": {
+      "risk_level": "medium",
+      "predicted_sentence_range": "待律师结合伤情鉴定评估",
+      "mitigating_factors": ["主动到案说明", "无前科"],
+      "aggravating_factors": [],
+      "evidence_risk_points": ["伤情鉴定尚未出具", "需核验监控和证人证言"]
+    },
+    "service_plan": {
+      "immediate_actions": ["固定并申请调取现场监控", "保存目击者联系方式", "取得伤情鉴定材料"],
+      "short_term_actions": ["由律师核对询问笔录", "评估和解与谅解可能性"],
+      "review_required": true
+    },
+    "report_draft": "# 刑事辩护初期咨询报告草案\n\n现有材料显示双方发生徒手冲突，对方伤情和行为定性仍待证据核实。建议优先固定监控、证人证言及伤情鉴定材料，由律师审核后再形成正式意见。",
+    "lawyer_final_output": "律师审核意见：现阶段只能形成初步风险提示，不能在伤情鉴定和完整证据到位前确定罪名或量刑。请先固定监控、证人证言并取得伤情鉴定材料。"
+  }
+}

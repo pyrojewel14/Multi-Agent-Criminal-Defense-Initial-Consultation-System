@@ -1,0 +1,41 @@
+{
+  "id": "missing_facts",
+  "title": "事实缺失：家属仅知被带走",
+  "category": "missing_facts_follow_up",
+  "user_input": "我弟弟昨天因为和别人发生冲突被公安带走了，我只知道对方说受伤了，其他情况都不清楚。",
+  "expected_fact_fields": {
+    "incident_time": "昨天",
+    "incident_location": null,
+    "parties": [
+      {"role": "咨询者家属", "name": null, "relationship": "咨询者的弟弟"},
+      {"role": "对方", "name": null, "relationship": "冲突另一方"}
+    ],
+    "behavior_sequence": [],
+    "consequence": "对方自述受伤，具体伤情不明",
+    "evidence_mentioned": [],
+    "arrest_status": "被公安带走，强制措施不明",
+    "surrender": null,
+    "victim_forgiveness": null,
+    "prior_record": null
+  },
+  "expected_law_keywords": ["故意伤害", "伤情鉴定", "刑事拘留"],
+  "should_follow_up": true,
+  "should_trigger_human": false,
+  "expected_final_output_type": "follow_up_questions",
+  "demo_fixture": {
+    "pending_questions": [
+      "冲突发生的具体地点和经过是什么？",
+      "公安机关是否出具了拘留通知书或其他法律文书？",
+      "对方是否已经就医或完成伤情鉴定？",
+      "现场是否有监控、证人或其他证据？"
+    ],
+    "candidate_laws": [
+      {
+        "article_number": "刑法第二百三十四条",
+        "title": "故意伤害罪",
+        "matched_keywords": ["故意伤害", "伤情鉴定"],
+        "data_source": "demo_fixture"
+      }
+    ]
+  }
+}

@@ -2,7 +2,7 @@ from typing import List, Optional, TypedDict
 
 
 class ConsultationState(TypedDict, total=False):
-    """Global state object shared across all agents in the LangGraph pipeline"""
+    """LangGraph 工作流中供所有 Agent 共享的全局状态。"""
 
     consultation_id: str  # 咨询会话的唯一标识符，用于追踪和关联整个咨询过程
     user_id: str  # 用户ID，标识进行咨询的用户身份

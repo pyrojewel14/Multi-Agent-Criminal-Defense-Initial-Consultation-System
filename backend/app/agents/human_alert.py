@@ -57,13 +57,14 @@ async def human_alert_node(state: "ConsultationState") -> "ConsultationState":
         "risk_assessment": risk_assessment
     })
 
-    state["alert_triggered"] = False
+    # 保留告警标记，供 HTTP / WebSocket 调用方识别本次流程已转人工处理。
+    state["alert_triggered"] = True
     state["current_agent"] = "HumanAlert"
     state["conversation_history"] = updated_conversation_history
     state["final_output"] = response_with_disclaimer
     state["lawyer_review_needed"] = True
 
-    _logger.debug("【human_alert_node】状态更新完成 - alert_triggered 设置为 False")
+    _logger.debug("【human_alert_node】状态更新完成 - alert_triggered 保持为 True")
     _logger.debug("【human_alert_node】状态更新完成 - current_agent 设置为 HumanAlert")
     _logger.debug("【human_alert_node】状态更新完成 - lawyer_review_needed 设置为 True")
     _logger.debug("【human_alert_node】HumanAlert 节点处理完成，自动流程已终止")

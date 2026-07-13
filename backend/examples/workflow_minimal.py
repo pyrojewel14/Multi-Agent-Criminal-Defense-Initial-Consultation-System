@@ -1,8 +1,7 @@
-"""Deterministic smoke example for the LangGraph consultation topology.
+"""用于验证 LangGraph 咨询拓扑的确定性冒烟示例。
 
-This example replaces LLM/RAG-backed agent bodies with small deterministic
-functions. It verifies graph compilation, checkpointed resume, the lawyer-review
-pause, and explicit approval without requiring model credentials.
+该示例用小型确定性函数替代依赖 LLM/RAG 的 Agent 实现，无需模型凭证即可验证
+图编译、基于检查点的恢复、律师审核暂停以及显式批准流程。
 """
 
 from __future__ import annotations
@@ -56,7 +55,7 @@ async def _checkpoint(orchestrator: ConsultationOrchestrator, session_id: str, s
 
 
 async def run_demo() -> list[dict[str, Any]]:
-    """Run a no-network workflow path through explicit lawyer approval."""
+    """运行无需网络、最终由律师显式批准的工作流路径。"""
     session_id = "workflow-minimal-demo"
     initial_state: ConsultationState = {
         "consultation_id": "consultation-minimal-demo",

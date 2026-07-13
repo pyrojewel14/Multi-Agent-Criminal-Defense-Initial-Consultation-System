@@ -150,7 +150,7 @@ async def create_consultation_record(
 
 async def save_message_to_db(
     consultation_id: str,
-    _session_id: str,
+    session_id: str,
     content: str,
     sender_type: str,
     sender_id: Optional[str] = None,

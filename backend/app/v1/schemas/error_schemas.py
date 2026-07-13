@@ -2,16 +2,16 @@ from pydantic import BaseModel
 
 
 class ErrorDetail(BaseModel):
-    """Single error entry with machine-readable code and human-readable message."""
+    """包含机器可读错误码和用户可读消息的单条错误信息。"""
 
     code: str
     message: str
 
 
 class ErrorResponse(BaseModel):
-    """Standardized error envelope returned by all exception handlers.
+    """所有异常处理器统一返回的错误响应结构。
 
-    Matches the format required by encoding rules:
+    响应格式：
         {"error": {"code": "...", "message": "..."}}
     """
 

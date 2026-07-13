@@ -14,14 +14,14 @@ _logger = get_logger("ErrorHandlers")
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """Register all exception handlers on the FastAPI application.
+    """为 FastAPI 应用注册全部异常处理器。
 
-    Three-tier coverage:
-        1. AppException      → custom status code + error envelope
-        2. RequestValidationError → 422 + VALIDATION_ERROR
-        3. Exception (catch-all)  → 500 + INTERNAL_ERROR
+    处理层级：
+        1. AppException → 自定义状态码和统一错误响应
+        2. RequestValidationError → 422 和 VALIDATION_ERROR
+        3. Exception（兜底）→ 500 和 INTERNAL_ERROR
 
-    Call once during app startup, after all routers are included.
+    应在全部路由挂载完成后，于应用启动阶段调用一次。
     """
     app.add_exception_handler(AppException, app_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)

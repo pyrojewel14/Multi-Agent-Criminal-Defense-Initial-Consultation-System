@@ -20,7 +20,7 @@ _redis_client: Optional[redis.Redis] = None
 
 
 async def _close_async_resource(resource: Any, method_names: tuple[str, ...]) -> bool:
-    """Close an async Redis resource across redis-py versions."""
+    """兼容不同 redis-py 版本，关闭异步 Redis 资源。"""
     for method_name in method_names:
         close_method = getattr(resource, method_name, None)
         if close_method is None:

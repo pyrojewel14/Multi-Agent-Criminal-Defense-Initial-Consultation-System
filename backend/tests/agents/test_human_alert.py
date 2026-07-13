@@ -76,8 +76,8 @@ async def test_human_alert_node_updates_conversation_history():
 
 
 @pytest.mark.asyncio
-async def test_human_alert_node_resets_alert_triggered():
-    """human_alert_node should set alert_triggered to False after handling."""
+async def test_human_alert_node_preserves_alert_triggered():
+    """human_alert_node should preserve the alert flag for API callers."""
     state = make_consultation_state(
         alert_triggered=True,
         risk_assessment={"risk_type": "SELF_INCrimination", "risk_level": "high"},
@@ -86,8 +86,7 @@ async def test_human_alert_node_resets_alert_triggered():
 
     result = await human_alert_node(state)
 
-    # The node sets alert_triggered to False after processing
-    assert result["alert_triggered"] is False
+    assert result["alert_triggered"] is True
 
 
 @pytest.mark.asyncio

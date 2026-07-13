@@ -116,6 +116,10 @@ class DocumentProcessor:
         """
         return self.spliter.split_documents_sync(documents)
 
+    async def _split_documents(self, documents: list[Document]) -> list[Document]:
+        """在线程中调用两类分割器共有的同步接口。"""
+        return await asyncio.to_thread(self.spliter.split_documents_sync, documents)
+
     async def get_document(
         self, files: list = None, user_id: str = None, is_public: bool = False, progress_callback=None
     ):
@@ -215,8 +219,7 @@ class DocumentProcessor:
                     )
                 _logger.info("开始切分文档: %s", filename)
 
-                # LegalArticleSplitter.split_documents 是同步方法，需要用 asyncio.to_thread 包装
-                document: list[Document] = await asyncio.to_thread(self.spliter.split_documents, document)
+                document = await self._split_documents(document)
                 if not document:
                     if progress_callback:
                         await progress_callback(

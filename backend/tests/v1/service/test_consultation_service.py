@@ -278,7 +278,7 @@ class TestSaveMessageToDb:
     async def test_returns_uuid_when_db_is_none(self):
         result = await save_message_to_db(
             consultation_id="consult-001",
-            _session_id="sess-001",
+            session_id="sess-001",
             content="hi",
             sender_type="user",
         )
@@ -301,7 +301,7 @@ class TestSaveMessageToDb:
         with patch("app.v1.service.consultation_service.ConsultationMessage", return_value=message):
             msg_id = await save_message_to_db(
                 consultation_id="consult-001",
-                _session_id="sess-001",
+                session_id="sess-001",
                 content="hello",
                 sender_type="agent",
                 agent_name="Receptionist",
