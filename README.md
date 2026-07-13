@@ -178,7 +178,14 @@ uv run pytest
 
 ```bash
 cd backend
-uv run python ../eval/run_eval.py
+conda run -n Agent_dev python ../eval/run_eval.py
+```
+
+确定性完整 Demo：
+
+```bash
+cd backend
+conda run -n Agent_dev python -m examples.demo_complete --case ordinary_assault
 ```
 
 ## 环境变量说明
@@ -338,6 +345,7 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 
 ## 文档
 
+- [docs/demo.md](docs/demo.md)：三条标准 case、完整可复现流程、FastAPI curl 路径和演示边界。
 - [docs/architecture.md](docs/architecture.md)：LangGraph 工作流、节点职责、条件边和人工介入。
 - [docs/rag.md](docs/rag.md)：法条知识库、混合检索、HyDE、rerank 和评估方案。
 
