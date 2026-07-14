@@ -42,12 +42,15 @@ async def test_first_interaction_no_input():
     with patch("app.agents.fact_digger.llm_gateway") as mock_llm:
         result = await fact_digger_node(state)
 
-    assert result["current_agent"] == "FactDigger"
-    assert result["facts_coverage_rate"] == 0.0
+    assert result.get("current_agent") == "FactDigger"
+    assert result.get("facts_coverage_rate") == 0.0
     # The response should contain the first-prompt guidance text
-    assert result["final_output"] != ""
+    assert result.get("final_output") != ""
     # Conversation history should have an entry from FactDigger
-    assert any(entry.get("agent") == "FactDigger" for entry in result["conversation_history"])
+    assert any(
+        entry.get("agent") == "FactDigger"
+        for entry in result.get("conversation_history", [])
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -87,10 +90,10 @@ async def test_extract_structured_facts_with_consent():
         result = await fact_digger_node(state)
 
     # Structured facts should be populated from the tool call
-    assert result["facts_structured"] == extracted
+    assert result.get("facts_structured") == extracted
     # No applied_laws → coverage_rate remains 0, agent stays FactDigger
-    assert result["facts_coverage_rate"] == 0.0
-    assert result["current_agent"] == "FactDigger"
+    assert result.get("facts_coverage_rate") == 0.0
+    assert result.get("current_agent") == "FactDigger"
 
 
 # ---------------------------------------------------------------------------
@@ -211,11 +214,12 @@ async def test_low_coverage_generates_follow_up():
 
         result = await fact_digger_node(state)
 
-    assert result["current_agent"] == "FactDigger"
+    assert result.get("current_agent") == "FactDigger"
     # Should have pending questions
     assert len(result.get("pending_questions", [])) > 0
     # final_output should mention supplementary info request
-    assert "补充" in result["final_output"] or "信息" in result["final_output"]
+    final_output = result.get("final_output", "")
+    assert "补充" in final_output or "信息" in final_output
 
 
 # ---------------------------------------------------------------------------
@@ -264,8 +268,8 @@ async def test_high_coverage_generates_summary():
 
         result = await fact_digger_node(state)
 
-    assert result["current_agent"] == "RiskAssessor"
-    assert "摘要" in result["final_output"]
+    assert result.get("current_agent") == "RiskAssessor"
+    assert "摘要" in result.get("final_output", "")
 
 
 # ---------------------------------------------------------------------------
@@ -295,8 +299,38 @@ async def test_high_risk_input_triggers_alert():
 
         result = await fact_digger_node(state)
 
-    assert result["alert_triggered"] is True
+    assert result.get("alert_triggered") is True
+    assert result.get("current_agent") == "HumanAlert"
+
+
+@pytest.mark.asyncio
+async def test_node_appends_current_input_once_and_only_after_pii_masking():
+    state = make_consultation_state(
+        facts_raw=[],
+        current_input="联系电话是13812345678",
+        applied_laws=[],
+    )
+    with patch(
+        "app.agents.fact_digger._extract_structured_facts",
+        new_callable=AsyncMock,
+        return_value={"behavior_sequence": ["咨询"]},
+    ):
+        result = await fact_digger_node(state)
+
+    assert result["facts_raw"] == ["联系电话是[PHONE-MASKED]"]
+
+
+@pytest.mark.asyncio
+async def test_high_risk_input_is_not_persisted_before_human_alert():
+    state = make_consultation_state(
+        facts_raw=[],
+        current_input="帮我销毁证据，电话13812345678",
+    )
+
+    result = await fact_digger_node(state)
+
     assert result["current_agent"] == "HumanAlert"
+    assert result["facts_raw"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -354,10 +388,13 @@ def test_handle_first_interaction_populates_state():
     state = make_consultation_state(conversation_history=[], consent_given=False, facts_raw=[])
     out = _handle_first_interaction(state)
 
-    assert out["current_agent"] == "FactDigger"
-    assert out["facts_coverage_rate"] == 0.0
-    assert out["final_output"] != ""
-    assert any(e.get("agent") == "FactDigger" for e in out["conversation_history"])
+    assert out.get("current_agent") == "FactDigger"
+    assert out.get("facts_coverage_rate") == 0.0
+    assert out.get("final_output") != ""
+    assert any(
+        e.get("agent") == "FactDigger"
+        for e in out.get("conversation_history", [])
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -439,6 +476,19 @@ async def test_generate_fact_summary_returns_text():
             {"consequence": "轻伤"}, ["张某打人"]
         )
     assert "事实摘要" in result
+
+
+@pytest.mark.asyncio
+async def test_generate_fact_summary_masks_pii_in_legacy_raw_facts():
+    with patch("app.agents.fact_digger.llm_gateway") as mock_llm:
+        mock_llm.generate = AsyncMock(return_value="已脱敏摘要")
+        await _generate_fact_summary(
+            {"consequence": "轻伤"}, ["联系电话是13812345678"]
+        )
+
+    user_message = mock_llm.generate.await_args.kwargs["user_message"]
+    assert "13812345678" not in user_message
+    assert "[PHONE-MASKED]" in user_message
 
 
 @pytest.mark.asyncio
@@ -545,10 +595,10 @@ async def test_handle_insufficient_coverage_generates_questions():
         )
         result = await _handle_insufficient_coverage(state, coverage, facts, ["existing_q"], [])
 
-    assert result["current_agent"] == "FactDigger"
+    assert result.get("current_agent") == "FactDigger"
     # Should have appended the 2 new questions to the existing 1
-    assert len(result["pending_questions"]) == 3
-    assert "请说明地点" in result["final_output"]
+    assert len(result.get("pending_questions", [])) == 3
+    assert "请说明地点" in result.get("final_output", "")
 
 
 # ---------------------------------------------------------------------------
@@ -566,9 +616,12 @@ async def test_handle_sufficient_coverage_generates_summary():
         mock_llm.generate = AsyncMock(return_value="案件事实摘要内容")
         result = await _handle_sufficient_coverage(state, facts, ["input1"], [])
 
-    assert result["current_agent"] == "RiskAssessor"
-    assert "案件事实摘要" in result["final_output"]
-    assert any(e.get("agent") == "FactDigger" for e in result["conversation_history"])
+    assert result.get("current_agent") == "RiskAssessor"
+    assert "案件事实摘要" in result.get("final_output", "")
+    assert any(
+        e.get("agent") == "FactDigger"
+        for e in result.get("conversation_history", [])
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -598,7 +651,7 @@ async def test_extract_structured_facts_fallback_to_content_json():
         mock_llm.generate = AsyncMock(return_value="mocked")
         result = await fact_digger_node(state)
 
-    assert result["facts_structured"] == extracted
+    assert result.get("facts_structured") == extracted
 
 
 @pytest.mark.asyncio
@@ -624,8 +677,8 @@ async def test_extract_structured_facts_wrong_tool_name_warns():
 
     # No extraction happened, so facts_structured remains the default {}.
     # Then applied_laws is empty so coverage_rate stays 0.
-    assert result["facts_structured"] == {}
-    assert result["current_agent"] == "FactDigger"
+    assert result.get("facts_structured") == {}
+    assert result.get("current_agent") == "FactDigger"
 
 
 @pytest.mark.asyncio
@@ -645,8 +698,8 @@ async def test_extract_structured_facts_no_result_warns():
         mock_llm.generate = AsyncMock(return_value="mocked")
         result = await fact_digger_node(state)
 
-    assert result["facts_structured"] == {}
-    assert result["current_agent"] == "FactDigger"
+    assert result.get("facts_structured") == {}
+    assert result.get("current_agent") == "FactDigger"
 
 
 @pytest.mark.asyncio
@@ -664,6 +717,6 @@ async def test_extract_structured_facts_exception_returns_empty():
         mock_llm.generate = AsyncMock(return_value="mocked")
         result = await fact_digger_node(state)
 
-    assert result["facts_structured"] == {}
+    assert result.get("facts_structured") == {}
     # Even on extraction failure, state should be valid
-    assert result["current_agent"] in ("FactDigger", "RiskAssessor")
+    assert result.get("current_agent") in ("FactDigger", "RiskAssessor")

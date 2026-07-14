@@ -130,7 +130,7 @@ RAG 主链路由 `RagService`、`HybridRetriever`、`VectorStoreService` 和 `La
 
 需要注意：当前工作流主要消费的是检索到的 `documents` 和法条验证结果，而不是把 RAG summary 直接作为法律结论。未通过 JSON 法条库验证的 RAG 结果会标记为 `rag_unverified`，事实覆盖度计算会跳过这类结果。
 
-更详细的检索设计见 [docs/rag.md](docs/rag.md)。
+2026-07-13 首次验收保留了“空 Chroma + Ollama 502”的失败记录；修复 loopback 请求误走系统代理并通过现有 service 链路入库后，2026-07-14 五条样例已实际运行 HyDE、Chroma + BM25/Ensemble、去重、reranker 与 JSON 验证子链。两次运行条件、真实 top-k 和仍存在的边界见 [docs/rag.md](docs/rag.md) 和 [demos/rag/](demos/rag/)。
 
 ## 本地启动方式
 
@@ -174,19 +174,14 @@ uv sync --extra dev
 uv run pytest
 ```
 
-离线评估 MVP：
+小规模离线评估：
 
 ```bash
 cd backend
-conda run -n Agent_dev python ../eval/run_eval.py
+uv run python ../evaluation/run_eval.py
 ```
 
-确定性完整 Demo：
-
-```bash
-cd backend
-conda run -n Agent_dev python -m examples.demo_complete --case ordinary_assault
-```
+指标定义、当前基线结果和边界见 [docs/evaluation.md](docs/evaluation.md)。
 
 ## 环境变量说明
 
@@ -332,12 +327,12 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 - RAG 检索依赖知识库内容和 embedding / reranker 模型配置；未通过 JSON 法条库验证的结果不会被当作可靠构成要件来源。
 - 当前没有数据库 migration 工具，表结构由 SQLAlchemy metadata 在启动时创建。
 - 评估已有离线 MVP，但还没有覆盖真实 LLM 输出质量、长期对话一致性和人工审核质量的完整指标体系。
-- 当前 `.gitignore` 历史规则忽略了 `backend/tests/`，作为正式展示仓库时建议单独整理版本控制范围。
+- 后端测试位于 `backend/tests/`；新增 Phase 5 测试未被 `.gitignore` 忽略，但当前工作树尚未提交。
 
 后续优化：
 
 - 把 LangGraph checkpoint 切换到可持久化后端，并统一 DB / Redis / checkpoint 的状态边界。
-- 增加 Alembic migration、Docker Compose、CI 流水线和端到端冒烟测试。
+- 远端验证并逐步扩大现有受限 CI，再补 Alembic migration、Docker Compose 和端到端冒烟测试。
 - 为 RAG 建立标注集，评估 recall@k、rerank 命中率、法条验证通过率、未验证结果占比。
 - 增加律师审核操作的审计日志和报告版本管理。
 - 强化 WebSocket 认证、会话授权和速率限制。
@@ -347,7 +342,9 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 
 - [docs/demo.md](docs/demo.md)：三条标准 case、完整可复现流程、FastAPI curl 路径和演示边界。
 - [docs/architecture.md](docs/architecture.md)：LangGraph 工作流、节点职责、条件边和人工介入。
-- [docs/rag.md](docs/rag.md)：法条知识库、混合检索、HyDE、rerank 和评估方案。
+- [docs/rag.md](docs/rag.md)：真实 RAG 调用链、实现状态、fallback、运行证据和简历表述边界。
+- [docs/testing.md](docs/testing.md)：测试分组、Phase 5 契约映射、受限 CI 和已知限制。
+- [demos/](demos/)：咨询 Demo case、RAG 查询、历史失败记录和 2026-07-14 live 结果。
 
 ## 许可证
 

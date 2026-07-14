@@ -52,7 +52,7 @@ async def _build_consultation_response(consultation: Consultation, db: AsyncSess
         assigned_lawyer_name=lawyer_name,
         user_type=consultation.user_type,
         consent_given=consultation.consent_given,
-        status=consultation.status.value if consultation.status else None,
+        status=consultation.status.value,
         facts_structured=consultation.facts_structured,
         applied_laws=consultation.applied_laws,
         final_output=consultation.final_output,

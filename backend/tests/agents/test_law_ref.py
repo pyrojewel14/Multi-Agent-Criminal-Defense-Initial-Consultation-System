@@ -163,12 +163,24 @@ async def test_search_laws_by_rag():
         }
     )
 
-    with patch("app.rag.rag_service.RagService", return_value=mock_rag_service):
-        results = await search_laws_by_rag(facts, "session-001")
+    with patch("app.rag.rag_service.RagService", return_value=mock_rag_service) as rag_service_class:
+        results = await search_laws_by_rag(facts, "user-001")
 
     assert len(results) > 0
     assert results[0]["data_source"] == "rag"
     assert "第二百六十四条" in results[0].get("article_number", "") or results[0]["content"] != ""
+    rag_service_class.assert_called_once_with(user_id="user-001", include_public=True)
+
+
+@pytest.mark.asyncio
+async def test_search_laws_by_rag_without_user_id_skips_retrieval():
+    facts = {"behavior_sequence": ["盗窃"], "consequence": "财产损失"}
+
+    with patch("app.rag.rag_service.RagService") as rag_service_class:
+        results = await search_laws_by_rag(facts, None)
+
+    assert results == []
+    rag_service_class.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -295,9 +307,9 @@ async def test_law_ref_node_with_matching_facts():
 
         result = await law_ref_node(state)
 
-    assert len(result["applied_laws"]) > 0
-    assert result["current_agent"] == "LawRef"
-    assert result["element_to_law_mapping"] is not None
+    assert len(result.get("applied_laws", [])) > 0
+    assert result.get("current_agent") == "LawRef"
+    assert result.get("element_to_law_mapping") is not None
 
 
 # ---------------------------------------------------------------------------
@@ -315,8 +327,8 @@ async def test_law_ref_node_empty_facts():
 
     result = await law_ref_node(state)
 
-    assert result["applied_laws"] == []
-    assert result["current_agent"] == "LawRef"
+    assert result.get("applied_laws") == []
+    assert result.get("current_agent") == "LawRef"
 
 
 # ---------------------------------------------------------------------------
@@ -343,8 +355,8 @@ async def test_law_ref_node_no_match():
 
         result = await law_ref_node(state)
 
-    assert result["applied_laws"] == []
-    assert result["current_agent"] == "LawRef"
+    assert result.get("applied_laws") == []
+    assert result.get("current_agent") == "LawRef"
 
 
 # ---------------------------------------------------------------------------
@@ -917,13 +929,17 @@ async def test_law_ref_node_rag_verified_with_json():
 
         result = await law_ref_node(state)
 
-    assert result["current_agent"] == "LawRef"
-    assert len(result["applied_laws"]) == 1
+    assert result.get("current_agent") == "LawRef"
+    applied_laws = result.get("applied_laws", [])
+    assert len(applied_laws) == 1
     # data_source comes from rag_results which was rag_verified
-    assert result["applied_laws"][0]["data_source"] == "rag_verified"
+    assert applied_laws[0]["data_source"] == "rag_verified"
     # history entry should be appended
-    assert any(entry.get("agent") == "LawRef" for entry in result["conversation_history"])
-    assert result["rag_only"] is False
+    assert any(
+        entry.get("agent") == "LawRef"
+        for entry in result.get("conversation_history", [])
+    )
+    assert result.get("rag_only") is False
 
 
 @pytest.mark.asyncio
@@ -957,7 +973,7 @@ async def test_law_ref_node_rag_unverified_only():
         result = await law_ref_node(state)
 
     # matched_laws is non-empty (the unverified RAG result), rag_verified == 0 → rag_only True
-    assert result["rag_only"] is True
+    assert result.get("rag_only") is True
 
 
 @pytest.mark.asyncio
@@ -981,5 +997,39 @@ async def test_law_ref_node_no_existing_conversation_history():
 
         result = await law_ref_node(state)
 
-    assert result["conversation_history"]  # not empty
-    assert any(entry.get("agent") == "LawRef" for entry in result["conversation_history"])
+    conversation_history = result.get("conversation_history", [])
+    assert conversation_history
+    assert any(entry.get("agent") == "LawRef" for entry in conversation_history)
+
+
+@pytest.mark.asyncio
+async def test_law_ref_node_uses_user_id_for_rag_filter():
+    state = make_consultation_state(
+        user_id="real-user-42",
+        session_id="session-must-not-be-user",
+        facts_structured={"behavior_sequence": ["盗窃"], "consequence": "财产损失"},
+    )
+
+    with patch("app.agents.law_ref.load_criminal_law_data", return_value={"chapters": []}), \
+         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]) as rag_search, \
+         patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
+        result = await law_ref_node(state)
+
+    rag_search.assert_awaited_once_with(state["facts_structured"], "real-user-42")
+    assert result["conversation_history"][-1]["session_id"] == "session-must-not-be-user"
+
+
+@pytest.mark.asyncio
+async def test_law_ref_node_missing_user_id_does_not_use_session_id():
+    state = make_consultation_state(
+        session_id="legacy-session",
+        facts_structured={"behavior_sequence": ["盗窃"], "consequence": "财产损失"},
+    )
+    state.pop("user_id", None)
+
+    with patch("app.agents.law_ref.load_criminal_law_data", return_value={"chapters": []}), \
+         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]) as rag_search, \
+         patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
+        await law_ref_node(state)
+
+    rag_search.assert_awaited_once_with(state["facts_structured"], None)

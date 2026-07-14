@@ -1,5 +1,7 @@
 from typing import List, Optional, TypedDict
 
+from pydantic import TypeAdapter, ValidationError
+
 
 class ConsultationState(TypedDict, total=False):
     """LangGraph 工作流中供所有 Agent 共享的全局状态。"""
@@ -7,7 +9,7 @@ class ConsultationState(TypedDict, total=False):
     consultation_id: str  # 咨询会话的唯一标识符，用于追踪和关联整个咨询过程
     user_id: str  # 用户ID，标识进行咨询的用户身份
     session_id: str  # 会话ID，用于标识当前咨询会话
-    user_type: str  # 用户类型：suspect（嫌疑人）/ victim（受害者）/ family（家属）
+    user_type: Optional[str]  # 用户类型；接待阶段尚未识别时为 None
     consent_given: bool  # 是否已获得用户的知情同意
     facts_raw: List[str]  # 原始用户叙述段落，包含未经处理的案件描述
     facts_structured: dict  # 通过LLM函数调用提取的结构化案件事实
@@ -31,3 +33,31 @@ class ConsultationState(TypedDict, total=False):
     awaiting_lawyer_review: Optional[bool]  # 是否正在等待律师审核，HumanReview 节点设置
     lawyer_decision: Optional[str]  # 律师审核决定（approved/revise_facts/revise_risk），外部 API 写入
     lawyer_feedback: Optional[str]  # 律师审核反馈意见，退回时附带的修改建议
+    rag_only: bool  # 是否仅命中未经 JSON 知识库验证的 RAG 结果
+
+
+_STATE_ADAPTER: TypeAdapter[ConsultationState] = TypeAdapter(ConsultationState)
+
+
+def validate_consultation_state(value: object) -> ConsultationState:
+    """校验动态来源的咨询状态，并保留 LangGraph 元数据键。
+
+    Args:
+        value: Checkpointer、Redis 或 LangGraph 返回的动态值。
+
+    Returns:
+        类型校验通过的咨询状态副本。
+
+    Raises:
+        ValueError: 状态不是字典，或已知字段的值类型不合法。
+    """
+    if not isinstance(value, dict):
+        raise ValueError("咨询状态无效：状态必须是字典")
+
+    known_state = {key: value[key] for key in ConsultationState.__annotations__ if key in value}
+    try:
+        _STATE_ADAPTER.validate_python(known_state)
+    except ValidationError as exc:
+        raise ValueError("咨询状态无效") from exc
+
+    return ConsultationState(**value)

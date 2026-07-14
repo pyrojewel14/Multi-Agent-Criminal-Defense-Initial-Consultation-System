@@ -2,7 +2,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from app.core.rate_limit import InMemoryRateLimiter, _get_client_ip, rate_limit
 from app.core.success_response import success_response
@@ -55,7 +55,7 @@ class TestSuccessResponse:
         response = success_response(message="操作成功", data={"key": "value"})
         import json
 
-        body = json.loads(response.body)
+        body = json.loads(bytes(response.body))
         assert body["code"] == 200
         assert body["message"] == "操作成功"
         assert body["data"] == {"key": "value"}
@@ -64,7 +64,7 @@ class TestSuccessResponse:
         response = success_response()
         import json
 
-        body = json.loads(response.body)
+        body = json.loads(bytes(response.body))
         assert body["message"] == "success"
         assert body["data"] is None
 
@@ -72,7 +72,7 @@ class TestSuccessResponse:
         response = success_response(data=[1, 2, 3])
         import json
 
-        body = json.loads(response.body)
+        body = json.loads(bytes(response.body))
         assert body["data"] == [1, 2, 3]
 
     def test_status_code_is_200(self):
@@ -124,19 +124,19 @@ class TestGetClientIp:
 # ---------------------------------------------------------------------------
 
 
-class FakeRequest:
-    """Minimal FastAPI Request-like stand-in."""
-
-    def __init__(self, client_host=None, x_forwarded_for=None):
-        if client_host is None:
-            self.client = None
-        else:
-            client = MagicMock()
-            client.host = client_host
-            self.client = client
-        self.headers = {}
-        if x_forwarded_for is not None:
-            self.headers["X-Forwarded-For"] = x_forwarded_for
+def FakeRequest(client_host=None, x_forwarded_for=None) -> Request:
+    """创建满足 FastAPI Request 类型契约的轻量 mock。"""
+    request = MagicMock(spec=Request)
+    if client_host is None:
+        request.client = None
+    else:
+        client = MagicMock()
+        client.host = client_host
+        request.client = client
+    request.headers = {}
+    if x_forwarded_for is not None:
+        request.headers["X-Forwarded-For"] = x_forwarded_for
+    return request
 
 
 class TestRateLimitDependency:

@@ -1,4 +1,5 @@
 import asyncio
+from chromadb.api.types import Where
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
@@ -16,7 +17,7 @@ class HybridRetriever:
     def __init__(self, vectors_store: Chroma):
         self.vectors_store = vectors_store
 
-    async def get_bm25_retriever(self, user_id: str = None, include_public: bool = False):
+    async def get_bm25_retriever(self, user_id: str | None = None, include_public: bool = False):
         """获取 BM25 检索器。
 
         Args:
@@ -29,8 +30,9 @@ class HybridRetriever:
         if not user_id and not include_public:
             return None
 
+        where_filter: Where
         if user_id and include_public:
-            where_filter = None
+            where_filter = {'$or': [{'user_id': user_id}, {'is_public': True}]}
         elif user_id:
             where_filter = {'user_id': user_id}
         else:
@@ -80,7 +82,12 @@ class HybridRetriever:
             documents.append(Document(page_content=doc, metadata=metadata))
         return documents
 
-    async def get_retriever(self, query: str = None, user_id: str = None, include_public: bool = False) -> BaseRetriever:
+    async def get_retriever(
+        self,
+        query: str | None = None,
+        user_id: str | None = None,
+        include_public: bool = False,
+    ) -> BaseRetriever:
         """获取混合检索器（BM25 + 向量检索）。
 
         Args:
@@ -129,7 +136,7 @@ class HybridRetriever:
             return vector_retriever
 
     @staticmethod
-    def get_dynamic_weights(query: str = None):
+    def get_dynamic_weights(query: str | None = None):
         """根据查询动态调整权重。
 
         法律文本 BM25 易产生噪音（法条间共用大量法律术语），

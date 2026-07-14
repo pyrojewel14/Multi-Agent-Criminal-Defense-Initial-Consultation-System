@@ -216,6 +216,18 @@ class TestGetRedisCacheStr:
         client.get.assert_awaited_once_with("k")
 
     @pytest.mark.asyncio
+    async def test_decodes_bytes_when_client_returns_binary_value(self):
+        """兼容未启用 decode_responses 的 Redis 客户端返回值。"""
+        client = _make_client()
+        client.get.return_value = "缓存内容".encode("utf-8")
+        with patch.object(redis_config, "get_redis", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = client
+
+            result = await get_redis_cache_str("k")
+
+        assert result == "缓存内容"
+
+    @pytest.mark.asyncio
     async def test_returns_none_on_error(self):
         client = _make_client()
         client.get.side_effect = ConnectionError("boom")

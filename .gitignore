@@ -97,6 +97,7 @@ secrets/
 PROJECT_TODO.md
 docs/
 eval/results/
+evaluation/results/
 
 # ==================== Frontend & Presentation Artifacts ====================
 frontend/

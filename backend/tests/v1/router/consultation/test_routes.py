@@ -18,6 +18,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.security.jwt import create_access_token
+from app.errors.exceptions import LLMTimeoutException
 from app.v1.service.consultation_service import ProcessMessageResult
 from tests.factories import make_consultation_state
 
@@ -176,6 +177,34 @@ class TestSendMessage:
 
         assert response.status_code == 500
         assert "消息处理失败" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_send_message_preserves_typed_llm_timeout_response(
+        self, test_app, client_auth_headers, sample_session_state, mock_db_session
+    ):
+        with patch(
+            "app.v1.service.consultation_service.get_session_state",
+            new_callable=AsyncMock,
+            return_value=sample_session_state,
+        ), patch(
+            "app.v1.service.consultation_service.process_message",
+            new_callable=AsyncMock,
+            side_effect=LLMTimeoutException("upstream timeout"),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=test_app, raise_app_exceptions=False),
+                base_url="http://test",
+            ) as client:
+                response = await client.post(
+                    f"{SESSIONS_PREFIX}/sess-001/message",
+                    json={"session_id": "sess-001", "content": "hi"},
+                    headers=client_auth_headers,
+                )
+
+        assert response.status_code == 504
+        assert response.json() == {
+            "error": {"code": "LLM_TIMEOUT", "message": "AI 服务响应超时，请稍后重试"}
+        }
 
     @pytest.mark.asyncio
     async def test_send_message_no_result_state(

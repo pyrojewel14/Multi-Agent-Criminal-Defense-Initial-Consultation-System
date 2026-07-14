@@ -1,6 +1,7 @@
 import asyncio
 import os
 
+from chromadb.api.types import Where
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
@@ -70,7 +71,7 @@ class VectorStoreService:
                     attempt + 1,
                 )
 
-    async def get_bm25_retriever(self, user_id: str = None):
+    async def get_bm25_retriever(self, user_id: str | None = None):
         """获取 BM25 检索器。
 
         Args:
@@ -89,7 +90,12 @@ class VectorStoreService:
         """
         return await self.hybrid_retriever._get_all_documents()
 
-    async def get_retriever(self, query: str = None, user_id: str = None, include_public: bool = False):
+    async def get_retriever(
+        self,
+        query: str | None = None,
+        user_id: str | None = None,
+        include_public: bool = False,
+    ):
         """获取检索器。
 
         Args:
@@ -103,7 +109,7 @@ class VectorStoreService:
         return await self.hybrid_retriever.get_retriever(query, user_id, include_public)
 
     @staticmethod
-    def get_dynamic_weights(query: str = None):
+    def get_dynamic_weights(query: str | None = None):
         """获取动态权重。
 
         Args:
@@ -114,7 +120,7 @@ class VectorStoreService:
         """
         return HybridRetriever.get_dynamic_weights(query)
 
-    async def check_md5_hex(self, md5_for_check: str, user_id: str = None) -> bool:
+    async def check_md5_hex(self, md5_for_check: str, user_id: str | None = None) -> bool:
         """检查 MD5 是否存在。
 
         Args:
@@ -127,7 +133,11 @@ class VectorStoreService:
         return await self.md5_store.check_md5_hex(md5_for_check, user_id)
 
     async def save_md5_hex(
-        self, md5_hex: str, filename: str = None, original_filename: str = None, user_id: str = None
+        self,
+        md5_hex: str,
+        filename: str | None = None,
+        original_filename: str | None = None,
+        user_id: str | None = None,
     ):
         """保存 MD5 值。
 
@@ -139,7 +149,13 @@ class VectorStoreService:
         """
         await self.md5_store.save_md5_hex(md5_hex, filename, original_filename, user_id)
 
-    def save_md5_hex_sync(self, md5_hex: str, filename: str = None, original_filename: str = None, user_id: str = None):
+    def save_md5_hex_sync(
+        self,
+        md5_hex: str,
+        filename: str | None = None,
+        original_filename: str | None = None,
+        user_id: str | None = None,
+    ):
         """同步保存 MD5 值。
 
         Args:
@@ -284,7 +300,7 @@ class VectorStoreService:
             _logger.error("获取用户 MD5 记录出错: user_id=%s, error=%s", user_id, e)
             return []
 
-    async def get_user_documents(self, user_id: str = None):
+    async def get_user_documents(self, user_id: str | None = None):
         """获取用户的知识库文档列表。
 
         Args:
@@ -294,7 +310,7 @@ class VectorStoreService:
             文档信息列表，包含文件名、文档数量、预览等信息。
         """
         try:
-            where_clause = {"user_id": user_id} if user_id else None
+            where_clause: Where | None = {"user_id": user_id} if user_id else None
             all_docs = await asyncio.to_thread(
                 self.vectors_store.get, include=["documents", "metadatas"], where=where_clause
             )
@@ -348,7 +364,7 @@ class VectorStoreService:
             文档详情信息，包含完整内容。
         """
         try:
-            where_clause = {"user_id": user_id}
+            where_clause: Where = {"user_id": user_id}
             all_docs = await asyncio.to_thread(
                 self.vectors_store.get, include=["documents", "metadatas"], where=where_clause
             )
@@ -402,7 +418,7 @@ class VectorStoreService:
             切片列表信息。
         """
         try:
-            where_clause = {"user_id": user_id}
+            where_clause: Where = {"user_id": user_id}
             all_docs = await asyncio.to_thread(
                 self.vectors_store.get, include=["documents", "metadatas"], where=where_clause
             )
@@ -467,7 +483,11 @@ class VectorStoreService:
         return self.document_processor.split_documents_sync(documents)
 
     async def get_document(
-        self, files: list = None, user_id: str = None, is_public: bool = False, progress_callback=None
+        self,
+        files: list | None = None,
+        user_id: str | None = None,
+        is_public: bool = False,
+        progress_callback=None,
     ):
         """获取文档。
 

@@ -16,6 +16,7 @@ from app.utils.factory import (
     ChatModelFactory,
     DashScopeEmbeddingsWrapper,
     EmbedModelFactory,
+    _ollama_client_kwargs,
 )
 
 
@@ -186,7 +187,11 @@ class TestChatModelFactory:
                 result = factory.create_model(temperature=0.5)
 
         assert result == "mocked-ollama"
+        assert mock_ollama.call_args.kwargs["client_kwargs"] == {"trust_env": False}
         factory.close()
+
+    def test_remote_ollama_keeps_environment_proxy_support(self):
+        assert _ollama_client_kwargs("https://ollama.example.com") == {}
 
     def test_create_streaming_model(self):
         """create_streaming_model should set streaming=True and top_p."""
@@ -304,6 +309,7 @@ class TestEmbedModelFactory:
             result = factory.create_embedding_model()
 
         assert result == "m"
+        assert mock_emb.call_args.kwargs["client_kwargs"] == {"trust_env": False}
         factory.close()
 
     def test_create_embedding_model_aliyun(self, monkeypatch):

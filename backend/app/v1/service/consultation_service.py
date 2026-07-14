@@ -6,10 +6,11 @@ from typing import Any, Dict, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.redis_config import get_redis_cache_json, set_redis_cache
+from app.errors.exceptions import AppException
 from app.models.user import Consultation, ConsultationMessage, ConsultationStatus
 from app.orchestrator.workflow import orchestrator
 from app.security.disclaimer import disclaimer
-from app.state.consultation_state import ConsultationState
+from app.state.consultation_state import ConsultationState, validate_consultation_state
 from app.utils.logger import get_logger
 from app.v1.router.consultation.constants import HIGH_RISK_ALERT_MESSAGE, SESSION_TTL
 
@@ -39,12 +40,12 @@ async def get_session_state(session_id: str) -> Optional[ConsultationState]:
     # 优先从 checkpointer 获取最新状态
     snapshot = await orchestrator.get_snapshot(session_id)
     if snapshot and snapshot.values:
-        return snapshot.values
+        return validate_consultation_state(snapshot.values)
 
     # 回退到 Redis
     state = await get_redis_cache_json(f"session:{session_id}")
     if state:
-        return ConsultationState(**state) if isinstance(state, dict) else state
+        return validate_consultation_state(state)
 
     # 最后尝试内存缓存
     return orchestrator.get_session_context(session_id)
@@ -197,8 +198,12 @@ async def start_session(state: ConsultationState) -> ConsultationState:
     Returns:
         工作流执行到中断点时的状态
     """
+    session_id = state.get("session_id")
+    if not session_id:
+        raise ValueError("启动咨询会话需要有效的 session_id")
+
     result = await orchestrator.start_workflow(state)
-    await persist_state(state["session_id"], result)
+    await persist_state(session_id, result)
     return result
 
 
@@ -222,14 +227,8 @@ async def process_message(
         处理结果对象
     """
     try:
-        # 构建状态更新：将用户消息追加到 facts_raw
-        facts_raw = list(state.get("facts_raw", []))
-        facts_raw.append(content)
-
-        state_updates: Dict[str, Any] = {
-            "facts_raw": facts_raw,
-            "current_input": content,
-        }
+        # FactDigger 是追加和脱敏 facts_raw 的唯一入口，服务层只传递本轮输入。
+        state_updates: Dict[str, Any] = {"current_input": content}
 
         # 通过 resume_workflow 恢复，LangGraph 自动路由
         result = await orchestrator.resume_workflow(session_id, state_updates)
@@ -268,6 +267,9 @@ async def process_message(
             is_workflow_finished=is_finished,
         )
 
+    except AppException:
+        # 保留可映射到统一 HTTP 错误响应的类型和状态码。
+        raise
     except Exception as e:
         _logger.error("【process_message】消息处理异常: session_id=%s, error=%s", session_id, str(e))
         return ProcessMessageResult(

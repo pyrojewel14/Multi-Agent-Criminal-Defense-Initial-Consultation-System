@@ -50,7 +50,7 @@ async def get_optional_user_from_header(request: Request) -> Optional[dict]:
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> dict:
     """获取当前已认证的用户信息。
 
@@ -87,7 +87,7 @@ async def get_current_user(
 
 
 async def get_optional_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> Optional[dict]:
     """获取可选的用户信息，未认证时返回 None。
 

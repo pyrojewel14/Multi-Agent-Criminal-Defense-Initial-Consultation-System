@@ -75,12 +75,14 @@ class TestAppException:
         assert exc.code == ErrorCode.CONSENT_REQUIRED
         assert exc.status_code == 403
         assert exc.message == "请先完成隐私条款确认"
+        assert exc.detail is not None
         assert "sess123" in exc.detail
 
     def test_high_risk_alert_exception(self):
         exc = HighRiskAlertException(session_id="sess456", risk_detail="自证其罪")
         assert exc.code == ErrorCode.HIGH_RISK_ALERT
         assert exc.status_code == 403
+        assert exc.detail is not None
         assert "sess456" in exc.detail
         assert "自证其罪" in exc.detail
 
@@ -122,7 +124,7 @@ class TestExceptionHandlers:
         body = response.body
         import json
 
-        data = json.loads(body)
+        data = json.loads(bytes(body))
         assert "error" in data
         assert data["error"]["code"] == "UNAUTHORIZED"
         assert data["error"]["message"] == "身份验证失败，请重新登录"
@@ -139,7 +141,7 @@ class TestExceptionHandlers:
         assert response.status_code == 500
         import json
 
-        data = json.loads(response.body)
+        data = json.loads(bytes(response.body))
         assert data["error"]["code"] == "INTERNAL_ERROR"
         assert data["error"]["message"] == "系统内部错误，请稍后重试"
 
@@ -155,5 +157,5 @@ class TestExceptionHandlers:
         assert response.status_code == 422
         import json
 
-        data = json.loads(response.body)
+        data = json.loads(bytes(response.body))
         assert data["error"]["code"] == "VALIDATION_ERROR"

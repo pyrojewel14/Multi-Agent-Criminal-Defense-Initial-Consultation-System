@@ -121,7 +121,11 @@ class DocumentProcessor:
         return await asyncio.to_thread(self.spliter.split_documents_sync, documents)
 
     async def get_document(
-        self, files: list = None, user_id: str = None, is_public: bool = False, progress_callback=None
+        self,
+        files: list | None = None,
+        user_id: str | None = None,
+        is_public: bool = False,
+        progress_callback=None,
     ):
         """处理文档并将其转为向量存入向量数据库。
 

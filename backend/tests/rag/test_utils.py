@@ -425,15 +425,14 @@ class TestGetBm25Retriever:
         bm25.from_documents.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_user_with_include_public_uses_no_filter(self):
+    async def test_user_with_include_public_uses_scoped_filter(self):
         hr, vs = _make_hybrid()
         vs.get = MagicMock(return_value={"documents": ["doc"], "metadatas": [{"user_id": "u1"}]})
         with patch("app.rag.retrievers.hybrid_retriever.BM25Retriever") as bm25:
             bm25.from_documents = MagicMock(return_value="bm25-instance")
             await hr.get_bm25_retriever(user_id="u1", include_public=True)
-        # where filter should be None
         args, kwargs = vs.get.call_args
-        assert kwargs.get("where") is None
+        assert kwargs["where"] == {"$or": [{"user_id": "u1"}, {"is_public": True}]}
 
     @pytest.mark.asyncio
     async def test_only_public_uses_is_public_filter(self):

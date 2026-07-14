@@ -9,6 +9,7 @@ from app.db.db_config import get_db
 from app.models.user import Consultation
 from app.orchestrator.workflow import orchestrator
 from app.security.rbac import get_current_user, require_lawyer
+from app.state.consultation_state import validate_consultation_state
 from app.utils.logger import get_logger
 from app.v1.router.consultation.constants import HIGH_RISK_ALERT_MESSAGE
 from app.v1.schemas.consultation_schemas import (
@@ -65,7 +66,7 @@ async def create_session(
 
     welcome_message = await consultation_service.generate_welcome_message(user_type)
 
-    initial_state = {
+    initial_state = validate_consultation_state({
         "consultation_id": consultation_id,
         "user_id": user_id,
         "session_id": session_id,
@@ -79,7 +80,7 @@ async def create_session(
         "alert_triggered": False,
         "conversation_history": [],
         "user_role": current_user.get("role", "client"),
-    }
+    })
 
     # 启动工作流，执行到第一个中断点（receptionist 执行后中断，等待同意）
     result = await consultation_service.start_session(initial_state)
@@ -331,7 +332,7 @@ async def get_session_state(
         session_id=session_id,
         consultation_id=state.get("consultation_id"),
         user_id=user_id,
-        user_type=state.get("user_type", "suspect"),
+        user_type=state.get("user_type") or "suspect",
         consent_given=state.get("consent_given", False),
         current_agent=state.get("current_agent", "Receptionist"),
         conversation_history=state.get("conversation_history", []),
@@ -463,17 +464,18 @@ async def list_sessions(
             if lawyer_id and lawyer_id != current_user["user_id"]:
                 continue
 
+        risk_assessment = state.get("risk_assessment") or {}
         sessions.append(SessionListItem(
             session_id=sess_id,
             consultation_id=state.get("consultation_id", ""),
             user_id=user_id,
-            user_type=state.get("user_type", "suspect"),
+            user_type=state.get("user_type") or "suspect",
             current_agent=state.get("current_agent", "Receptionist"),
             status="active" if state.get("awaiting_lawyer_review") else "in_progress",
             consent_given=state.get("consent_given", False),
             alert_triggered=state.get("alert_triggered", False),
-            awaiting_lawyer_review=state.get("awaiting_lawyer_review", False),
-            risk_level=state.get("risk_assessment", {}).get("risk_level") if state.get("risk_assessment") else None,
+            awaiting_lawyer_review=bool(state.get("awaiting_lawyer_review")),
+            risk_level=risk_assessment.get("risk_level"),
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         ))
@@ -489,7 +491,7 @@ async def list_sessions(
 @router.post("/{session_id}/close", response_model=SessionCloseResponse)
 async def close_session(
     session_id: str,
-    request: SessionCloseRequest = None,
+    request: SessionCloseRequest | None = None,
     current_user: dict = Depends(get_current_user),
 ):
     """关闭会话

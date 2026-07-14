@@ -1,0 +1,176 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-07-14T01:36:10+08:00",
+  "run_mode": "live_hyde_chroma_bm25_reranker_json_verification",
+  "top_k": 5,
+  "dependencies": {
+    "json_knowledge": {"status": "available", "article_count": 39},
+    "chroma": {
+      "status": "available",
+      "collection_name": "rag_collection",
+      "document_count": 608,
+      "owner_counts": {"phase3-service-ingest": 608},
+      "public_counts": {"true": 608},
+      "source_counts": {"刑法_formatted.json": 608}
+    },
+    "bm25": {"status": "available"},
+    "hyde": {
+      "status": "success",
+      "returned_original_query": false,
+      "model": "qwen3.5:0.8b",
+      "output_length": 114
+    },
+    "embedding": {
+      "status": "success",
+      "model": "qwen3-embedding:0.6b",
+      "dimensions": 1024
+    },
+    "vector_search": {"status": "success", "case_result_counts": [5, 5, 5, 5, 5]},
+    "reranker": {
+      "status": "success_in_live_cases",
+      "live_case_statuses": ["success", "success", "success", "success", "success"],
+      "fallback_case_statuses": ["not_run", "not_run", "not_run", "not_run", "not_run"]
+    },
+    "live_validation_user_id": "phase3-rag-validation-user"
+  },
+  "samples": [
+    {
+      "id": "intentional_injury",
+      "query": "徒手殴打他人并造成身体受伤可能涉及什么法条？",
+      "expected_law": {"article_number": "第二百三十四条", "title": "故意伤害罪"},
+      "retrieval_mode": "live_rag",
+      "hypothetical_document": "根据《中华人民共和国刑法》第二百三十四条第一款之规定，以暴力或者其他方法公然侮辱他人或者故意伤害他人的，处三年以下有期徒刑、拘役或者管制。若实施该行为导致被害人肢体伤残或死亡等严重后果的，则适用刑法第二百三十四条第二款至第三款规定（即“故意伤害致人重伤”、“轻伤”",
+      "live_rag_top_k": [
+        {"rank": 1, "article_number": "第二百三十四条", "title": "故意伤害罪", "data_source": "rag_verified", "rerank_score": 0.973198, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 2, "article_number": "第二百三十五条", "title": "过失致人重伤罪", "data_source": "rag_verified", "rerank_score": 0.966768, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 3, "article_number": "第二百三十八条", "title": "非法拘禁罪", "data_source": "rag_verified", "rerank_score": 0.896926, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 4, "article_number": "第二百四十六条", "title": "", "data_source": "rag_unverified", "rerank_score": 0.290273, "json_verified": false, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 5, "article_number": "第二百三十七条", "title": "强制猥亵、侮辱罪", "data_source": "rag_verified", "rerank_score": 0.203689, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true}
+      ],
+      "json_fallback_top_k": [
+        {"rank": 1, "article_number": "第二百三十四条", "title": "故意伤害罪", "relevance_score": 6.5, "json_verified": true},
+        {"rank": 2, "article_number": "第二百三十五条", "title": "过失致人重伤罪", "relevance_score": 3.5, "json_verified": true}
+      ],
+      "live_expected_hit": true,
+      "fallback_expected_hit": true,
+      "json_verification_passed": true,
+      "verification_method": "live_rag_candidate_verified_by__verify_and_enrich_with_json",
+      "layers": {
+        "hyde": {"status": "success", "model": "qwen3.5:0.8b", "output_length": 132},
+        "retriever": {"status": "success", "type": "EnsembleRetriever", "uses_ensemble": true, "raw_count": 7},
+        "deduplicate": {"status": "success", "before": 7, "after": 7},
+        "reranker": {"status": "success", "model": "Qwen/Qwen3-Reranker-0.6B"},
+        "json_verification": {"status": "success", "verified_count": 4, "unverified_count": 1}
+      },
+      "failure_reason": null
+    },
+    {
+      "id": "theft",
+      "query": "趁他人不注意拿走财物可能涉及什么法条？",
+      "expected_law": {"article_number": "第二百六十四条", "title": "盗窃罪"},
+      "retrieval_mode": "live_rag",
+      "hypothetical_document": "在特定情境下（如盗窃、诈骗或抢夺），行为人若以暴力胁迫等手段强行劫取公共财物的，其行为构成盗窃罪。根据《中华人民共和国刑法》第二百六十四条规定：“窃取公私财物……数额较大或者多次盗窃的，处三年以下有期徒刑、拘役或者管制；情节严重的，处三年以上十年以下有期徒刑。”",
+      "live_rag_top_k": [
+        {"rank": 1, "article_number": "第二百六十九条", "title": "", "data_source": "rag_unverified", "rerank_score": 0.977102, "json_verified": false, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 2, "article_number": "第二百六十三条", "title": "抢劫罪", "data_source": "rag_verified", "rerank_score": 0.966174, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 3, "article_number": "第二百六十七条", "title": "抢夺罪", "data_source": "rag_verified", "rerank_score": 0.959233, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 4, "article_number": "第二百六十四条", "title": "盗窃罪", "data_source": "rag_verified", "rerank_score": 0.958585, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 5, "article_number": "第二百七十四条", "title": "敲诈勒索罪", "data_source": "rag_verified", "rerank_score": 0.935583, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true}
+      ],
+      "json_fallback_top_k": [{"rank": 1, "article_number": "第二百六十四条", "title": "盗窃罪", "relevance_score": 6.5, "json_verified": true}],
+      "live_expected_hit": true,
+      "fallback_expected_hit": true,
+      "json_verification_passed": true,
+      "verification_method": "live_rag_candidate_verified_by__verify_and_enrich_with_json",
+      "layers": {
+        "hyde": {"status": "success", "model": "qwen3.5:0.8b", "output_length": 131},
+        "retriever": {"status": "success", "type": "EnsembleRetriever", "uses_ensemble": true, "raw_count": 7},
+        "deduplicate": {"status": "success", "before": 7, "after": 7},
+        "reranker": {"status": "success", "model": "Qwen/Qwen3-Reranker-0.6B"},
+        "json_verification": {"status": "success", "verified_count": 4, "unverified_count": 1}
+      },
+      "failure_reason": null
+    },
+    {
+      "id": "fraud",
+      "query": "虚构事实骗取他人钱款可能涉及什么法条？",
+      "expected_law": {"article_number": "第二百六十六条", "title": "诈骗罪"},
+      "retrieval_mode": "live_rag",
+      "hypothetical_document": "行为人实施虚构合同或伪造文件以转移资金的行为。若情节严重构成诈骗罪（刑法第 264 条）。依据《中华人民共和国刑法》第二百六十四条规定，公私财物中予以非法占有的行为均属于诈骗范围。",
+      "live_rag_top_k": [
+        {"rank": 1, "article_number": "第二百六十六条", "title": "诈骗罪", "data_source": "rag_verified", "rerank_score": 0.979643, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 2, "article_number": "第二百二十四条", "title": "", "data_source": "rag_unverified", "rerank_score": 0.966887, "json_verified": false, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 3, "article_number": "第一百九十二条", "title": "", "data_source": "rag_unverified", "rerank_score": 0.948285, "json_verified": false, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 4, "article_number": "第一百九十三条", "title": "", "data_source": "rag_unverified", "rerank_score": 0.944239, "json_verified": false, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 5, "article_number": "第一百九十一条", "title": "", "data_source": "rag_unverified", "rerank_score": 0.781334, "json_verified": false, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true}
+      ],
+      "json_fallback_top_k": [{"rank": 1, "article_number": "第二百六十六条", "title": "诈骗罪", "relevance_score": 6.5, "json_verified": true}],
+      "live_expected_hit": true,
+      "fallback_expected_hit": true,
+      "json_verification_passed": true,
+      "verification_method": "live_rag_candidate_verified_by__verify_and_enrich_with_json",
+      "layers": {
+        "hyde": {"status": "success", "model": "qwen3.5:0.8b", "output_length": 90},
+        "retriever": {"status": "success", "type": "EnsembleRetriever", "uses_ensemble": true, "raw_count": 7},
+        "deduplicate": {"status": "success", "before": 7, "after": 7},
+        "reranker": {"status": "success", "model": "Qwen/Qwen3-Reranker-0.6B"},
+        "json_verification": {"status": "success", "verified_count": 1, "unverified_count": 4}
+      },
+      "failure_reason": null
+    },
+    {
+      "id": "unlawful_detention",
+      "query": "强行关押他人并限制人身自由可能涉及什么法条？",
+      "expected_law": {"article_number": "第二百三十八条", "title": "非法拘禁罪"},
+      "retrieval_mode": "live_rag",
+      "hypothetical_document": "1935 年《中华人民共和国刑法》第 248 条规定：“以非法拘禁方法或者其他暴力、胁迫手段，非法剥夺他人人身自由的”，处三年以上十年以下有期徒刑。此外，《中华人民共和国民法典》第 1026 条规定了“非法限制公民的人身自由”。",
+      "live_rag_top_k": [
+        {"rank": 1, "article_number": "第二百四十四条", "title": "", "data_source": "rag_unverified", "rerank_score": 0.979634, "json_verified": false, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 2, "article_number": "第二百三十八条", "title": "非法拘禁罪", "data_source": "rag_verified", "rerank_score": 0.96366, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 3, "article_number": "第二百四十五条", "title": "", "data_source": "rag_unverified", "rerank_score": 0.791524, "json_verified": false, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 4, "article_number": "第二百三十二条", "title": "故意杀人罪", "data_source": "rag_verified", "rerank_score": 0.672305, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 5, "article_number": "第四百五十一条", "title": "", "data_source": "rag_unverified", "rerank_score": 0.19646, "json_verified": false, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true}
+      ],
+      "json_fallback_top_k": [{"rank": 1, "article_number": "第二百三十八条", "title": "非法拘禁罪", "relevance_score": 5.5, "json_verified": true}],
+      "live_expected_hit": true,
+      "fallback_expected_hit": true,
+      "json_verification_passed": true,
+      "verification_method": "live_rag_candidate_verified_by__verify_and_enrich_with_json",
+      "layers": {
+        "hyde": {"status": "success", "model": "qwen3.5:0.8b", "output_length": 114},
+        "retriever": {"status": "success", "type": "EnsembleRetriever", "uses_ensemble": true, "raw_count": 7},
+        "deduplicate": {"status": "success", "before": 7, "after": 7},
+        "reranker": {"status": "success", "model": "Qwen/Qwen3-Reranker-0.6B"},
+        "json_verification": {"status": "success", "verified_count": 2, "unverified_count": 3}
+      },
+      "failure_reason": null
+    },
+    {
+      "id": "dangerous_driving",
+      "query": "醉酒后驾驶机动车可能涉及什么法条？",
+      "expected_law": {"article_number": "第一百三十三条之一", "title": "危险驾驶罪"},
+      "retrieval_mode": "live_rag",
+      "hypothetical_document": "醉酒驾驶车辆属于严重交通违法行为。根据《中华人民共和国刑法》第一百三十三条之一规定，在道路上醉酒驾驶机动车的构成危险驾驶罪（刑法修正案九增设），处拘役并处罚金；若因逃逸致人死亡或造成严重后果的，从重处罚并追究刑事责任。相关法条还涉及交通肇事罪的第六十条、第七十二条",
+      "live_rag_top_k": [
+        {"rank": 1, "article_number": "第一百三十三条之一", "title": "危险驾驶罪", "data_source": "rag_verified", "rerank_score": 0.9843, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 2, "article_number": "第一百三十三条", "title": "交通肇事罪", "data_source": "rag_verified", "rerank_score": 0.915866, "json_verified": true, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 3, "article_number": "第一百三十三条之二", "title": "", "data_source": "rag_unverified", "rerank_score": 0.410633, "json_verified": false, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 4, "article_number": "第十八条", "title": "", "data_source": "rag_unverified", "rerank_score": 0.382358, "json_verified": false, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true},
+        {"rank": 5, "article_number": "第一百二十二条", "title": "", "data_source": "rag_unverified", "rerank_score": 0.231912, "json_verified": false, "source": "刑法_formatted.json", "metadata_user_id": "phase3-service-ingest", "metadata_is_public": true}
+      ],
+      "json_fallback_top_k": [{"rank": 1, "article_number": "第一百三十三条之一", "title": "危险驾驶罪", "relevance_score": 3.0, "json_verified": true}],
+      "live_expected_hit": true,
+      "fallback_expected_hit": true,
+      "json_verification_passed": true,
+      "verification_method": "live_rag_candidate_verified_by__verify_and_enrich_with_json",
+      "layers": {
+        "hyde": {"status": "success", "model": "qwen3.5:0.8b", "output_length": 132},
+        "retriever": {"status": "success", "type": "EnsembleRetriever", "uses_ensemble": true, "raw_count": 7},
+        "deduplicate": {"status": "success", "before": 7, "after": 7},
+        "reranker": {"status": "success", "model": "Qwen/Qwen3-Reranker-0.6B"},
+        "json_verification": {"status": "success", "verified_count": 2, "unverified_count": 3}
+      },
+      "failure_reason": null
+    }
+  ]
+}

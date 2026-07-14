@@ -20,7 +20,7 @@ from app.state.consultation_state import ConsultationState
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CASE_DIR = PROJECT_ROOT / "demo_cases"
+CASE_DIR = PROJECT_ROOT / "demos" / "consultation" / "cases"
 REQUIRED_CASE_KEYS = {
     "id",
     "title",
@@ -30,6 +30,8 @@ REQUIRED_CASE_KEYS = {
     "expected_law_keywords",
     "should_follow_up",
     "should_trigger_human",
+    "expected_workflow_finished",
+    "expected_requires_human_intervention",
     "expected_final_output_type",
     "demo_fixture",
 }
@@ -175,6 +177,7 @@ async def run_case(case_id: str = "ordinary_assault") -> dict[str, Any]:
                 "case_id": case_id,
                 "mode": "deterministic_workflow_contract",
                 "finished": False,
+                "requires_human_intervention": False,
                 "current_agent": state.get("current_agent"),
                 "next_node": snapshot.next[0] if snapshot and snapshot.next else None,
                 "output_type": "follow_up_questions",
@@ -184,7 +187,8 @@ async def run_case(case_id: str = "ordinary_assault") -> dict[str, Any]:
             result = {
                 "case_id": case_id,
                 "mode": "deterministic_workflow_contract",
-                "finished": False,
+                "finished": await orchestrator.is_workflow_finished(session_id),
+                "requires_human_intervention": True,
                 "current_agent": state.get("current_agent"),
                 "output_type": "human_intervention_notice",
                 "alert_triggered": state.get("alert_triggered"),
@@ -220,6 +224,7 @@ async def run_case(case_id: str = "ordinary_assault") -> dict[str, Any]:
                 "case_id": case_id,
                 "mode": "deterministic_workflow_contract",
                 "finished": await orchestrator.is_workflow_finished(session_id),
+                "requires_human_intervention": False,
                 "current_agent": state.get("current_agent"),
                 "output_type": "lawyer_reviewed_report",
                 "law_keywords_present": _law_keywords_present(case, state.get("applied_laws", [])),
@@ -233,7 +238,7 @@ async def run_case(case_id: str = "ordinary_assault") -> dict[str, Any]:
 def main() -> None:
     """解析命令行参数并输出 Demo JSON。"""
     parser = argparse.ArgumentParser(description="运行确定性的 LangGraph 完整 Demo")
-    parser.add_argument("--case", default="ordinary_assault", help="demo_cases 下的 case id")
+    parser.add_argument("--case", default="ordinary_assault", help="咨询 Demo 的 case id")
     args = parser.parse_args()
     print(json.dumps(asyncio.run(run_case(args.case)), ensure_ascii=False, indent=2))
 

@@ -59,6 +59,7 @@ class TestCreateAndDecodeAccessToken:
     def test_token_contains_exp_and_iat(self):
         token = create_access_token(user_id="u1", role="admin")
         payload = decode_token(token)
+        assert payload is not None
         assert "exp" in payload
         assert "iat" in payload
 
@@ -76,6 +77,7 @@ class TestCreateRefreshToken:
     def test_refresh_token_has_no_role(self):
         token = create_refresh_token(user_id="user456")
         payload = decode_token(token)
+        assert payload is not None
         assert "role" not in payload
 
 

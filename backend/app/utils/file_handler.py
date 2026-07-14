@@ -68,7 +68,7 @@ async def get_file_md5_hex(file_path: str) -> str:
     return md5_object.hexdigest()
 
 
-async def listdir_allowed_type(path: str, allowed_types: tuple[str]) -> tuple:
+async def listdir_allowed_type(path: str, allowed_types: tuple[str, ...]) -> tuple:
     """获取指定目录下所有允许的文件类型。
 
     Args:
@@ -97,7 +97,7 @@ async def listdir_allowed_type(path: str, allowed_types: tuple[str]) -> tuple:
     return tuple(file_list)
 
 
-async def pdf_loader(file_path: str, password: str = None) -> list[Document]:
+async def pdf_loader(file_path: str, password: str | None = None) -> list[Document]:
     """加载 PDF 文件内容（支持包含图片和文字的混合 PDF）。
 
     Args:
@@ -254,7 +254,7 @@ def get_file_md5_hex_sync(file_path: str) -> str:
     return md5_object.hexdigest()
 
 
-def pdf_loader_sync(file_path: str, password: str = None) -> list[Document]:
+def pdf_loader_sync(file_path: str, password: str | None = None) -> list[Document]:
     """同步加载 PDF 文件内容（用于多线程场景，支持包含图片和文字的混合 PDF）。
 
     Args:

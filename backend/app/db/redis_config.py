@@ -136,7 +136,10 @@ async def get_redis_cache_str(key: str) -> Optional[str]:
     """
     try:
         client = await get_redis()
-        return await client.get(key)
+        value = await client.get(key)
+        if isinstance(value, bytes):
+            return value.decode("utf-8")
+        return value
     except Exception as e:
         _logger.error("【get_redis_cache_str】Redis 获取失败 key=%s: %s", key, e)
         return None

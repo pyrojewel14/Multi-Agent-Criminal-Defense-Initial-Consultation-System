@@ -21,6 +21,8 @@
   "expected_law_keywords": ["故意伤害", "伤情鉴定", "刑事拘留"],
   "should_follow_up": true,
   "should_trigger_human": false,
+  "expected_workflow_finished": false,
+  "expected_requires_human_intervention": false,
   "expected_final_output_type": "follow_up_questions",
   "demo_fixture": {
     "pending_questions": [

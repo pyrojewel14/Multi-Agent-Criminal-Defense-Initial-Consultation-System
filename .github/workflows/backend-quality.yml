@@ -1,0 +1,85 @@
+name: Backend quality
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-quality.yml"
+  push:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-quality.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  critical-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: conda-incubator/setup-miniconda@v4
+        with:
+          activate-environment: Agent_dev
+          auto-activate-base: false
+          python-version: "3.12"
+      - name: Install Ruff
+        shell: bash -el {0}
+        run: python -m pip install "ruff>=0.1.0"
+      - name: Check fatal Python errors
+        shell: bash -el {0}
+        run: python -m ruff check --select E9,F63,F7,F82 backend/app backend/tests
+
+  targeted-pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PYTHONNOUSERSITE: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: conda-incubator/setup-miniconda@v4
+        with:
+          activate-environment: Agent_dev
+          auto-activate-base: false
+          python-version: "3.12"
+      - name: Install backend and test dependencies
+        shell: bash -el {0}
+        working-directory: backend
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install "pytest>=7.4.0" "pytest-asyncio>=0.21.0" "httpx>=0.25.0"
+      - name: Compile Python sources
+        shell: bash -el {0}
+        working-directory: backend
+        run: python -m compileall -q app tests
+      - name: Core Agent and security contracts
+        shell: bash -el {0}
+        working-directory: backend
+        run: >-
+          python -m pytest -q
+          tests/agents/test_fact_digger.py
+          tests/agents/test_law_ref.py
+          tests/agents/test_law_ref_pure.py
+          tests/agents/test_risk_assessor.py
+          tests/agents/test_risk_assessor_pure.py
+          tests/security/test_sensitive_filter.py
+      - name: Workflow, errors, and LLM contracts
+        shell: bash -el {0}
+        working-directory: backend
+        run: >-
+          python -m pytest -q
+          tests/orchestrator/test_workflow.py
+          tests/orchestrator/test_workflow_example.py
+          tests/orchestrator/test_workflow_minimal.py
+          tests/errors/test_errors.py
+          tests/errors/test_exception_integration.py
+          tests/utils/test_llm_gateway.py
+      - name: HTTP, WebSocket, and service contracts
+        shell: bash -el {0}
+        working-directory: backend
+        run: >-
+          python -m pytest -q
+          tests/v1/service/test_consultation_service.py
+          tests/v1/router/consultation/test_routes.py
+          tests/v1/router/consultation/test_websocket.py

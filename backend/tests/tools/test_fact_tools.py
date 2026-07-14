@@ -188,6 +188,7 @@ class TestExtractCaseFactsToolMetadata:
         schema = extract_case_facts.args_schema
         # Schema is a pydantic model class
         assert schema is not None
+        assert not isinstance(schema, dict)
         # The schema should declare the major fact fields
         field_names = set(schema.model_fields.keys())
         assert "incident_time" in field_names

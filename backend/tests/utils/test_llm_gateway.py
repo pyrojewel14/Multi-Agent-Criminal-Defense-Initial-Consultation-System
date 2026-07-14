@@ -20,7 +20,7 @@ from app.utils.llm_gateway import LLMGateway
 # ---------------------------------------------------------------------------
 
 
-def _make_response(content: str = "hello", tool_calls=None):
+def _make_response(content: object = "hello", tool_calls=None):
     """Build a fake ``AIMessage``-like response with ``content`` and ``tool_calls``."""
     response = MagicMock()
     response.content = content
@@ -104,6 +104,20 @@ class TestGenerate:
             result = await gateway.generate("system", "user")
 
         assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_normalizes_structured_content_blocks_to_text(self):
+        """LangChain 的结构化 content block 应转换为稳定的文本返回值。"""
+        content = ["前缀", {"type": "text", "text": "正文"}, {"type": "image_url"}]
+        gateway = LLMGateway()
+        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+            model = MagicMock()
+            model.ainvoke = AsyncMock(return_value=_make_response(content))
+            mock_factory.create_precise_model.return_value = model
+
+            result = await gateway.generate("system", "user")
+
+        assert result == "前缀正文"
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +262,23 @@ class TestGenerateWithTools:
             )
 
         assert result["has_tool_call"] is False
+
+    @pytest.mark.asyncio
+    async def test_normalizes_structured_content_blocks(self):
+        """Function Calling 响应也必须向上层暴露纯文本 content。"""
+        gateway = LLMGateway()
+        response = _make_response([{"type": "text", "text": "工具前说明"}])
+
+        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+            bound = MagicMock()
+            bound.ainvoke = AsyncMock(return_value=response)
+            model = MagicMock()
+            model.bind_tools = MagicMock(return_value=bound)
+            mock_factory.create_precise_model.return_value = model
+
+            result = await gateway.generate_with_tools("system", "user", [_echo_tool])
+
+        assert result["content"] == "工具前说明"
 
 
 # ---------------------------------------------------------------------------

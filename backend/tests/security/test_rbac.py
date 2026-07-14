@@ -12,7 +12,7 @@ Tests cover:
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.security.jwt import create_access_token
@@ -292,10 +292,10 @@ class TestGetUserFromRequest:
         class _NoUserState:
             pass
 
-        class _NoUserRequest:
-            state = _NoUserState()
+        request = MagicMock(spec=Request)
+        request.state = _NoUserState()
 
-        result = await get_user_from_request(_NoUserRequest())
+        result = await get_user_from_request(request)
         assert result is None
 
     @pytest.mark.asyncio

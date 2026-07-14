@@ -13,6 +13,7 @@ from app.agents.risk_assessor import (
     format_risk_assessment_report,
     risk_assessor_node,
 )
+from app.errors.exceptions import LLMServiceException
 from tests.factories import make_applied_law, make_consultation_state
 
 
@@ -75,10 +76,12 @@ async def test_risk_assessor_node_valid_json():
         mock_llm.generate = AsyncMock(return_value=json.dumps(valid_assessment))
         result = await risk_assessor_node(state)
 
-    assert result["risk_assessment"]["predicted_sentence_range"] == "三年以下有期徒刑"
-    assert result["risk_assessment"]["compulsory_measure_risk"]["detention_status"] == "已羁押"
-    assert len(result["risk_assessment"]["mitigating_factors"]) == 2
-    assert len(result["risk_assessment"]["evidence_risk_points"]) == 1
+    risk_assessment = result.get("risk_assessment")
+    assert risk_assessment is not None
+    assert risk_assessment["predicted_sentence_range"] == "三年以下有期徒刑"
+    assert risk_assessment["compulsory_measure_risk"]["detention_status"] == "已羁押"
+    assert len(risk_assessment["mitigating_factors"]) == 2
+    assert len(risk_assessment["evidence_risk_points"]) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -99,9 +102,41 @@ async def test_risk_assessor_node_non_json_fallback():
         result = await risk_assessor_node(state)
 
     # Should use fallback structure
+    risk_assessment = result.get("risk_assessment")
+    assert risk_assessment is not None
+    assert risk_assessment["predicted_sentence_range"] == "待评估"
+    assert isinstance(risk_assessment["compulsory_measure_risk"], dict)
+    assert risk_assessment["compulsory_measure_risk"]["detention_status"] == "待确认"
+
+
+@pytest.mark.parametrize("response", ["null", "[]", '"text"'])
+@pytest.mark.asyncio
+async def test_risk_assessor_node_non_object_json_uses_fallback(response: str):
+    state = make_consultation_state(
+        facts_structured={"consequence": "轻伤"},
+        applied_laws=[make_applied_law()],
+    )
+
+    with patch("app.agents.risk_assessor.llm_gateway") as mock_llm:
+        mock_llm.generate = AsyncMock(return_value=response)
+        result = await risk_assessor_node(state)
+
     assert result["risk_assessment"]["predicted_sentence_range"] == "待评估"
-    assert isinstance(result["risk_assessment"]["compulsory_measure_risk"], dict)
-    assert result["risk_assessment"]["compulsory_measure_risk"]["detention_status"] == "待确认"
+    assert result["current_agent"] == "ServicePlanner"
+
+
+@pytest.mark.asyncio
+async def test_risk_assessor_node_propagates_clear_llm_service_error():
+    """Transport failures must remain typed errors rather than fabricated assessments."""
+    state = make_consultation_state(
+        facts_structured={"behavior_sequence": ["示例行为"]},
+        applied_laws=[{"article_number": "第234条"}],
+    )
+
+    with patch("app.agents.risk_assessor.llm_gateway") as mock_llm:
+        mock_llm.generate = AsyncMock(side_effect=LLMServiceException("upstream unavailable"))
+        with pytest.raises(LLMServiceException, match="AI 服务暂不可用"):
+            await risk_assessor_node(state)
 
 
 # ---------------------------------------------------------------------------
@@ -137,11 +172,12 @@ async def test_risk_assessor_node_state_updates():
         result = await risk_assessor_node(state)
 
     # current_agent should transition to ServicePlanner
-    assert result["current_agent"] == "ServicePlanner"
+    assert result.get("current_agent") == "ServicePlanner"
     # conversation_history should have a RiskAssessor entry
-    assert any(entry.get("agent") == "RiskAssessor" for entry in result["conversation_history"])
+    conversation_history = result.get("conversation_history", [])
+    assert any(entry.get("agent") == "RiskAssessor" for entry in conversation_history)
     # The history entry should contain assessment_summary
-    risk_entry = [e for e in result["conversation_history"] if e.get("agent") == "RiskAssessor"][0]
+    risk_entry = [e for e in conversation_history if e.get("agent") == "RiskAssessor"][0]
     assert "assessment_summary" in risk_entry
 
 

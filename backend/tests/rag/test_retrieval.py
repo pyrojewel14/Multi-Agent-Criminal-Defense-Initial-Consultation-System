@@ -42,6 +42,7 @@ async def test_retrieval():
         # 初始化检索器
         print("\n正在初始化检索器...")
         await rag_service.initialize_retriever(query)
+        assert rag_service.retriever is not None
         
         # 执行检索
         print("正在执行检索...")

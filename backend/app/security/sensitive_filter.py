@@ -42,7 +42,7 @@ _VEHICLE_PATTERN = re.compile(
 )
 
 _MINOR_PATTERNS = [
-    re.compile(r"(未满|不满|小于|小于|小于|不足)\s*\d+\s*(岁|周岁)"),
+    re.compile(r"(未满|不满|小于|不足)\s*[零〇一二两三四五六七八九十百\d]+\s*(岁|周岁)"),
     re.compile(r"\d+\s*(岁|周岁)\s*(以下|以内)"),
     re.compile(r"小孩|儿童|未成年人|未成人"),
 ]
@@ -54,7 +54,7 @@ _HIGH_RISK_PATTERNS: list[Tuple[re.Pattern, str]] = [
     (re.compile(r"帮我隐瞒|不要告诉|不能说出去|保密|统一口径|跟我串供"), "COLLUSION"),
     (re.compile(r"把证据删了|帮我伪造|销毁证据|毁灭证据|篡改"), "EVIDENCE_TAMPERING"),
     (re.compile(r"我们商量好?了|我们约好?了|我们统一|我们编造"), "COLLUSION"),
-    (re.compile(r"律师.*?告诉你|律师.*?指导|律师.*?指使|教?我.*?说"), "STRATEGY_LEAKAGE"),
+    (re.compile(r"律师.*?告诉你|律师.*?指导|律师.*?指使|教我.*?说"), "STRATEGY_LEAKAGE"),
 ]
 
 
@@ -149,10 +149,10 @@ def detect_high_risk(text: str) -> Tuple[bool, str]:
 
 
 def sanitize_input(text: str) -> str:
-    """清理用户输入：先掩码 PII, 再返回原始文本用于高风险检测。
+    """清理用户输入并返回 PII 掩码后的文本。
 
-    注意：本函数掩码 PII 后返回掩码版本文本，同时会进行高风险检测。
-    若需获取高风险检测结果，应额外调用 detect_high_risk。
+    高风险检测与清理相互独立；调用方需要风险分类时应额外调用
+    ``detect_high_risk``。
 
     Args:
         text: 用户输入的原始文本。
@@ -168,4 +168,3 @@ def sanitize_input(text: str) -> str:
     _logger.info("【sanitize_input】输入已清理 | 原始长度: %d | 清理后长度: %d", len(text), len(sanitized))
 
     return sanitized
-

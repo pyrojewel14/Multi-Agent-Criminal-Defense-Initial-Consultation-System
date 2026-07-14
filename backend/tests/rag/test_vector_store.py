@@ -439,7 +439,7 @@ class TestCreateChromaClient:
         import types
         # Inject a fake chromadb module that exposes PersistentClient
         fake_chromadb = types.ModuleType("chromadb")
-        fake_chromadb.PersistentClient = MagicMock(return_value="client")
+        setattr(fake_chromadb, "PersistentClient", MagicMock(return_value="client"))
         sys.modules["chromadb"] = fake_chromadb
         try:
             from app.rag.vector_store import VectorStoreService
@@ -453,7 +453,7 @@ class TestCreateChromaClient:
         import types
         fake_chromadb = types.ModuleType("chromadb")
         persistent_mock = MagicMock(side_effect=[KeyError, KeyError, "client"])
-        fake_chromadb.PersistentClient = persistent_mock
+        setattr(fake_chromadb, "PersistentClient", persistent_mock)
         sys.modules["chromadb"] = fake_chromadb
         try:
             from app.rag.vector_store import VectorStoreService
@@ -468,7 +468,7 @@ class TestCreateChromaClient:
         import types
         fake_chromadb = types.ModuleType("chromadb")
         persistent_mock = MagicMock(side_effect=KeyError("x"))
-        fake_chromadb.PersistentClient = persistent_mock
+        setattr(fake_chromadb, "PersistentClient", persistent_mock)
         sys.modules["chromadb"] = fake_chromadb
         try:
             from app.rag.vector_store import VectorStoreService

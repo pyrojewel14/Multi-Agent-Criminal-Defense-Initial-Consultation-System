@@ -24,7 +24,7 @@ async def test_human_alert_node_sets_current_agent():
 
     result = await human_alert_node(state)
 
-    assert result["current_agent"] == "HumanAlert"
+    assert result.get("current_agent") == "HumanAlert"
 
 
 @pytest.mark.asyncio
@@ -38,7 +38,7 @@ async def test_human_alert_node_sets_lawyer_review_needed():
 
     result = await human_alert_node(state)
 
-    assert result["lawyer_review_needed"] is True
+    assert result.get("lawyer_review_needed") is True
 
 
 @pytest.mark.asyncio
@@ -52,9 +52,9 @@ async def test_human_alert_node_generates_calming_message():
 
     result = await human_alert_node(state)
 
-    assert result["final_output"] != ""
+    assert result.get("final_output") != ""
     # Should contain the ALERT_MESSAGE text
-    assert ALERT_MESSAGE in result["final_output"]
+    assert ALERT_MESSAGE in result.get("final_output", "")
 
 
 @pytest.mark.asyncio
@@ -68,9 +68,10 @@ async def test_human_alert_node_updates_conversation_history():
 
     result = await human_alert_node(state)
 
-    assert len(result["conversation_history"]) > 0
+    conversation_history = result.get("conversation_history", [])
+    assert len(conversation_history) > 0
     # The last entry should be from HumanAlert
-    last_entry = result["conversation_history"][-1]
+    last_entry = conversation_history[-1]
     assert last_entry["agent"] == "HumanAlert"
     assert last_entry["alert_triggered"] is True
 
@@ -86,7 +87,7 @@ async def test_human_alert_node_preserves_alert_triggered():
 
     result = await human_alert_node(state)
 
-    assert result["alert_triggered"] is True
+    assert result.get("alert_triggered") is True
 
 
 @pytest.mark.asyncio
@@ -101,7 +102,7 @@ async def test_human_alert_node_with_risk_assessment():
 
     result = await human_alert_node(state)
 
-    last_entry = result["conversation_history"][-1]
+    last_entry = result.get("conversation_history", [])[-1]
     assert last_entry["risk_assessment"] == risk
 
 
@@ -116,4 +117,5 @@ async def test_human_alert_node_disclaimer_injected():
 
     result = await human_alert_node(state)
 
-    assert "智能辅助生成" in result["final_output"] or "仅供参考" in result["final_output"]
+    final_output = result.get("final_output", "")
+    assert "智能辅助生成" in final_output or "仅供参考" in final_output

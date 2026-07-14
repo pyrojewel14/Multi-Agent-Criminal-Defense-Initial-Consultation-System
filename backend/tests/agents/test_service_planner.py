@@ -20,6 +20,7 @@ from app.agents.service_planner import (
     _parse_llm_response,
     service_planner_node,
 )
+from app.state.consultation_state import validate_consultation_state
 from tests.factories import make_applied_law, make_consultation_state, make_risk_assessment
 
 
@@ -133,9 +134,26 @@ async def test_service_planner_node_valid_response():
         mock_llm.generate = AsyncMock(return_value=llm_response)
         result = await service_planner_node(state)
 
-    assert result["service_plan"] is not None
-    assert result["report_draft"] is not None
-    assert isinstance(result["service_plan"], dict)
+    assert result.get("service_plan") is not None
+    assert result.get("report_draft") is not None
+    assert isinstance(result.get("service_plan"), dict)
+
+
+@pytest.mark.asyncio
+async def test_service_planner_node_normalizes_missing_risk_assessment():
+    """显式为 None 的风险评估应按空字典传给消息构建器。"""
+    state = validate_consultation_state(
+        make_consultation_state(risk_assessment=None, conversation_history=[])
+    )
+
+    with patch(
+        "app.agents.service_planner._build_service_request_message",
+        return_value="request",
+    ) as mock_build, patch("app.agents.service_planner.llm_gateway") as mock_llm:
+        mock_llm.generate = AsyncMock(return_value="# 刑事辩护初期咨询报告")
+        await service_planner_node(state)
+
+    assert mock_build.call_args.kwargs["risk_assessment"] == {}
 
 
 # ---------------------------------------------------------------------------
@@ -159,8 +177,8 @@ async def test_service_planner_node_state_updates():
         mock_llm.generate = AsyncMock(return_value=llm_response)
         result = await service_planner_node(state)
 
-    assert result["lawyer_review_needed"] is True
-    assert result["current_agent"] == "HumanReview"
+    assert result.get("lawyer_review_needed") is True
+    assert result.get("current_agent") == "HumanReview"
 
 
 # ---------------------------------------------------------------------------
@@ -192,12 +210,13 @@ async def test_service_planner_node_report_contains_markdown():
         mock_llm.generate = AsyncMock(return_value=llm_response)
         result = await service_planner_node(state)
 
-    assert result["report_draft"] is not None
-    assert "# 刑事辩护初期咨询报告" in result["report_draft"]
+    report_draft = result.get("report_draft")
+    assert report_draft is not None
+    assert "# 刑事辩护初期咨询报告" in report_draft
     # report_draft is extracted from the parsed response (after disclaimer injection + re-extraction),
     # so it may or may not contain the disclaimer prefix depending on parse logic.
     # The key contract is that report_draft contains the report markdown content.
-    assert "案件基本信息" in result["report_draft"]
+    assert "案件基本信息" in report_draft
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +240,10 @@ async def test_service_planner_node_conversation_history():
         mock_llm.generate = AsyncMock(return_value=llm_response)
         result = await service_planner_node(state)
 
-    assert any(entry.get("agent") == "ServicePlanner" for entry in result["conversation_history"])
+    assert any(
+        entry.get("agent") == "ServicePlanner"
+        for entry in result.get("conversation_history", [])
+    )
 
 
 # ---------------------------------------------------------------------------

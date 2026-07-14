@@ -20,7 +20,7 @@ class MD5Store:
     def __init__(self):
         self.base_dir = os.path.dirname(get_abstract_path(chroma_config["md5_hex_store"]))
 
-    def _get_md5_store_dir(self, user_id: str = None) -> str:
+    def _get_md5_store_dir(self, user_id: str | None = None) -> str:
         """获取 MD5 存储目录。
 
         Args:
@@ -34,7 +34,7 @@ class MD5Store:
         else:
             return os.path.join(self.base_dir, "public_md5")
 
-    async def check_md5_hex(self, md5_for_check: str, user_id: str = None) -> bool:
+    async def check_md5_hex(self, md5_for_check: str, user_id: str | None = None) -> bool:
         """异步检查 MD5 是否存在。
 
         Args:
@@ -81,7 +81,11 @@ class MD5Store:
             return False
 
     async def save_md5_hex(
-        self, md5_hex: str, filename: str = None, original_filename: str = None, user_id: str = None
+        self,
+        md5_hex: str,
+        filename: str | None = None,
+        original_filename: str | None = None,
+        user_id: str | None = None,
     ):
         """异步保存 MD5。
 
@@ -107,7 +111,13 @@ class MD5Store:
         async with aiofiles.open(md5_path, "a", encoding="utf-8") as f:
             await f.write(json.dumps(data, ensure_ascii=False) + "\n")
 
-    def save_md5_hex_sync(self, md5_hex: str, filename: str = None, original_filename: str = None, user_id: str = None):
+    def save_md5_hex_sync(
+        self,
+        md5_hex: str,
+        filename: str | None = None,
+        original_filename: str | None = None,
+        user_id: str | None = None,
+    ):
         """同步保存 MD5（用于多线程场景）。
 
         Args:
@@ -132,7 +142,7 @@ class MD5Store:
         with open(md5_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(data, ensure_ascii=False) + "\n")
 
-    async def _read_md5_records(self, user_id: str = None) -> tuple:
+    async def _read_md5_records(self, user_id: str | None = None) -> tuple:
         """读取用户的 MD5 记录文件。
 
         Args:
@@ -305,7 +315,7 @@ class MD5Store:
             _logger.error("检查 chunk MD5 时出错: %s", e)
             return False
 
-    async def save_chunk_md5(self, chunk_md5: str, user_id: str, doc_md5: str = None):
+    async def save_chunk_md5(self, chunk_md5: str, user_id: str, doc_md5: str | None = None):
         """保存 chunk 内容 MD5。
 
         Args:

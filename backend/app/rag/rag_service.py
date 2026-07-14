@@ -14,6 +14,17 @@ from app.utils.prompt_loader import prompt_loader
 _logger = get_logger("RagService")
 
 
+def _configure_hyde_model(model):
+    """限制本地 Ollama 的 HyDE 输出规模。
+
+    Qwen thinking 模式可能生成远超检索所需的长文本，导致请求长期占用模型。
+    仅为 Ollama 的 HyDE 调用关闭 reasoning 并限制生成长度，其他模型保持原行为。
+    """
+    if model.__class__.__module__.startswith("langchain_ollama"):
+        return model.model_copy(update={"reasoning": False, "num_predict": 64})
+    return model
+
+
 def _deduplicate_documents(documents: list) -> list:
     seen_hashes = set()
     unique_docs = []
@@ -28,7 +39,7 @@ def _deduplicate_documents(documents: list) -> list:
 
 
 class RagService:
-    def __init__(self, user_id: str = None, thinking_callback=None, include_public: bool = True):
+    def __init__(self, user_id: str | None = None, thinking_callback=None, include_public: bool = True):
         self.vector_store = get_vector_store()
         self.retriever = None
         self.user_id = user_id
@@ -36,13 +47,15 @@ class RagService:
         self.prompt_text = prompt_loader.load("rag_summary_prompt")
         self.prompt_template = PromptTemplate.from_template(self.prompt_text)
         self.chat_model = chat_model
+        self.hyde_model = _configure_hyde_model(self.chat_model)
         self.chain = self._init_chain()
         self.hyde_prompt_template = PromptTemplate.from_template(
-            "基于以下问题，生成一个详细的假设性回答，我会根据你的假设性回答在向量数据库里检索文档：\n\n问题：{query}\n\n假设性回答："
+            "基于以下问题生成一段不超过 80 个汉字的法律检索假设文本，包含可能的行为、罪名和法条术语；"
+            "不要输出分析过程：\n\n问题：{query}\n\n假设文本："
         )
         self.thinking_callback = thinking_callback
 
-    async def initialize_retriever(self, query: str = None):
+    async def initialize_retriever(self, query: str | None = None):
         """初始化检索器。
 
         Args:
@@ -79,7 +92,7 @@ class RagService:
             假设性文档内容。
         """
         try:
-            hyde_chain = self.hyde_prompt_template | self.chat_model | StrOutputParser()
+            hyde_chain = self.hyde_prompt_template | self.hyde_model | StrOutputParser()
             hypothetical_doc = await hyde_chain.ainvoke({"query": query})
             _logger.info("HyDE 生成假设性文档: %s", hypothetical_doc[:100])
             return hypothetical_doc

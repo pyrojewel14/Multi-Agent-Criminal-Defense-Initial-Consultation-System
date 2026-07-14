@@ -284,7 +284,7 @@ async def _generate_fact_summary(facts_structured: Dict[str, Any], facts_raw: Li
         facts_text,
         "",
         "原始用户描述：",
-        "\n".join(facts_raw),
+        mask_pii("\n".join(facts_raw)),
         "",
         "请生成案件事实摘要。",
     ]

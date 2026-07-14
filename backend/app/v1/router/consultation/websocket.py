@@ -5,6 +5,7 @@ from typing import Dict, List
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.errors.exceptions import AppException
 from app.orchestrator.workflow import orchestrator
 from app.utils.logger import get_logger
 from app.v1.router.consultation.constants import HIGH_RISK_ALERT_MESSAGE
@@ -150,7 +151,23 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 current_agent = state.get("current_agent", "Receptionist")
 
                 # 通过 resume_workflow 恢复，LangGraph 条件边自动路由
-                result = await consultation_service.process_message(session_id, content, state, current_agent)
+                try:
+                    result = await consultation_service.process_message(session_id, content, state, current_agent)
+                except AppException as exc:
+                    _logger.error(
+                        "【websocket_endpoint】消息处理异常: session_id=%s, error=%s",
+                        session_id,
+                        exc.code.value,
+                    )
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "content": exc.message,
+                            "error_code": exc.code.value,
+                            "session_id": session_id,
+                        }
+                    )
+                    continue
 
                 if result.error:
                     _logger.error("【websocket_endpoint】消息处理异常: %s", result.error)

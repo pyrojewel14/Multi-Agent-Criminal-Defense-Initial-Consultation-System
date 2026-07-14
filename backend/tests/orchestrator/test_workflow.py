@@ -341,7 +341,7 @@ class TestSessionContext:
         orch._active_sessions["s1"] = state
         result = orch.update_session_context("s1", {"consent_given": True})
         assert result is True
-        assert orch._active_sessions["s1"]["consent_given"] is True
+        assert orch._active_sessions["s1"].get("consent_given") is True
 
     def test_update_session_context_missing_session(self):
         orch = ConsultationOrchestrator()
@@ -399,7 +399,7 @@ class TestStartWorkflow:
             mock_node.return_value = {**state, "current_agent": "Receptionist"}
             result = await orch.start_workflow(state)
             mock_node.assert_called_once()
-            assert result["current_agent"] == "Receptionist"
+            assert result.get("current_agent") == "Receptionist"
 
     @pytest.mark.asyncio
     async def test_run_node_fact_digger_calculates_coverage(self):
@@ -470,8 +470,8 @@ class TestStartWorkflow:
             await orch.start_workflow(state)
             result = await orch.resume_workflow("review-pause")
 
-        assert result["current_agent"] == "HumanReview"
-        assert result["awaiting_lawyer_review"] is True
+        assert result.get("current_agent") == "HumanReview"
+        assert result.get("awaiting_lawyer_review") is True
         assert await orch.get_next_node("review-pause") == "human_review"
         assert await orch.is_workflow_finished("review-pause") is False
 
@@ -509,9 +509,9 @@ class TestProcessLawyerFeedback:
 
         with patch.object(orch, "resume_workflow", side_effect=_fake_resume):
             result = await orch.process_lawyer_feedback("s1", "approved", "looks good")
-        assert result["lawyer_decision"] == "approved"
-        assert result["lawyer_feedback"] == "looks good"
-        assert result["awaiting_lawyer_review"] is False
+        assert result.get("lawyer_decision") == "approved"
+        assert result.get("lawyer_feedback") == "looks good"
+        assert result.get("awaiting_lawyer_review") is False
 
     @pytest.mark.asyncio
     async def test_process_lawyer_feedback_missing_session(self):
@@ -534,7 +534,7 @@ class TestProcessLawyerFeedback:
 
         with patch.object(orch, "resume_workflow", side_effect=_fake_resume):
             result = await orch.process_lawyer_feedback("s1", "revise_facts", None)
-        assert result["lawyer_decision"] == "revise_facts"
+        assert result.get("lawyer_decision") == "revise_facts"
 
 
 # ---------------------------------------------------------------------------
@@ -554,11 +554,12 @@ class TestHumanReviewNode:
             service_plan={"plan": "abc"},
         )
         result = await human_review_node(state)
-        assert result["awaiting_lawyer_review"] is True
-        assert result["current_agent"] == "HumanReview"
-        assert "报告草案" in result["final_output"]
-        assert len(result["conversation_history"]) == 1
-        hist = result["conversation_history"][0]
+        assert result.get("awaiting_lawyer_review") is True
+        assert result.get("current_agent") == "HumanReview"
+        assert "报告草案" in result.get("final_output", "")
+        conversation_history = result.get("conversation_history", [])
+        assert len(conversation_history) == 1
+        hist = conversation_history[0]
         assert hist["agent"] == "HumanReview"
         assert hist["action"] == "awaiting_review"
         assert hist["has_report"] is True
@@ -575,9 +576,9 @@ class TestHumanReviewNode:
             service_plan=None,
         )
         result = await human_review_node(state)
-        assert result["awaiting_lawyer_review"] is True
-        assert "尚未生成" in result["final_output"]
-        hist = result["conversation_history"][0]
+        assert result.get("awaiting_lawyer_review") is True
+        assert "尚未生成" in result.get("final_output", "")
+        hist = result.get("conversation_history", [])[0]
         assert hist["has_report"] is False
         assert hist["has_service_plan"] is False
 
@@ -588,7 +589,7 @@ class TestHumanReviewNode:
         state = make_consultation_state(facts_raw=["陈述"])
         state.pop("session_id", None)
         result = await human_review_node(state)
-        assert result["conversation_history"][0]["session_id"] == "unknown"
+        assert result.get("conversation_history", [])[0]["session_id"] == "unknown"
 
     @pytest.mark.asyncio
     async def test_appends_to_existing_conversation_history(self):
@@ -601,8 +602,9 @@ class TestHumanReviewNode:
             conversation_history=[{"existing": "entry"}],
         )
         result = await human_review_node(state)
-        assert len(result["conversation_history"]) == 2
-        assert result["conversation_history"][0] == {"existing": "entry"}
+        conversation_history = result.get("conversation_history", [])
+        assert len(conversation_history) == 2
+        assert conversation_history[0] == {"existing": "entry"}
 
     @pytest.mark.asyncio
     async def test_explicit_decision_does_not_replace_reviewed_output(self):
@@ -618,8 +620,8 @@ class TestHumanReviewNode:
 
         result = await human_review_node(state)
 
-        assert result["awaiting_lawyer_review"] is False
-        assert result["final_output"] == "律师确认后的最终报告"
+        assert result.get("awaiting_lawyer_review") is False
+        assert result.get("final_output") == "律师确认后的最终报告"
 
 
 class TestWaitForUserNode:
@@ -629,8 +631,8 @@ class TestWaitForUserNode:
 
         state = make_consultation_state(session_id="sess-1", facts_raw=["陈述"])
         result = await wait_for_user_node(state)
-        assert result["session_id"] == "sess-1"
-        assert result["facts_raw"] == ["陈述"]
+        assert result.get("session_id") == "sess-1"
+        assert result.get("facts_raw") == ["陈述"]
 
     @pytest.mark.asyncio
     async def test_uses_default_session_id(self):
@@ -683,11 +685,13 @@ class TestUpdateSessionContextInternal:
         result = orch._update_session_context("s1", {"consent_given": True})
         # The internal helper returns None (unlike the public update_session_context).
         assert result is None
-        assert orch._active_sessions["s1"]["consent_given"] is True
+        assert orch._active_sessions["s1"].get("consent_given") is True
 
     def test_missing_session_does_not_modify_state(self):
         orch = ConsultationOrchestrator()
-        result = orch._update_session_context("missing", {"key": "val"})
+        result = orch._update_session_context(
+            "missing", make_consultation_state(session_id="val")
+        )
         assert result is None
         assert "missing" not in orch._active_sessions
 
@@ -717,14 +721,14 @@ class TestResumeWorkflow:
             snap.next = ("fact_digger",)
             return snap
 
-        orch._ensure_compiled()
-        orch._compiled.ainvoke = AsyncMock(side_effect=_fake_ainvoke)
-        orch._compiled.aget_state = AsyncMock(side_effect=_fake_get_state)
-        orch._compiled.aupdate_state = AsyncMock(side_effect=_fake_update_state)
+        compiled = orch._compiled_graph()
+        compiled.ainvoke = AsyncMock(side_effect=_fake_ainvoke)
+        compiled.aget_state = AsyncMock(side_effect=_fake_get_state)
+        compiled.aupdate_state = AsyncMock(side_effect=_fake_update_state)
 
         result = await orch.resume_workflow("rs-1", None)
         assert result == expected
-        orch._compiled.aget_state.assert_awaited()
+        compiled.aget_state.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_resume_with_state_updates(self):
@@ -746,14 +750,14 @@ class TestResumeWorkflow:
         async def _fake_update_state(config, updates, as_node=None):
             assert updates == {"foo": "bar"}
 
-        orch._ensure_compiled()
-        orch._compiled.ainvoke = AsyncMock(side_effect=_fake_ainvoke)
-        orch._compiled.aget_state = AsyncMock(side_effect=_fake_get_state)
-        orch._compiled.aupdate_state = AsyncMock(side_effect=_fake_update_state)
+        compiled = orch._compiled_graph()
+        compiled.ainvoke = AsyncMock(side_effect=_fake_ainvoke)
+        compiled.aget_state = AsyncMock(side_effect=_fake_get_state)
+        compiled.aupdate_state = AsyncMock(side_effect=_fake_update_state)
 
         result = await orch.resume_workflow("rs-2", {"foo": "bar"})
         assert result == expected
-        orch._compiled.aupdate_state.assert_awaited_once()
+        compiled.aupdate_state.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_resume_propagates_generic_exception(self):
@@ -772,10 +776,10 @@ class TestResumeWorkflow:
             snap.next = ("fact_digger",)
             return snap
 
-        orch._ensure_compiled()
-        orch._compiled.ainvoke = AsyncMock(side_effect=_fake_ainvoke)
-        orch._compiled.aget_state = AsyncMock(side_effect=_fake_get_state)
-        orch._compiled.aupdate_state = AsyncMock()
+        compiled = orch._compiled_graph()
+        compiled.ainvoke = AsyncMock(side_effect=_fake_ainvoke)
+        compiled.aget_state = AsyncMock(side_effect=_fake_get_state)
+        compiled.aupdate_state = AsyncMock()
 
         with pytest.raises(LLMServiceException):
             await orch.resume_workflow("rs-3", None)
@@ -793,8 +797,8 @@ class TestGetSnapshot:
         async def _fake_aget_state(config):
             return snap
 
-        orch._ensure_compiled()
-        orch._compiled.aget_state = AsyncMock(side_effect=_fake_aget_state)
+        compiled = orch._compiled_graph()
+        compiled.aget_state = AsyncMock(side_effect=_fake_aget_state)
         result = await orch.get_snapshot("s1")
         assert result is snap
 
@@ -807,8 +811,8 @@ class TestGetSnapshot:
         async def _fake_aget_state(config):
             return snap
 
-        orch._ensure_compiled()
-        orch._compiled.aget_state = AsyncMock(side_effect=_fake_aget_state)
+        compiled = orch._compiled_graph()
+        compiled.aget_state = AsyncMock(side_effect=_fake_aget_state)
         result = await orch.get_snapshot("missing")
         assert result is None
 

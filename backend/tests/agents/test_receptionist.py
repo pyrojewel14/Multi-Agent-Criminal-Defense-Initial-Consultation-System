@@ -76,9 +76,9 @@ async def test_no_consent_returns_welcome():
         mock_llm.generate = AsyncMock(return_value="欢迎咨询，请阅读权利义务告知书。")
         result = await receptionist_node(state)
 
-    assert result["consent_given"] is False
-    assert result["current_agent"] == "Receptionist"
-    assert result["final_output"] != ""
+    assert result.get("consent_given") is False
+    assert result.get("current_agent") == "Receptionist"
+    assert result.get("final_output") != ""
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ async def test_consent_keywords_set_consent_given():
         mock_llm.generate = AsyncMock(return_value="感谢您确认，请选择您的身份类型。")
         result = await receptionist_node(state)
 
-    assert result["consent_given"] is True
+    assert result.get("consent_given") is True
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ async def test_user_type_extraction():
         mock_llm.generate = AsyncMock(return_value="您是嫌疑人，请问案件发生在哪个城市？")
         result = await receptionist_node(state)
 
-    assert result["user_type"] == "suspect"
+    assert result.get("user_type") == "suspect"
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ async def test_complete_reception_flow():
         mock_llm.generate = AsyncMock(return_value="接待完成。")
         result = await receptionist_node(state)
 
-    assert result["current_agent"] == "FactDigger"
+    assert result.get("current_agent") == "FactDigger"
     # Should have a conversation history entry with case_city
     assert any(entry.get("case_city") for entry in result.get("conversation_history", []))
 
@@ -168,7 +168,7 @@ async def test_complete_reception_with_city():
 
     # With empty conversation_history, _extract_and_confirm_info is called first
     # which sets user_type and asks for city
-    assert result["current_agent"] in ("Receptionist", "FactDigger")
+    assert result.get("current_agent") in ("Receptionist", "FactDigger")
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +191,7 @@ async def test_consent_given_but_user_type_unrecognized():
         result = await receptionist_node(state)
 
     # _confirm_identity sets current_agent to Receptionist
-    assert result["current_agent"] == "Receptionist"
+    assert result.get("current_agent") == "Receptionist"
     # user_type remains unset
     assert result.get("user_type") is None
 
@@ -214,8 +214,8 @@ async def test_complete_flow_with_city_already_present():
         result = await receptionist_node(state)
 
     # The final else branch is hit (line 232-234) — no LLM call needed
-    assert result["current_agent"] == "FactDigger"
-    assert result["pending_questions"] == ["请继续收集案件详情"]
+    assert result.get("current_agent") == "FactDigger"
+    assert result.get("pending_questions") == ["请继续收集案件详情"]
 
 
 @pytest.mark.asyncio
@@ -234,7 +234,7 @@ async def test_complete_flow_with_empty_user_message_but_city_present():
         mock_llm.generate = AsyncMock(return_value="")
         result = await receptionist_node(state)
 
-    assert result["current_agent"] == "FactDigger"
+    assert result.get("current_agent") == "FactDigger"
 
 
 # ---------------------------------------------------------------------------
@@ -253,9 +253,10 @@ async def test_complete_reception_creates_conversation_history_if_missing():
     state.pop("conversation_history", None)
 
     result = await _complete_reception(state, "广州")
-    assert result["current_agent"] == "FactDigger"
-    assert result["conversation_history"]
-    assert any(entry.get("case_city") == "广州" for entry in result["conversation_history"])
+    assert result.get("current_agent") == "FactDigger"
+    conversation_history = result.get("conversation_history")
+    assert conversation_history
+    assert any(entry.get("case_city") == "广州" for entry in conversation_history)
 
 
 # ---------------------------------------------------------------------------

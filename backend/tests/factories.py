@@ -7,8 +7,10 @@ with sensible defaults that can be selectively overridden via ``**overrides``.
 import uuid
 from typing import Any, Dict
 
+from app.state.consultation_state import ConsultationState, validate_consultation_state
 
-def make_consultation_state(**overrides) -> Dict[str, Any]:
+
+def make_consultation_state(**overrides: Any) -> ConsultationState:
     """Build a ``ConsultationState`` dict with defaults, merged with overrides.
 
     The keys and types mirror ``app.state.consultation_state.ConsultationState``.
@@ -34,14 +36,16 @@ def make_consultation_state(**overrides) -> Dict[str, Any]:
         "lawyer_id": None,
         "current_input": None,
         "facts_coverage_rate": None,
+        "fact_law_loop_count": 0,
         "element_to_law_mapping": None,
         "identity_info": None,
         "user_role": None,
         "awaiting_lawyer_review": False,
         "lawyer_decision": None,
         "lawyer_feedback": None,
+        "rag_only": False,
     }
-    return {**defaults, **overrides}
+    return validate_consultation_state({**defaults, **overrides})
 
 
 def make_law_data() -> Dict[str, Any]:

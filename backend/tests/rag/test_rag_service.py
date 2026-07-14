@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.documents import Document
 
-from app.rag.rag_service import RagService
+from app.rag.rag_service import RagService, _configure_hyde_model
 
 
 # ---------------------------------------------------------------------------
@@ -22,7 +22,7 @@ def _make_doc(content: str, source: str = "src.txt") -> Document:
     return Document(page_content=content, metadata={"source": source, "original_filename": source})
 
 
-def _make_service(user_id="u1", include_public=True, thinking_callback=None):
+def _make_service(user_id: str | None = "u1", include_public=True, thinking_callback=None):
     """Build a RagService instance with every external dependency mocked."""
     with patch("app.rag.rag_service.get_vector_store") as get_vs, \
          patch("app.rag.rag_service.chat_model", new=MagicMock()), \
@@ -60,6 +60,18 @@ class TestInit:
     def test_init_without_thinking_callback(self):
         svc, _, _ = _make_service()
         assert svc.thinking_callback is None
+
+    def test_local_ollama_hyde_model_has_bounded_output(self):
+        class LocalOllamaModel:
+            __module__ = "langchain_ollama.chat_models"
+
+            def __init__(self):
+                self.model_copy = MagicMock(return_value="bounded-model")
+
+        model = LocalOllamaModel()
+
+        assert _configure_hyde_model(model) == "bounded-model"
+        model.model_copy.assert_called_once_with(update={"reasoning": False, "num_predict": 64})
 
 
 # ---------------------------------------------------------------------------

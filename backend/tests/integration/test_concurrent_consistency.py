@@ -46,6 +46,7 @@ from app.models.user import (  # noqa: E402
     UserRole,
 )
 from app.security.jwt import hash_password
+from app.state.consultation_state import validate_consultation_state
 
 
 # ============================================================
@@ -60,7 +61,13 @@ class TestReport:
         self.results: List[dict] = []
         self.start_time = time.time()
 
-    def add_result(self, test_name: str, passed: bool, details: str, metrics: dict = None):
+    def add_result(
+        self,
+        test_name: str,
+        passed: bool,
+        details: str,
+        metrics: dict | None = None,
+    ):
         self.results.append(
             {
                 "test_name": test_name,
@@ -235,7 +242,7 @@ async def test_concurrent_session_creation():
     successful = 0
 
     for r in results:
-        if isinstance(r, Exception):
+        if isinstance(r, BaseException):
             inconsistencies.append(f"异常: {r}")
             continue
         successful += 1
@@ -434,14 +441,14 @@ async def test_cache_expiry_consistency():
         await db.commit()
 
     # 写入 Redis，设置极短 TTL
-    state = {
+    state = validate_consultation_state({
         "consultation_id": consultation_id,
         "user_id": user.id,
         "session_id": session_id,
         "consent_given": True,
         "facts_raw": ["测试事实1"],
         "current_agent": "FactDigger",
-    }
+    })
     await set_redis_cache(f"session:{session_id}", state, expire=3)  # 3 秒过期
 
     # 验证 Redis 有数据
@@ -644,7 +651,7 @@ async def test_three_layer_consistency():
     }
 
     # 写入 Orchestrator 内存
-    orchestrator._active_sessions[session_id] = state.copy()
+    orchestrator._active_sessions[session_id] = validate_consultation_state(dict(state))
     # 写入 Redis
     await set_redis_cache(f"session:{session_id}", state, expire=7200)
 
@@ -652,7 +659,10 @@ async def test_three_layer_consistency():
     num_updates = 5
     for i in range(num_updates):
         # 更新 Orchestrator 内存
-        orchestrator._active_sessions[session_id]["facts_raw"].append(f"更新_{i}")
+        active_state = orchestrator._active_sessions[session_id]
+        facts_raw = active_state.get("facts_raw", [])
+        facts_raw.append(f"更新_{i}")
+        active_state["facts_raw"] = facts_raw
         orchestrator.update_session_context(session_id, orchestrator._active_sessions[session_id])
 
         # 更新 Redis

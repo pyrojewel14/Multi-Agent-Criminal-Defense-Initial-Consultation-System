@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-13T17:36:06+08:00",
+  "run_mode": "offline_json_keyword_plus_local_reranker",
+  "top_k": 5,
+  "dependencies": {
+    "json_knowledge": {"status": "available", "article_count": 39},
+    "chroma": {"status": "available_empty", "collection_name": "rag_collection", "document_count": 0},
+    "bm25": {"status": "unavailable_empty_corpus"},
+    "hyde": {"status": "fallback_to_query", "returned_original_query": true},
+    "embedding": {"status": "failed", "error_type": "ResponseError", "message": " (status code: 502)", "status_code": 502},
+    "vector_search": {"status": "not_run", "reason": "当前 Chroma collection 为空，不能产生真实向量 top-k"},
+    "reranker": {"status": "success", "case_statuses": ["success", "success", "success", "success", "success"]}
+  },
+  "samples": [
+    {
+      "id": "intentional_injury",
+      "query": "徒手殴打他人并造成身体受伤可能涉及什么法条？",
+      "expected_law": {"article_number": "第二百三十四条", "title": "故意伤害罪"},
+      "retrieval_mode": "json_keyword_fallback",
+      "live_rag_top_k": [],
+      "actual_top_k": [
+        {"rank": 1, "article_number": "第二百三十四条", "title": "故意伤害罪", "data_source": "json_keyword", "relevance_score": 6.5, "rerank_score": 0.972422, "matched_tags": ["罪名匹配: 伤害", "标签匹配: 伤害", "关键词匹配: 伤害"], "json_verified": true},
+        {"rank": 2, "article_number": "第二百三十五条", "title": "过失致人重伤罪", "data_source": "json_keyword", "relevance_score": 3.5, "rerank_score": 0.922666, "matched_tags": ["标签匹配: 伤害", "关键词匹配: 伤害"], "json_verified": true}
+      ],
+      "expected_hit": true,
+      "json_verification_passed": true,
+      "verification_method": "candidate_originates_from_local_json_keyword_search",
+      "reranker": {"status": "success", "model": "Qwen/Qwen3-Reranker-0.6B"},
+      "failure_reason": null,
+      "live_rag_failure_reason": "Chroma collection 为空，且本轮未获得可用的向量检索结果"
+    },
+    {
+      "id": "theft",
+      "query": "趁他人不注意拿走财物可能涉及什么法条？",
+      "expected_law": {"article_number": "第二百六十四条", "title": "盗窃罪"},
+      "retrieval_mode": "json_keyword_fallback",
+      "live_rag_top_k": [],
+      "actual_top_k": [
+        {"rank": 1, "article_number": "第二百六十四条", "title": "盗窃罪", "data_source": "json_keyword", "relevance_score": 6.5, "rerank_score": 0.922435, "matched_tags": ["罪名匹配: 盗窃", "标签匹配: 盗窃", "关键词匹配: 盗窃"], "json_verified": true}
+      ],
+      "expected_hit": true,
+      "json_verification_passed": true,
+      "verification_method": "candidate_originates_from_local_json_keyword_search",
+      "reranker": {"status": "success", "model": "Qwen/Qwen3-Reranker-0.6B"},
+      "failure_reason": null,
+      "live_rag_failure_reason": "Chroma collection 为空，且本轮未获得可用的向量检索结果"
+    },
+    {
+      "id": "fraud",
+      "query": "虚构事实骗取他人钱款可能涉及什么法条？",
+      "expected_law": {"article_number": "第二百六十六条", "title": "诈骗罪"},
+      "retrieval_mode": "json_keyword_fallback",
+      "live_rag_top_k": [],
+      "actual_top_k": [
+        {"rank": 1, "article_number": "第二百六十六条", "title": "诈骗罪", "data_source": "json_keyword", "relevance_score": 6.5, "rerank_score": 0.962968, "matched_tags": ["罪名匹配: 诈骗", "标签匹配: 诈骗", "关键词匹配: 诈骗"], "json_verified": true}
+      ],
+      "expected_hit": true,
+      "json_verification_passed": true,
+      "verification_method": "candidate_originates_from_local_json_keyword_search",
+      "reranker": {"status": "success", "model": "Qwen/Qwen3-Reranker-0.6B"},
+      "failure_reason": null,
+      "live_rag_failure_reason": "Chroma collection 为空，且本轮未获得可用的向量检索结果"
+    },
+    {
+      "id": "unlawful_detention",
+      "query": "强行关押他人并限制人身自由可能涉及什么法条？",
+      "expected_law": {"article_number": "第二百三十八条", "title": "非法拘禁罪"},
+      "retrieval_mode": "json_keyword_fallback",
+      "live_rag_top_k": [],
+      "actual_top_k": [
+        {"rank": 1, "article_number": "第二百三十八条", "title": "非法拘禁罪", "data_source": "json_keyword", "relevance_score": 5.5, "rerank_score": 0.988721, "matched_tags": ["罪名匹配: 非法拘禁", "标签匹配: 非法拘禁"], "json_verified": true}
+      ],
+      "expected_hit": true,
+      "json_verification_passed": true,
+      "verification_method": "candidate_originates_from_local_json_keyword_search",
+      "reranker": {"status": "success", "model": "Qwen/Qwen3-Reranker-0.6B"},
+      "failure_reason": null,
+      "live_rag_failure_reason": "Chroma collection 为空，且本轮未获得可用的向量检索结果"
+    },
+    {
+      "id": "dangerous_driving",
+      "query": "醉酒后驾驶机动车可能涉及什么法条？",
+      "expected_law": {"article_number": "第一百三十三条之一", "title": "危险驾驶罪"},
+      "retrieval_mode": "json_keyword_fallback",
+      "live_rag_top_k": [],
+      "actual_top_k": [
+        {"rank": 1, "article_number": "第一百三十三条之一", "title": "危险驾驶罪", "data_source": "json_keyword", "relevance_score": 3, "rerank_score": 0.94999, "matched_tags": ["标签匹配: 醉驾", "关键词匹配: 醉驾"], "json_verified": true}
+      ],
+      "expected_hit": true,
+      "json_verification_passed": true,
+      "verification_method": "candidate_originates_from_local_json_keyword_search",
+      "reranker": {"status": "success", "model": "Qwen/Qwen3-Reranker-0.6B"},
+      "failure_reason": null,
+      "live_rag_failure_reason": "Chroma collection 为空，且本轮未获得可用的向量检索结果"
+    }
+  ]
+}

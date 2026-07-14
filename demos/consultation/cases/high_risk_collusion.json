@@ -20,6 +20,8 @@
   "expected_law_keywords": ["串供", "毁灭证据", "妨害作证"],
   "should_follow_up": false,
   "should_trigger_human": true,
+  "expected_workflow_finished": true,
+  "expected_requires_human_intervention": true,
   "expected_final_output_type": "human_intervention_notice",
   "demo_fixture": {
     "risk_assessment": {

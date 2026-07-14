@@ -248,6 +248,11 @@ class TestDetectHighRisk:
         assert is_risk is True
         assert risk_type == "STRATEGY_LEAKAGE"
 
+    def test_ordinary_friend_statement_is_not_strategy_leakage(self):
+        is_risk, risk_type = detect_high_risk("我朋友说自己与人争执后殴打对方")
+        assert is_risk is False
+        assert risk_type == ""
+
     # --- 未成年人相关 ---
 
     def test_minor_involved_age(self):
@@ -257,6 +262,11 @@ class TestDetectHighRisk:
 
     def test_minor_involved_keyword(self):
         is_risk, risk_type = detect_high_risk("未成年人")
+        assert is_risk is True
+        assert risk_type == "MINOR_INVOLVED"
+
+    def test_minor_involved_chinese_numeral_age(self):
+        is_risk, risk_type = detect_high_risk("涉案的人未满十六岁")
         assert is_risk is True
         assert risk_type == "MINOR_INVOLVED"
 

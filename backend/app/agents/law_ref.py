@@ -155,28 +155,29 @@ def _normalize_article_number(article_number: str) -> str:
     if not article_number:
         return ""
 
-    match = re.match(r"第(.+?)条", article_number)
+    match = re.match(r"第(.+?)条(之[一二三四五六七八九十百千零\d]+)?", article_number)
     if not match:
         return article_number.strip()
 
     num_part = match.group(1)
+    subarticle_suffix = match.group(2) or ""
     # 如果已经是纯数字，直接返回
     if num_part.isdigit():
-        return f"第{num_part}条"
+        return f"第{num_part}条{subarticle_suffix}"
 
     # 尝试中文数字转换
     arabic = _cn_to_arabic(num_part)
     if arabic != num_part:  # 转换成功
-        return f"第{arabic}条"
+        return f"第{arabic}条{subarticle_suffix}"
 
     return article_number.strip()
 
 
-def _extract_article_number_from_text(text: str) -> str:
+def _extract_article_number_from_text(text: str | None) -> str:
     """从法条文本内容中提取法条编号。
 
     Args:
-        text: 法条文本内容
+        text: 法条文本内容，允许为空
 
     Returns:
         提取到的法条编号，未找到则返回空字符串
@@ -184,7 +185,7 @@ def _extract_article_number_from_text(text: str) -> str:
     if not text:
         return ""
     # 匹配 "第X条" 格式（X 为中文数字或阿拉伯数字）
-    match = re.search(r"第[一二三四五六七八九十百千零\d]+条", text)
+    match = re.search(r"第[一二三四五六七八九十百千零\d]+条(?:之[一二三四五六七八九十百千零\d]+)?", text)
     return match.group(0) if match else ""
 
 
@@ -401,19 +402,24 @@ async def search_laws_by_keyword(facts_structured: Dict[str, Any], law_data: Dic
     return matched_laws
 
 
-async def search_laws_by_rag(facts_structured: Dict[str, Any], session_id: str) -> List[Dict[str, Any]]:
+async def search_laws_by_rag(facts_structured: Dict[str, Any], user_id: str | None) -> List[Dict[str, Any]]:
     """通过 RAG 向量检索搜索匹配的刑法条文。
 
     返回原始 RAG 文档内容，元数据由后续 _verify_and_enrich_with_json 通过
     JSON 知识库精确匹配来填充，避免逐条 LLM 调用的开销和幻觉风险。
+    旧状态缺少 user_id 时跳过 RAG，避免用 session_id 冒充用户身份。
 
     Args:
         facts_structured: 结构化的事实数据。
-        session_id: 会话 ID。
+        user_id: 当前认证用户 ID；为空时跳过 RAG。
 
     Returns:
         匹配的条文列表，元数据待 JSON 知识库验证增强。
     """
+    if not user_id:
+        _logger.warning("【search_laws_by_rag】user_id 为空，跳过 RAG 检索")
+        return []
+
     try:
         from app.rag.rag_service import RagService
 
@@ -432,7 +438,7 @@ async def search_laws_by_rag(facts_structured: Dict[str, Any], session_id: str) 
         if not query.strip():
             query = "刑事犯罪"
 
-        rag_service = RagService(user_id=session_id, include_public=True)
+        rag_service = RagService(user_id=user_id, include_public=True)
         await rag_service.initialize_retriever(query)
 
         result = await rag_service.get_documents_and_summary(query)
@@ -626,6 +632,7 @@ async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
     _logger.info("【law_ref_node】LawRef 节点开始执行")
 
     session_id = state.get("session_id", "unknown")
+    user_id = state.get("user_id")
     facts_structured = state.get("facts_structured", {})
 
     if not facts_structured:
@@ -638,7 +645,7 @@ async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
 
     # 阶段1：RAG 语义检索（召回层）
     _logger.info("【law_ref_node】阶段1：RAG 语义检索")
-    rag_results = await search_laws_by_rag(facts_structured, session_id)
+    rag_results = await search_laws_by_rag(facts_structured, user_id)
     _logger.info(
         "【law_ref_node】RAG 检索返回 %d 条结果: %s",
         len(rag_results),
@@ -728,4 +735,3 @@ async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
     )
 
     return state
-

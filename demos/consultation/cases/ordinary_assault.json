@@ -27,6 +27,8 @@
   "expected_law_keywords": ["故意伤害", "刑法第二百三十四条", "伤情鉴定"],
   "should_follow_up": false,
   "should_trigger_human": false,
+  "expected_workflow_finished": true,
+  "expected_requires_human_intervention": false,
   "expected_final_output_type": "lawyer_reviewed_report",
   "demo_fixture": {
     "candidate_laws": [

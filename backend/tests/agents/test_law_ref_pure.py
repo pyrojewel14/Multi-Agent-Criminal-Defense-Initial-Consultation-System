@@ -258,7 +258,7 @@ class TestVerifyAndEnrichWithJson:
         assert enriched[0]["title"] == "未知"
 
     def test_empty_rag_results(self):
-        enriched = _verify_and_enrich_with_json({}, {})
+        enriched = _verify_and_enrich_with_json([], {})
         assert enriched == []
 
     def test_chinese_article_number_normalized(self):

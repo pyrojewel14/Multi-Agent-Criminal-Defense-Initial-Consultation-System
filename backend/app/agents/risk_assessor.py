@@ -110,8 +110,12 @@ async def _generate_risk_assessment(facts_structured: Dict[str, Any], applied_la
 
     try:
         assessment = json.loads(response)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         _logger.warning("【_generate_risk_assessment】JSON解析失败，使用默认格式")
+        assessment = _parse_fallback_assessment(response)
+
+    if not isinstance(assessment, dict):
+        _logger.warning("【_generate_risk_assessment】响应顶层不是对象，使用默认格式")
         assessment = _parse_fallback_assessment(response)
 
     return assessment

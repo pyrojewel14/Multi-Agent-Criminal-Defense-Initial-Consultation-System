@@ -1,0 +1,52 @@
+[
+  {
+    "id": "intentional_injury",
+    "query": "徒手殴打他人并造成身体受伤可能涉及什么法条？",
+    "facts_structured": {
+      "behavior_sequence": ["伤害"],
+      "consequence": "他人身体受伤"
+    },
+    "expected_article_number": "第二百三十四条",
+    "expected_law_title": "故意伤害罪"
+  },
+  {
+    "id": "theft",
+    "query": "趁他人不注意拿走财物可能涉及什么法条？",
+    "facts_structured": {
+      "behavior_sequence": ["盗窃"],
+      "consequence": "被害人财产损失"
+    },
+    "expected_article_number": "第二百六十四条",
+    "expected_law_title": "盗窃罪"
+  },
+  {
+    "id": "fraud",
+    "query": "虚构事实骗取他人钱款可能涉及什么法条？",
+    "facts_structured": {
+      "behavior_sequence": ["诈骗"],
+      "consequence": "被害人财产损失"
+    },
+    "expected_article_number": "第二百六十六条",
+    "expected_law_title": "诈骗罪"
+  },
+  {
+    "id": "unlawful_detention",
+    "query": "强行关押他人并限制人身自由可能涉及什么法条？",
+    "facts_structured": {
+      "behavior_sequence": ["非法拘禁"],
+      "consequence": "限制他人人身自由"
+    },
+    "expected_article_number": "第二百三十八条",
+    "expected_law_title": "非法拘禁罪"
+  },
+  {
+    "id": "dangerous_driving",
+    "query": "醉酒后驾驶机动车可能涉及什么法条？",
+    "facts_structured": {
+      "behavior_sequence": ["醉驾"],
+      "consequence": "造成道路交通安全风险"
+    },
+    "expected_article_number": "第一百三十三条之一",
+    "expected_law_title": "危险驾驶罪"
+  }
+]

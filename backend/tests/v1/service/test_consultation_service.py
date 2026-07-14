@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.errors.exceptions import LLMTimeoutException
+from app.state.consultation_state import validate_consultation_state
 from app.v1.service import consultation_service
 from app.v1.service.consultation_service import (
     ProcessMessageResult,
@@ -77,8 +79,23 @@ class TestGetSessionState:
 
             result = await get_session_state("sess-001")
 
-        assert result is sample_state
+        assert result == sample_state
+        assert result is not sample_state
         mock_redis.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_rejects_snapshot_with_invalid_state_types(self):
+        """Checkpointer 返回的动态字典必须经过真实的状态校验。"""
+        snapshot = MagicMock()
+        snapshot.values = {"session_id": 123}
+        with patch.object(
+            consultation_service.orchestrator,
+            "get_snapshot",
+            new_callable=AsyncMock,
+            return_value=snapshot,
+        ):
+            with pytest.raises(ValueError, match="咨询状态无效"):
+                await get_session_state("sess-001")
 
     @pytest.mark.asyncio
     async def test_falls_back_to_redis_dict(self, sample_state):
@@ -95,11 +112,11 @@ class TestGetSessionState:
             result = await get_session_state("sess-001")
 
         assert result is not None
-        assert result["session_id"] == "sess-001"
+        assert result.get("session_id") == "sess-001"
 
     @pytest.mark.asyncio
-    async def test_returns_redis_value_when_not_a_dict(self):
-        """If Redis returns a non-dict (already a state object), it is returned as-is."""
+    async def test_rejects_non_dict_redis_value(self):
+        """Redis 中的非字典值不是有效的咨询状态。"""
         empty = MagicMock()
         empty.values = None
         # Wrap in a non-dict container to exercise the ``else`` branch.
@@ -111,9 +128,8 @@ class TestGetSessionState:
             mock_redis.return_value = non_dict_state
             mock_ctx.return_value = None
 
-            result = await get_session_state("sess-001")
-
-        assert result is non_dict_state
+            with pytest.raises(ValueError, match="咨询状态无效"):
+                await get_session_state("sess-001")
 
     @pytest.mark.asyncio
     async def test_falls_back_to_memory_cache(self):
@@ -193,12 +209,13 @@ class TestPersistState:
 class TestHandleHighRiskAlert:
     @pytest.mark.asyncio
     async def test_appends_alert_to_history(self):
-        result_state: dict = {"conversation_history": []}
+        result_state = validate_consultation_state({"conversation_history": []})
         with patch.object(consultation_service, "persist_state", new_callable=AsyncMock) as mock_persist:
             await handle_high_risk_alert("sess-001", result_state, "FactDigger")
 
-        assert len(result_state["conversation_history"]) == 1
-        entry = result_state["conversation_history"][0]
+        conversation_history = result_state.get("conversation_history", [])
+        assert len(conversation_history) == 1
+        entry = conversation_history[0]
         assert entry["agent"] == "FactDigger"
         assert entry["action"] == "high_risk_alert"
         assert "为保护您的权益" in entry["content"]
@@ -206,12 +223,12 @@ class TestHandleHighRiskAlert:
 
     @pytest.mark.asyncio
     async def test_creates_history_when_missing(self):
-        result_state: dict = {}
+        result_state = validate_consultation_state({})
         with patch.object(consultation_service, "persist_state", new_callable=AsyncMock):
             await handle_high_risk_alert("sess-001", result_state, "Receptionist")
 
         assert "conversation_history" in result_state
-        assert result_state["conversation_history"][0]["agent"] == "Receptionist"
+        assert result_state.get("conversation_history", [])[0]["agent"] == "Receptionist"
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +348,22 @@ class TestStartSession:
         mock_start.assert_awaited_once_with(sample_state)
         mock_persist.assert_awaited_once_with(sample_state["session_id"], sample_state)
 
+    @pytest.mark.asyncio
+    async def test_rejects_state_without_session_id_before_starting_workflow(self):
+        """启动工作流前必须明确校验 session_id，避免稍后出现 KeyError。"""
+        state = validate_consultation_state(make_consultation_state())
+        state.pop("session_id", None)
+
+        with patch.object(
+            consultation_service.orchestrator,
+            "start_workflow",
+            new_callable=AsyncMock,
+        ) as mock_start:
+            with pytest.raises(ValueError, match="session_id"):
+                await start_session(state)
+
+        mock_start.assert_not_awaited()
+
 
 # ---------------------------------------------------------------------------
 # process_message
@@ -361,9 +394,9 @@ class TestProcessMessage:
         assert result.alert_triggered is False
         assert result.is_workflow_finished is False
         assert result.error is None
-        # The new fact is sent in ``state_updates`` to the orchestrator.
+        # FactDigger owns facts_raw append + masking; the service only passes this turn's input.
         state_updates = mock_resume.call_args.args[1]
-        assert "我的案件..." in state_updates["facts_raw"]
+        assert state_updates == {"current_input": "我的案件..."}
         # history should be appended to the result state
         assert len(resume_result["conversation_history"]) == 1
         mock_persist.assert_awaited_once()
@@ -404,6 +437,18 @@ class TestProcessMessage:
         assert result.response_content == ""
         assert result.next_agent == "Receptionist"
         assert result.result_state is None
+
+    @pytest.mark.asyncio
+    async def test_typed_app_exception_is_not_collapsed_into_generic_error(self, sample_state):
+        sample_state["facts_raw"] = []
+        with patch.object(
+            consultation_service.orchestrator,
+            "resume_workflow",
+            new_callable=AsyncMock,
+            side_effect=LLMTimeoutException("upstream timeout"),
+        ):
+            with pytest.raises(LLMTimeoutException):
+                await process_message("sess-001", "msg", sample_state, "Receptionist")
 
     @pytest.mark.asyncio
     async def test_creates_conversation_history_if_missing(self, sample_state):

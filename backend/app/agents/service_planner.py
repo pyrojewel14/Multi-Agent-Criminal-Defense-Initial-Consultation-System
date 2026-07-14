@@ -82,7 +82,7 @@ async def service_planner_node(state: "ConsultationState") -> "ConsultationState
         # 提取关键信息用于生成服务方案
         facts_structured = state.get("facts_structured", {})
         applied_laws = state.get("applied_laws", [])
-        risk_assessment = state.get("risk_assessment", {})
+        risk_assessment = state.get("risk_assessment") or {}
 
         # 构建用户消息，包含案件信息
         user_message = _build_service_request_message(
@@ -454,4 +454,3 @@ def _get_current_timestamp() -> str:
     from datetime import datetime
 
     return datetime.now().isoformat()
-

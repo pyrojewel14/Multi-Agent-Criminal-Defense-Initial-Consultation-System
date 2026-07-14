@@ -1,6 +1,7 @@
 import os
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from langchain_core.embeddings import Embeddings
@@ -14,6 +15,28 @@ load_dotenv()
 
 _logger = get_logger("Factory")
 
+if TYPE_CHECKING:
+    chat_model: BaseChatModel
+    embed_model: Embeddings
+
+
+def _ollama_client_kwargs(base_url: str) -> dict:
+    """为本机 Ollama 客户端禁用环境代理。
+
+    httpx 在部分本机代理配置下会把 localhost 请求发送到代理并返回 502。
+    仅对回环地址关闭 trust_env，远程 Ollama 仍保留环境代理能力。
+
+    Args:
+        base_url: Ollama 服务地址。
+
+    Returns:
+        传给 Ollama 客户端的共享参数。
+    """
+    hostname = urlparse(base_url).hostname
+    if hostname in {"localhost", "127.0.0.1", "::1"}:
+        return {"trust_env": False}
+    return {}
+
 
 class DashScopeEmbeddingsWrapper(Embeddings):
     """阿里云 DashScope 嵌入模型封装。
@@ -22,7 +45,7 @@ class DashScopeEmbeddingsWrapper(Embeddings):
     使用 OpenAI 兼容接口调用阿里云百炼 embedding 服务。
     """
 
-    def __init__(self, model_name: str = "text-embedding-v4", api_key: str = None):
+    def __init__(self, model_name: str = "text-embedding-v4", api_key: str | None = None):
         """初始化 DashScope 嵌入模型。
 
         Args:
@@ -295,7 +318,11 @@ class ChatModelFactory(BaseModelFactory):
 
         _logger.info("【_create_ollama_model】ChatModel 使用 Ollama: model=%s, base_url=%s", model_name, base_url)
 
-        params = {"model": model_name, "base_url": base_url}
+        params = {
+            "model": model_name,
+            "base_url": base_url,
+            "client_kwargs": _ollama_client_kwargs(base_url),
+        }
         if temperature is not None:
             params["temperature"] = temperature
         if streaming:
@@ -368,7 +395,7 @@ class EmbedModelFactory(BaseModelFactory):
         )
         return self.create_embedding_model()
 
-    def create_embedding_model(self) -> Optional[Embeddings]:
+    def create_embedding_model(self) -> Embeddings:
         """根据 EMBED_MODEL_TYPE 生成对应的嵌入模型（带缓存）。
 
         Returns:
@@ -418,7 +445,11 @@ class EmbedModelFactory(BaseModelFactory):
 
         _logger.info("【_create_ollama_embeddings】EmbedModel 使用 Ollama: model=%s, base_url=%s", model_name, base_url)
 
-        return OllamaEmbeddings(model=model_name, base_url=base_url)
+        return OllamaEmbeddings(
+            model=model_name,
+            base_url=base_url,
+            client_kwargs=_ollama_client_kwargs(base_url),
+        )
 
     def _create_aliyun_embeddings(self) -> DashScopeEmbeddingsWrapper:
         """创建阿里云百炼嵌入模型。
@@ -438,8 +469,8 @@ chat_model_factory = ChatModelFactory()
 embed_model_factory = EmbedModelFactory()
 
 # 延迟初始化，避免导入时创建模型实例导致事件循环问题
-_chat_model = None
-_embed_model = None
+_chat_model: Optional[BaseChatModel] = None
+_embed_model: Optional[Embeddings] = None
 
 
 def __getattr__(name):

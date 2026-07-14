@@ -1,11 +1,29 @@
 from typing import Any, Dict, List
 
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolCall
 from langchain_core.tools import BaseTool
 
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
 from app.utils.factory import chat_model_factory
 from app.utils.logger import get_logger
+
+
+def _content_to_text(content: object) -> str:
+    """将 LangChain 文本或结构化 content block 归一化为纯文本。"""
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+
+    text_parts: List[str] = []
+    for block in content:
+        if isinstance(block, str):
+            text_parts.append(block)
+        elif isinstance(block, dict):
+            text = block.get("text")
+            if isinstance(text, str):
+                text_parts.append(text)
+    return "".join(text_parts)
 
 
 class LLMGateway:
@@ -65,7 +83,7 @@ class LLMGateway:
             self._logger.error("【generate】LLM 服务错误: %s", e)
             raise LLMServiceException(detail=str(e)) from e
 
-        content = response.content
+        content = _content_to_text(response.content)
         self._logger.debug("【generate】LLM 响应: len=%d", len(content))
         return content
 
@@ -138,9 +156,9 @@ class LLMGateway:
             raise LLMServiceException(detail=str(e)) from e
 
         # 提取工具调用
-        tool_calls: List[Dict[str, Any]] = []
+        tool_calls: List[ToolCall] = []
         if hasattr(response, "tool_calls") and response.tool_calls:
-            tool_calls = response.tool_calls
+            tool_calls.extend(response.tool_calls)
             for tc in tool_calls:
                 tool_name = tc.get("name", "unknown")
                 tool_args = tc.get("args", {})
@@ -158,7 +176,7 @@ class LLMGateway:
                 )
 
         # 记录返回内容
-        content = response.content if hasattr(response, "content") else ""
+        content = _content_to_text(response.content) if hasattr(response, "content") else ""
         content_preview = content[:200] + "..." if len(content) > 200 else content
         self._logger.info(
             "【generate_with_tools】响应完成: has_tool_call=%s, content_len=%d",

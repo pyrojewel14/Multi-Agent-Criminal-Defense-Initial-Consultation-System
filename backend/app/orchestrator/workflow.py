@@ -7,7 +7,6 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StateSnapshot
-from pydantic import TypeAdapter, ValidationError
 
 from app.agents.fact_digger import fact_digger_node
 from app.agents.human_alert import human_alert_node
@@ -17,7 +16,7 @@ from app.agents.risk_assessor import risk_assessor_node
 from app.agents.service_planner import service_planner_node
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
 from app.security.disclaimer import disclaimer
-from app.state.consultation_state import ConsultationState
+from app.state.consultation_state import ConsultationState, validate_consultation_state
 from app.utils.logger import get_logger
 
 _logger = get_logger("Orchestrator")
@@ -29,21 +28,12 @@ INTERRUPT_AFTER_NODES = ["receptionist", "wait_for_user", "human_review", "human
 
 WorkflowGraph = StateGraph[ConsultationState, None, ConsultationState, ConsultationState]
 CompiledWorkflowGraph = CompiledStateGraph[ConsultationState, None, ConsultationState, ConsultationState]
-_STATE_ADAPTER: TypeAdapter[ConsultationState] = TypeAdapter(ConsultationState)
-
-
 def _validate_workflow_state(value: object) -> ConsultationState:
     """校验 LangGraph 状态值，同时保留框架使用的元数据键。"""
-    if not isinstance(value, dict):
-        raise ValueError("工作流返回了无效状态: 结果不是字典")
-
-    known_state = {key: value[key] for key in ConsultationState.__annotations__ if key in value}
     try:
-        _STATE_ADAPTER.validate_python(known_state)
-    except ValidationError as exc:
+        return validate_consultation_state(value)
+    except ValueError as exc:
         raise ValueError("工作流返回了无效状态") from exc
-
-    return ConsultationState(**value)
 
 
 def check_consent(state: ConsultationState) -> Literal["continue", "end"]:
@@ -211,6 +201,21 @@ async def wait_for_user_node(state: ConsultationState) -> ConsultationState:
     return state
 
 
+async def _fact_digger_workflow_node(state: ConsultationState) -> ConsultationState:
+    """进入事实补充前消费律师退回指令和上一轮用户输入。"""
+    if state.get("lawyer_decision") == "revise_facts":
+        state["lawyer_decision"] = None
+        state["current_input"] = None
+    return await fact_digger_node(state)
+
+
+async def _risk_assessor_workflow_node(state: ConsultationState) -> ConsultationState:
+    """进入风险重评前消费一次性的律师退回指令。"""
+    if state.get("lawyer_decision") == "revise_risk":
+        state["lawyer_decision"] = None
+    return await risk_assessor_node(state)
+
+
 def _calculate_coverage_rate(state: ConsultationState) -> float:
     """
     已废弃
@@ -329,9 +334,9 @@ class ConsultationOrchestrator:
         workflow: WorkflowGraph = StateGraph(ConsultationState)
 
         workflow.add_node("receptionist", receptionist_node)
-        workflow.add_node("fact_digger", fact_digger_node)
+        workflow.add_node("fact_digger", _fact_digger_workflow_node)
         workflow.add_node("law_ref", law_ref_node)
-        workflow.add_node("risk_assessor", risk_assessor_node)
+        workflow.add_node("risk_assessor", _risk_assessor_workflow_node)
         workflow.add_node("service_planner", service_planner_node)
         workflow.add_node("human_review", human_review_node)
         workflow.add_node("human_alert", human_alert_node)
