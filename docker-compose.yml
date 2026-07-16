@@ -1,0 +1,42 @@
+services:
+  redis:
+    image: redis:7.2-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - backend/.env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      DATABASE_PATH: /app/runtime/sqlite/chat_history.db
+      CHROMA_PERSIST_DIRECTORY: /app/runtime/chroma
+      CHROMA_MD5_STORE: /app/runtime/md5/md5_hex_store.txt
+      MODEL_CACHE_DIR: /app/runtime/models
+      RERANKER_MODEL_PATH: /app/runtime/models/Qwen/Qwen3-Reranker-0.6B
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - backend-runtime:/app/runtime
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  backend-runtime:

@@ -154,16 +154,28 @@ RAG 主链路由 `RagService`、`HybridRetriever`、`VectorStoreService` 和 `La
 
 ## 本地启动方式
 
-后端：
+推荐从仓库根目录使用统一入口：
 
-推荐使用 `uv`：
+```bash
+cp backend/.env.example backend/.env
+# 编辑 backend/.env：替换 JWT 密钥，并选择 Ollama 或阿里云模型路径
+make install
+redis-server              # 单独终端
+make run-backend          # 单独终端，127.0.0.1:8000
+make run-frontend         # 单独终端，127.0.0.1:5173
+```
+
+然后访问 `http://127.0.0.1:5173`；后端健康检查为 `http://127.0.0.1:8000/health`，OpenAPI 为 `http://127.0.0.1:8000/docs`。
+
+后端手动安装仍可使用通用 `uv` 环境：
 
 ```bash
 cd backend
 cp .env.example .env
 # 编辑 .env，至少配置 JWT_SECRET_KEY 和 LLM / embedding 相关变量
-uv sync
-uv run python main.py
+uv venv
+uv pip install --python .venv/bin/python -r requirements.txt
+.venv/bin/python main.py
 ```
 
 也可以使用 `requirements.txt`：
@@ -196,22 +208,44 @@ redis-server
 
 或使用本机服务管理器启动 Redis。后端启动时会执行 `init_redis()`，Redis 不可用会导致启动失败。
 
-测试：
+模型与数据配置：
+
+- 本地 Ollama：保持 `LLM_TYPE=OLLAMA`、`EMBED_MODEL_TYPE=OLLAMA`，提前执行 `ollama pull qwen3.5:0.8b` 和 `ollama pull qwen3-embedding:0.6b`。聊天模型读取 `OLLAMA_MODEL_NAME`，embedding 实际读取 `TEXT_EMBEDDING_MODEL_NAME`。
+- 阿里云百炼：把两种类型都改为 `ALIYUN`，填写 `ALIYUN_ACCESS_KEY_SECRET`，并核对聊天与 embedding 模型名。不要把真实密钥写回 `.env.example`。
+- SQLite 表由后端 lifespan 自动创建；默认文件是 `backend/data/chat_history.db`。Redis 是启动硬依赖。
+- Chroma 默认目录是 `backend/data/chromadb`，初始可为空；管理员仍需通过知识库接口实际入库。内置 JSON 法条库不等于已填充的向量库。
+- reranker 权重不随 Git 或 Docker 镜像分发；本地模型缺失时重排序记录错误并回退原检索顺序。
+
+Docker Compose 当前只包含 FastAPI 后端和 Redis：
 
 ```bash
-cd backend
-uv sync --extra dev
-uv run pytest
+cp backend/.env.example backend/.env
+# 编辑密钥和模型配置
+make compose-config
+make compose-up
+curl http://127.0.0.1:8000/health
+make compose-down
 ```
 
-小规模离线评估：
+Redis 使用独立命名卷；SQLite、Chroma、MD5 记录和容器内模型缓存使用另一个命名卷。Ollama 不在 Compose 内，容器通过 `host.docker.internal:11434` 访问宿主机；前端也不在容器中，仍用 `make run-frontend` 启动。本阶段 `docker compose config --quiet` 与 Docker daemon 检查通过，但镜像检查停在 `python:3.12-slim` 元数据拉取并在有限等待后取消，因此没有宣称镜像 build、Compose up 或容器健康检查通过。
+
+常见启动问题：
+
+- 后端无法启动：先用 `redis-cli ping` 检查 Redis，再核对主机、端口、DB 和密码。
+- Ollama 调用失败：检查 `ollama list`、模型名、服务地址，以及容器到宿主机的可达性。
+- 阿里云返回 401/403：检查 API key、base URL、模型权限与网络，不要在日志或 issue 中粘贴密钥。
+- Chroma 检索为空：健康检查不会自动准备向量数据，需要先完成 embedding 配置和知识库入库。
+- 端口冲突：可用 `BACKEND_PORT=... make run-backend` 或 `FRONTEND_PORT=... make run-frontend`；Vite 开发代理仍固定指向后端 8000。
+- Docker 无法连接 daemon：先启动 Docker Desktop / Docker Engine；镜像仓库不可达时，Compose 配置通过也不代表镜像已构建。
+
+统一测试与离线评估入口：
 
 ```bash
-cd backend
-uv run python ../evaluation/run_eval.py
+make test
+make eval
 ```
 
-指标定义、当前基线结果和边界见 [docs/evaluation.md](docs/evaluation.md)。
+`make test` 是后端定向回归加全部前端测试，不等同于完整 pytest。历史完整收集曾被 `Killed: 9`，因此项目继续按风险分组；`make eval` 是 30 条确定性 baseline，不代表真实 LLM / RAG 质量。
 
 ## 环境变量说明
 
@@ -231,9 +265,10 @@ uv run python ../evaluation/run_eval.py
 | `OLLAMA_MODEL_NAME` | Ollama 聊天模型 | `qwen3.5:0.8b` |
 | `EMBED_MODEL_TYPE` | embedding 后端 | `ALIYUN` 或 `OLLAMA` |
 | `ALIYUN_EMBED_MODEL_NAME` | 阿里云 embedding 模型 | `text-embedding-v4` |
-| `OLLAMA_EMBED_MODEL_NAME` | `.env.example` 中的 Ollama embedding 名称 | `qwen3-embedding:0.6b` |
+| `TEXT_EMBEDDING_MODEL_NAME` | Ollama embedding 模型 | `qwen3-embedding:0.6b` |
 | `DATABASE_PATH` | SQLite 数据库路径 | `./data/chat_history.db` |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | Redis 连接配置 | `localhost` / `6379` / `3` |
+| `CHROMA_PERSIST_DIRECTORY` | Chroma 持久化目录 | `data/chromadb` |
 | `RERANKER_MODEL_PATH` | reranker 本地模型路径 | `./data/models/Qwen/Qwen3-Reranker-0.6B` |
 | `LOG_LEVEL` | 全局日志级别 | `INFO` |
 
@@ -363,7 +398,7 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 后续优化：
 
 - 把 LangGraph checkpoint 切换到可持久化后端，并统一 DB / Redis / checkpoint 的状态边界。
-- 远端验证并逐步扩大现有受限 CI，再补 Alembic migration、Docker Compose 和端到端冒烟测试。
+- 逐步扩大现有受限 CI，并补 Alembic migration、容器构建门禁和端到端冒烟测试。
 - 为 RAG 建立标注集，评估 recall@k、rerank 命中率、法条验证通过率、未验证结果占比。
 - 增加律师审核操作的审计日志和报告版本管理。
 - 补 WebSocket token 传输加固、速率限制和消息持久化。
@@ -377,6 +412,9 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 - [docs/evaluation.md](docs/evaluation.md)：30 条正式离线评估集、指标定义、实际结果和失败边界。
 - [docs/testing.md](docs/testing.md)：测试分组、Phase 5 契约映射、受限 CI 和已知限制。
 - [docs/api.md](docs/api.md)：核心接口、JWT/RBAC 权限、错误码、Redis/SQLite 边界和可复制 curl。
+- [backend/.env.example](backend/.env.example)：安全配置模板与全部启动变量。
+- [Makefile](Makefile)：安装、前后端启动、测试、评估与 Compose 入口。
+- [docker-compose.yml](docker-compose.yml)：backend + Redis 容器范围和持久卷配置。
 - [demos/](demos/)：咨询 Demo case、RAG 查询、历史失败记录和 2026-07-14 live 结果。
 - [evaluation/](evaluation/)：唯一活动评估入口及旧版 MVP 历史报告。
 
