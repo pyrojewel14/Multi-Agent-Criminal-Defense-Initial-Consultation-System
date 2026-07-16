@@ -78,7 +78,10 @@ class UpdateStatusRequest(BaseModel):
 class CreateSessionRequest(BaseModel):
     """会话创建请求模型"""
 
-    client_id: str = Field(..., description="客户端ID")
+    client_id: Optional[str] = Field(
+        None,
+        description="兼容字段；实际会话所有者始终取自 access token",
+    )
     user_type: Literal["suspect", "victim", "family"] = Field(..., description="用户类型")
     initial_message: Optional[str] = Field(None, description="初始消息内容")
     source: Optional[str] = Field(None, description="来源渠道")
@@ -88,6 +91,7 @@ class CreateSessionResponse(BaseModel):
     """会话创建响应模型"""
 
     session_id: str = Field(..., description="会话ID")
+    consultation_id: str = Field(..., description="数据库咨询记录ID")
     welcome_message: str = Field(..., description="欢迎语")
     current_agent: str = Field(..., description="当前Agent")
     created_at: datetime = Field(..., description="创建时间")
@@ -156,6 +160,16 @@ class SessionStateResponse(BaseModel):
     final_output: Optional[str] = Field(None, description="最终输出")
     lawyer_id: Optional[str] = Field(None, description="律师ID")
     status: str = Field(default="active", description="会话状态")
+
+
+class ReportDraftResponse(BaseModel):
+    """工作流报告草案响应模型。"""
+
+    session_id: str = Field(..., description="会话ID")
+    consultation_id: Optional[str] = Field(None, description="数据库咨询记录ID")
+    report_draft: str = Field(..., description="待律师审核的报告草案")
+    service_plan: Optional[dict[str, Any]] = Field(None, description="服务方案")
+    awaiting_lawyer_review: bool = Field(False, description="是否等待律师审核")
 
 
 class LawyerReviewRequest(BaseModel):

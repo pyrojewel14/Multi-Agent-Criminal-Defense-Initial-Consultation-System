@@ -7,6 +7,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.errors.exceptions import AppException
 from app.orchestrator.workflow import orchestrator
+from app.security.jwt import decode_token
+from app.security.rbac import VALID_ROLES
 from app.utils.logger import get_logger
 from app.v1.router.consultation.constants import HIGH_RISK_ALERT_MESSAGE
 from app.v1.service import consultation_service
@@ -59,6 +61,26 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+def _get_websocket_user(websocket: WebSocket) -> dict | None:
+    """从查询参数或 Authorization 头解析 WebSocket access token。"""
+    token = websocket.query_params.get("token")
+    if not token:
+        auth_header = websocket.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header.removeprefix("Bearer ")
+    if not token:
+        return None
+
+    payload = decode_token(token)
+    if not payload or payload.get("type") != "access":
+        return None
+    user_id = payload.get("sub")
+    role = payload.get("role")
+    if not isinstance(user_id, str) or not user_id or role not in VALID_ROLES:
+        return None
+    return {"user_id": user_id, "role": role}
+
+
 @ws_router.websocket("/api/v1/sessions/{session_id}/ws")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     """WebSocket 通信端点
@@ -69,13 +91,25 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         websocket: WebSocket 连接对象
         session_id: 会话ID
     """
-    await manager.connect(websocket, session_id)
-
     heartbeat_task = None
     state = None
 
     try:
+        current_user = _get_websocket_user(websocket)
+        if current_user is None:
+            await websocket.close(code=4401, reason="请先登录")
+            return
+
         state = await consultation_service.get_session_state(session_id)
+
+        if state and (
+            current_user["role"] != "client"
+            or state.get("user_id") != current_user["user_id"]
+        ):
+            await websocket.close(code=4403, reason="无权访问此会话")
+            return
+
+        await manager.connect(websocket, session_id)
 
         if not state:
             await websocket.send_json(

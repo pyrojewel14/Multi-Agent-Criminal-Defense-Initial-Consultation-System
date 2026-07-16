@@ -18,6 +18,7 @@ from app.v1.schemas.consultation_schemas import (
     MessageResponse,
     UpdateStatusRequest,
 )
+from app.v1.service import consultation_service
 
 _logger = get_logger("Router.Consultation")
 
@@ -205,7 +206,7 @@ async def get_consultation_messages(
 @consultation_router.post("/assign")
 async def assign_lawyer(
     request: AssignLawyerRequest,
-    _: None = Depends(require_admin),
+    _: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """超管将咨询分配给律师。
@@ -240,6 +241,9 @@ async def assign_lawyer(
 
     consultation.assigned_lawyer_id = lawyer_id
     await db.commit()
+    await consultation_service.assign_lawyer_to_active_session(
+        consultation_id, lawyer_id
+    )
 
     _logger.info(
         "【assign_lawyer】咨询分配律师成功: consultation_id=%s, lawyer_id=%s, lawyer_name=%s",

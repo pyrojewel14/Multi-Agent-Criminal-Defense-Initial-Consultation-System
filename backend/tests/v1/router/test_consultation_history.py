@@ -372,7 +372,7 @@ class TestAssignLawyer:
                 json={"consultation_id": "consult-001", "lawyer_id": "missing"},
             )
             assert response.status_code == 404
-            assert "律师" in response.json()["detail"]
+            assert "律师" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_assign_consultation_not_found(self, admin_app, mock_db_session):
@@ -386,7 +386,7 @@ class TestAssignLawyer:
                 json={"consultation_id": "missing", "lawyer_id": "lawyer-001"},
             )
             assert response.status_code == 404
-            assert "咨询" in response.json()["detail"]
+            assert "咨询" in response.json()["error"]["message"]
 
 
 # ---------------------------------------------------------------------------

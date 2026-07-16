@@ -3,7 +3,7 @@
 Tests cover:
 1. RoleChecker.__call__: Allows correct role, raises for wrong role
 2. get_current_user: Valid token returns user dict, invalid token raises 401
-3. require_admin / require_lawyer: Factory functions return correct dependencies
+3. require_admin / require_lawyer: FastAPI 依赖执行真实角色检查
 4. get_optional_user_from_header: Header parsing for middleware
 5. attach_user_to_request: Middleware attaching user to request state
 6. get_user_from_request: Reading user back from request state
@@ -119,7 +119,7 @@ class TestGetCurrentUser:
         with pytest.raises(HTTPException) as exc_info:
             await get_current_user(credentials)
         assert exc_info.value.status_code == 401
-        assert "Token 类型" in exc_info.value.detail
+        assert "Token 声明" in exc_info.value.detail
 
 
 # ---------------------------------------------------------------------------
@@ -127,17 +127,7 @@ class TestGetCurrentUser:
 # ---------------------------------------------------------------------------
 
 
-class TestRequireRolesFactories:
-    def test_require_admin_returns_role_checker_with_admin(self):
-        checker = require_admin()
-        assert isinstance(checker, RoleChecker)
-        assert checker.allowed_roles == ["admin"]
-
-    def test_require_lawyer_returns_role_checker_with_admin_and_lawyer(self):
-        checker = require_lawyer()
-        assert isinstance(checker, RoleChecker)
-        assert checker.allowed_roles == ["admin", "lawyer"]
-
+class TestRoleDependencies:
     def test_require_roles_custom_roles(self):
         checker = require_roles(["client", "lawyer"])
         assert isinstance(checker, RoleChecker)
@@ -145,39 +135,34 @@ class TestRequireRolesFactories:
 
     @pytest.mark.asyncio
     async def test_require_admin_allows_admin(self):
-        checker = require_admin()
         user = {"user_id": "u1", "role": "admin"}
-        result = await checker(user)
+        result = await require_admin(user)
         assert result == user
 
     @pytest.mark.asyncio
     async def test_require_admin_rejects_lawyer(self):
-        checker = require_admin()
         user = {"user_id": "u1", "role": "lawyer"}
         with pytest.raises(HTTPException) as exc_info:
-            await checker(user)
+            await require_admin(user)
         assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
     async def test_require_lawyer_allows_lawyer(self):
-        checker = require_lawyer()
         user = {"user_id": "u1", "role": "lawyer"}
-        result = await checker(user)
+        result = await require_lawyer(user)
         assert result == user
 
     @pytest.mark.asyncio
     async def test_require_lawyer_allows_admin(self):
-        checker = require_lawyer()
         user = {"user_id": "u1", "role": "admin"}
-        result = await checker(user)
+        result = await require_lawyer(user)
         assert result == user
 
     @pytest.mark.asyncio
     async def test_require_lawyer_rejects_client(self):
-        checker = require_lawyer()
         user = {"user_id": "u1", "role": "client"}
         with pytest.raises(HTTPException) as exc_info:
-            await checker(user)
+            await require_lawyer(user)
         assert exc_info.value.status_code == 403
 
 

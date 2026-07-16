@@ -209,7 +209,7 @@ class TestUpdateUser:
                 json={"email": "conflict@example.com"},
             )
             assert response.status_code == 400
-            assert "邮箱" in response.json()["detail"]
+            assert "邮箱" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_update_user_not_found(self, admin_app, mock_db_session):

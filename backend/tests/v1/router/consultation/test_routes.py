@@ -50,6 +50,7 @@ def sample_session_state():
         user_id="user-001",
         consent_given=True,
         current_agent="FactDigger",
+        lawyer_id="lawyer-001",
         facts_raw=["用户陈述"],
         conversation_history=[],
     )
@@ -103,7 +104,7 @@ class TestSendMessage:
                 )
 
         assert response.status_code == 404
-        assert "会话不存在" in response.json()["detail"]
+        assert "会话不存在" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_send_message_wrong_user_forbidden(
@@ -146,7 +147,7 @@ class TestSendMessage:
                 )
 
         assert response.status_code == 403
-        assert "请先确认隐私条款" in response.json()["detail"]
+        assert "请先确认隐私条款" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_send_message_processing_error(
@@ -176,7 +177,7 @@ class TestSendMessage:
                 )
 
         assert response.status_code == 500
-        assert "消息处理失败" in response.json()["detail"]
+        assert "消息处理失败" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_send_message_preserves_typed_llm_timeout_response(
@@ -263,7 +264,7 @@ class TestSendMessage:
                 )
 
         assert response.status_code == 403
-        assert "为保护您的权益" in response.json()["detail"]
+        assert "为保护您的权益" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_send_message_success_persists_user_and_agent_messages(
@@ -391,7 +392,7 @@ class TestLawyerReview:
                 )
 
         assert response.status_code == 400
-        assert "未在等待律师审核" in response.json()["detail"]
+        assert "未在等待律师审核" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_lawyer_review_invalid_decision(
@@ -437,7 +438,7 @@ class TestLawyerReview:
                 )
 
         assert response.status_code == 500
-        assert "审核处理失败" in response.json()["detail"]
+        assert "审核处理失败" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_lawyer_review_approved_workflow_finished(

@@ -19,6 +19,7 @@ from app.v1.schemas.consultation_schemas import (
     CreateSessionResponse,
     LawyerReviewRequest,
     LawyerReviewResponse,
+    ReportDraftResponse,
     SendMessageRequest,
     SendMessageResponse,
     SessionCloseRequest,
@@ -32,6 +33,17 @@ from app.v1.service import consultation_service
 _logger = get_logger("Router.Consultation")
 
 router = APIRouter(prefix="/sessions", tags=["consultation"])
+
+
+def _can_access_session(state: dict, current_user: dict) -> bool:
+    """判断用户是否为会话所有者、已分配律师或管理员。"""
+    if current_user["role"] == "admin":
+        return True
+    if current_user["role"] == "client":
+        return state.get("user_id") == current_user["user_id"]
+    if current_user["role"] == "lawyer":
+        return state.get("lawyer_id") == current_user["user_id"]
+    return False
 
 
 @router.post("", response_model=CreateSessionResponse)
@@ -90,6 +102,7 @@ async def create_session(
 
     return CreateSessionResponse(
         session_id=session_id,
+        consultation_id=consultation_id,
         welcome_message=welcome_message,
         current_agent=current_agent,
         created_at=datetime.now(timezone.utc),
@@ -311,10 +324,7 @@ async def get_session_state(
         raise HTTPException(status_code=404, detail="会话不存在或已过期")
 
     user_id = state.get("user_id", "")
-    is_owner = user_id == current_user["user_id"]
-    is_lawyer_or_admin = current_user["role"] in ["lawyer", "admin"]
-
-    if not is_owner and not is_lawyer_or_admin:
+    if not _can_access_session(state, current_user):
         _logger.warning(
             "【get_session_state】无权访问会话: session_id=%s, user_id=%s",
             session_id,
@@ -345,6 +355,31 @@ async def get_session_state(
         final_output=state.get("final_output"),
         lawyer_id=state.get("lawyer_id"),
         status="active",
+    )
+
+
+@router.get("/{session_id}/report-draft", response_model=ReportDraftResponse)
+async def get_report_draft(
+    session_id: str,
+    current_user: dict = Depends(require_lawyer),
+):
+    """获取已分配会话的工作流报告草案。"""
+    state = await consultation_service.get_session_state(session_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="会话不存在或已过期")
+    if not _can_access_session(state, current_user):
+        raise HTTPException(status_code=403, detail="无权访问此会话的报告草案")
+
+    report_draft = state.get("report_draft")
+    if not isinstance(report_draft, str) or not report_draft.strip():
+        raise HTTPException(status_code=404, detail="报告草案尚未生成")
+
+    return ReportDraftResponse(
+        session_id=session_id,
+        consultation_id=state.get("consultation_id"),
+        report_draft=report_draft,
+        service_plan=state.get("service_plan"),
+        awaiting_lawyer_review=bool(state.get("awaiting_lawyer_review")),
     )
 
 
@@ -390,6 +425,14 @@ async def lawyer_review(
             state.get("awaiting_lawyer_review"),
         )
         raise HTTPException(status_code=400, detail="此会话未在等待律师审核")
+
+    if not _can_access_session(state, current_user):
+        _logger.warning(
+            "【lawyer_review】无权审核会话: session_id=%s, user_id=%s",
+            session_id,
+            current_user["user_id"],
+        )
+        raise HTTPException(status_code=403, detail="无权审核此会话")
 
     if request.decision not in ["approved", "revise_facts", "revise_risk"]:
         _logger.warning("【lawyer_review】无效的审核决定: decision=%s", request.decision)
@@ -461,7 +504,7 @@ async def list_sessions(
 
         if current_user["role"] == "lawyer":
             lawyer_id = state.get("lawyer_id")
-            if lawyer_id and lawyer_id != current_user["user_id"]:
+            if lawyer_id != current_user["user_id"]:
                 continue
 
         risk_assessment = state.get("risk_assessment") or {}
@@ -519,11 +562,7 @@ async def close_session(
         _logger.warning("【close_session】会话不存在: session_id=%s", session_id)
         raise HTTPException(status_code=404, detail="会话不存在或已过期")
 
-    user_id = state.get("user_id", "")
-    is_owner = user_id == current_user["user_id"]
-    is_lawyer_or_admin = current_user["role"] in ["lawyer", "admin"]
-
-    if not is_owner and not is_lawyer_or_admin:
+    if not _can_access_session(state, current_user):
         _logger.warning(
             "【close_session】无权关闭会话: session_id=%s, user_id=%s",
             session_id,

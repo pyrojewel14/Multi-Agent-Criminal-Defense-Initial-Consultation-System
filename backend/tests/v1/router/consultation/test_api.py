@@ -50,6 +50,7 @@ def sample_session_state():
     return make_consultation_state(
         session_id="sess-001",
         user_id="test-user-001",
+        lawyer_id="lawyer-001",
         consent_given=False,
         facts_raw=["用户陈述"],
         current_agent="Receptionist",
@@ -228,7 +229,7 @@ class TestGetSessionState:
 
     @pytest.mark.asyncio
     async def test_get_session_state_lawyer_can_access(self, test_app, lawyer_auth_headers, sample_session_state):
-        """A lawyer can access any session state."""
+        """The assigned lawyer can access the session state."""
         with patch("app.v1.service.consultation_service.get_session_state", new_callable=AsyncMock) as mock_get_state:
             mock_get_state.return_value = sample_session_state
 

@@ -323,7 +323,7 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 
 - LangGraph 使用 `MemorySaver` 作为 checkpointer，服务重启后的断点恢复能力有限；Redis 是额外缓存，不等价于完整工作流持久化。
 - `Consultation` 表包含事实、法条、风险、报告字段，但当前主流程主要保存消息和部分状态，数据库字段与工作流 state 仍可进一步打通。
-- WebSocket 端点支持消息和心跳，但当前代码未在 WebSocket 握手中强制校验 JWT。
+- WebSocket 端点在握手前校验 access token 和会话所有权；浏览器客户端通过 `?token=` 传递 token，当前只允许会话所有者的 `client` 连接。
 - RAG 检索依赖知识库内容和 embedding / reranker 模型配置；未通过 JSON 法条库验证的结果不会被当作可靠构成要件来源。
 - 当前没有数据库 migration 工具，表结构由 SQLAlchemy metadata 在启动时创建。
 - 评估已有离线 MVP，但还没有覆盖真实 LLM 输出质量、长期对话一致性和人工审核质量的完整指标体系。
@@ -335,7 +335,7 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 - 远端验证并逐步扩大现有受限 CI，再补 Alembic migration、Docker Compose 和端到端冒烟测试。
 - 为 RAG 建立标注集，评估 recall@k、rerank 命中率、法条验证通过率、未验证结果占比。
 - 增加律师审核操作的审计日志和报告版本管理。
-- 强化 WebSocket 认证、会话授权和速率限制。
+- 补 WebSocket token 传输加固、速率限制和消息持久化。
 - 为高风险检测增加更系统的测试样本，降低误报与漏报。
 
 ## 文档
@@ -345,6 +345,7 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 - [docs/rag.md](docs/rag.md)：真实 RAG 调用链、实现状态、fallback、运行证据和简历表述边界。
 - [docs/evaluation.md](docs/evaluation.md)：30 条正式离线评估集、指标定义、实际结果和失败边界。
 - [docs/testing.md](docs/testing.md)：测试分组、Phase 5 契约映射、受限 CI 和已知限制。
+- [docs/api.md](docs/api.md)：核心接口、JWT/RBAC 权限、错误码、Redis/SQLite 边界和可复制 curl。
 - [demos/](demos/)：咨询 Demo case、RAG 查询、历史失败记录和 2026-07-14 live 结果。
 - [evaluation/](evaluation/)：唯一活动评估入口及旧版 MVP 历史报告。
 

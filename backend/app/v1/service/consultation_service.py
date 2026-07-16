@@ -64,6 +64,22 @@ async def persist_state(session_id: str, state: ConsultationState) -> None:
     await set_redis_cache(f"session:{session_id}", dict(state), expire=SESSION_TTL)
 
 
+async def assign_lawyer_to_active_session(
+    consultation_id: str, lawyer_id: str
+) -> Optional[str]:
+    """把数据库律师分配同步到对应的活跃工作流状态。"""
+    for session_id, state in orchestrator.get_active_sessions().items():
+        if state.get("consultation_id") != consultation_id:
+            continue
+        updated = await orchestrator.update_workflow_state(
+            session_id, {"lawyer_id": lawyer_id}
+        )
+        if updated is not None:
+            await persist_state(session_id, updated)
+            return session_id
+    return None
+
+
 async def handle_high_risk_alert(
     session_id: str,
     result: ConsultationState,

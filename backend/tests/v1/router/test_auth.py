@@ -83,11 +83,9 @@ class TestRegister:
                 },
             )
 
-            # success_response returns JSONResponse with status 200,
-            # even though the route decorator specifies 201.
-            assert response.status_code == 200
+            assert response.status_code == 201
             data = response.json()
-            assert data["code"] == 200
+            assert data["code"] == 201
             assert data["data"]["username"] == "newuser"
 
     @pytest.mark.asyncio
@@ -152,7 +150,7 @@ class TestRegister:
             )
 
             assert response.status_code == 400
-            assert "邮箱" in response.json()["detail"]
+            assert "邮箱" in response.json()["error"]["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -320,7 +318,7 @@ class TestRefreshToken:
             )
 
             assert response.status_code == 401
-            assert "无效" in response.json()["detail"]
+            assert "无效" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_refresh_token_expired(self, test_app, mock_db_session):
@@ -341,7 +339,7 @@ class TestRefreshToken:
             )
 
             assert response.status_code == 401
-            assert "过期" in response.json()["detail"]
+            assert "过期" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_refresh_inactive_user(self, test_app, mock_db_session):

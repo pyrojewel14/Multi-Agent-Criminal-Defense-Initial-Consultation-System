@@ -186,7 +186,7 @@ class TestCreateLawyer:
                 },
             )
             assert response.status_code == 400
-            assert "用户名" in response.json()["detail"]
+            assert "用户名" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_create_lawyer_duplicate_email(self, admin_app, mock_db_session):
@@ -204,7 +204,7 @@ class TestCreateLawyer:
                 },
             )
             assert response.status_code == 400
-            assert "邮箱" in response.json()["detail"]
+            assert "邮箱" in response.json()["error"]["message"]
 
 
 # ---------------------------------------------------------------------------

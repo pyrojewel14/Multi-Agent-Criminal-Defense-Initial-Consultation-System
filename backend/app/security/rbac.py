@@ -1,5 +1,4 @@
-from functools import wraps
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -10,6 +9,18 @@ from app.utils.logger import get_logger
 _logger = get_logger("RBAC")
 
 security = HTTPBearer(auto_error=False)
+VALID_ROLES = {"admin", "lawyer", "client"}
+
+
+def _user_info_from_payload(payload: dict) -> Optional[dict]:
+    """从已验证的 access token payload 构建受信任用户信息。"""
+    user_id = payload.get("sub")
+    role = payload.get("role")
+    if payload.get("type") != "access" or not isinstance(user_id, str) or not user_id:
+        return None
+    if role not in VALID_ROLES:
+        return None
+    return {"user_id": user_id, "role": role}
 
 
 async def get_optional_user_from_header(request: Request) -> Optional[dict]:
@@ -33,14 +44,10 @@ async def get_optional_user_from_header(request: Request) -> Optional[dict]:
         _logger.debug("【get_optional_user_from_header】Token解码失败")
         return None
 
-    if payload.get("type") != "access":
-        _logger.debug("【get_optional_user_from_header】Token类型错误: %s, 期望: access", payload.get("type"))
+    user_info = _user_info_from_payload(payload)
+    if user_info is None:
+        _logger.debug("【get_optional_user_from_header】Token声明不完整或角色无效")
         return None
-
-    user_info = {
-        "user_id": payload.get("sub"),
-        "role": payload.get("role"),
-    }
     _logger.debug(
         "【get_optional_user_from_header】从Token解析用户信息: user_id=%s, role=%s",
         user_info["user_id"],
@@ -74,14 +81,10 @@ async def get_current_user(
         _logger.warning("【get_current_user】认证失败: Token无效或已过期")
         raise HTTPException(status_code=401, detail="无效或过期的 Token")
 
-    if payload.get("type") != "access":
-        _logger.warning("【get_current_user】认证失败: Token类型错误: %s", payload.get("type"))
-        raise HTTPException(status_code=401, detail="无效的 Token 类型")
-
-    user_info = {
-        "user_id": payload.get("sub"),
-        "role": payload.get("role"),
-    }
+    user_info = _user_info_from_payload(payload)
+    if user_info is None:
+        _logger.warning("【get_current_user】认证失败: Token声明不完整或角色无效")
+        raise HTTPException(status_code=401, detail="无效的 Token 声明")
     _logger.info("【get_current_user】用户认证成功: user_id=%s, role=%s", user_info["user_id"], user_info["role"])
     return user_info
 
@@ -103,13 +106,9 @@ async def get_optional_user(
     token = credentials.credentials
     payload = decode_token(token)
 
-    if not payload or payload.get("type") != "access":
+    if not payload:
         return None
-
-    return {
-        "user_id": payload.get("sub"),
-        "role": payload.get("role"),
-    }
+    return _user_info_from_payload(payload)
 
 
 class RoleChecker:
@@ -170,22 +169,18 @@ def require_roles(allowed_roles: List[str]) -> RoleChecker:
     return RoleChecker(allowed_roles)
 
 
-def require_admin() -> RoleChecker:
-    """创建仅允许 admin 角色访问的检查器。
-
-    Returns:
-        RoleChecker 实例。
-    """
-    return RoleChecker(["admin"])
+_admin_checker = RoleChecker(["admin"])
+_lawyer_checker = RoleChecker(["admin", "lawyer"])
 
 
-def require_lawyer() -> RoleChecker:
-    """创建允许 admin 或 lawyer 角色访问的检查器。
+async def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    """校验当前用户是否具有管理员角色。"""
+    return await _admin_checker(user)
 
-    Returns:
-        RoleChecker 实例。
-    """
-    return RoleChecker(["admin", "lawyer"])
+
+async def require_lawyer(user: dict = Depends(get_current_user)) -> dict:
+    """校验当前用户是否具有律师或管理员角色。"""
+    return await _lawyer_checker(user)
 
 
 async def get_user_from_request(request: Request) -> Optional[dict]:

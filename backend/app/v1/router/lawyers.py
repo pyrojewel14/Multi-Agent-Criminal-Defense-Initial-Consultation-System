@@ -22,7 +22,7 @@ lawyer_management_router = APIRouter(prefix="/lawyers", tags=["lawyers"])
 
 @lawyer_management_router.get("/", response_model=LawyerListResponse)
 async def list_lawyers(
-    _: None = Depends(require_admin),
+    _: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """获取律师列表接口（仅管理员可访问）。
@@ -47,7 +47,7 @@ async def list_lawyers(
 @lawyer_management_router.post("/", response_model=UserResponse)
 async def create_lawyer(
     request: UserRegisterRequest,
-    _: None = Depends(require_admin),
+    _: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """创建律师账号接口（仅管理员可访问）。
@@ -89,7 +89,7 @@ async def create_lawyer(
 async def update_lawyer(
     lawyer_id: str,
     request: UserUpdateRequest,
-    _: None = Depends(require_admin),
+    _: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """更新律师信息接口（仅管理员可访问）。

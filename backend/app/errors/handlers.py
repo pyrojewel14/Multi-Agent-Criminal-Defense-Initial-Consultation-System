@@ -1,5 +1,6 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.errors.codes import ErrorCode
 from app.errors.exceptions import AppException
@@ -70,6 +71,37 @@ async def validation_exception_handler(
                 "message": "请求参数校验失败",
             }
         },
+    )
+
+
+_HTTP_ERROR_CODES = {
+    400: ErrorCode.BAD_REQUEST,
+    401: ErrorCode.UNAUTHORIZED,
+    403: ErrorCode.FORBIDDEN,
+    404: ErrorCode.NOT_FOUND,
+    429: ErrorCode.RATE_LIMITED,
+}
+
+
+async def http_exception_handler(
+    request: Request, exc: StarletteHTTPException
+) -> JSONResponse:
+    """将 FastAPI/Starlette HTTPException 映射为统一错误响应。"""
+    code = _HTTP_ERROR_CODES.get(exc.status_code)
+    if code is None:
+        code = ErrorCode.INTERNAL_ERROR if exc.status_code >= 500 else ErrorCode.HTTP_ERROR
+
+    message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    _logger.warning(
+        "【http_exception_handler】HTTPException: code=%s status=%d path=%s",
+        code.value,
+        exc.status_code,
+        request.url.path,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {"code": code.value, "message": message}},
+        headers=exc.headers,
     )
 
 

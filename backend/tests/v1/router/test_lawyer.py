@@ -286,7 +286,7 @@ class TestGetSessions:
             )
 
             assert response.status_code == 400
-            assert "无效" in response.json()["detail"]
+            assert "无效" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_list_sessions_with_needs_review_filter(self, lawyer_app, mock_db_session):
@@ -462,7 +462,7 @@ class TestApproveReport:
                 json={"final_output": "报告"},
             )
             assert response.status_code == 400
-            assert "已完成" in response.json()["detail"]
+            assert "已完成" in response.json()["error"]["message"]
 
 
 # ---------------------------------------------------------------------------

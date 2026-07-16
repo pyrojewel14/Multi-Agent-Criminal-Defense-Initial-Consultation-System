@@ -522,6 +522,22 @@ class ConsultationOrchestrator:
             return None
         return snapshot
 
+    async def update_workflow_state(
+        self, session_id: str, state_updates: Dict[str, Any]
+    ) -> Optional[ConsultationState]:
+        """只更新 checkpointer 状态，不触发后续工作流节点。"""
+        compiled = self._compiled_graph()
+        config = self._config(session_id)
+        snapshot = await compiled.aget_state(config)
+        if snapshot.values is None or not snapshot.values:
+            return None
+
+        await compiled.aupdate_state(config, state_updates, as_node=None)
+        updated_snapshot = await compiled.aget_state(config)
+        updated_state = _validate_workflow_state(updated_snapshot.values)
+        self._active_sessions[session_id] = updated_state
+        return updated_state
+
     async def get_next_node(self, session_id: str) -> Optional[str]:
         """获取会话的下一个待执行节点名称。
 

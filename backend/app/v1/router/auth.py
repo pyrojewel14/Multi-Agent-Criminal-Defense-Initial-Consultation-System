@@ -75,7 +75,11 @@ async def register(
         "【register】用户注册成功: username=%s, user_id=%s, role=%s", request.username, user.id, user.role.value
     )
 
-    return success_response(data=UserResponse.model_validate(user), message="注册成功")
+    return success_response(
+        data=UserResponse.model_validate(user),
+        message="注册成功",
+        status_code=201,
+    )
 
 
 @auth_router.post("/login")
