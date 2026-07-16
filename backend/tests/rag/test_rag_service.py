@@ -25,7 +25,7 @@ def _make_doc(content: str, source: str = "src.txt") -> Document:
 def _make_service(user_id: str | None = "u1", include_public=True, thinking_callback=None):
     """Build a RagService instance with every external dependency mocked."""
     with patch("app.rag.rag_service.get_vector_store") as get_vs, \
-         patch("app.rag.rag_service.chat_model", new=MagicMock()), \
+         patch("app.rag.rag_service.get_chat_model", return_value=MagicMock()), \
          patch("app.rag.rag_service.prompt_loader") as pl:
         pl.load.return_value = "summary-prompt"
         # Mock vector store service

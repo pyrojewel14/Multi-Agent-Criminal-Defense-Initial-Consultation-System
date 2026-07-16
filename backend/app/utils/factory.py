@@ -473,12 +473,18 @@ _chat_model: Optional[BaseChatModel] = None
 _embed_model: Optional[Embeddings] = None
 
 
+def get_chat_model() -> BaseChatModel:
+    """按需获取共享聊天模型实例。"""
+    global _chat_model
+    if _chat_model is None:
+        _chat_model = chat_model_factory.create_streaming_model()
+    return _chat_model
+
+
 def __getattr__(name):
     global _chat_model, _embed_model
     if name == "chat_model":
-        if _chat_model is None:
-            _chat_model = chat_model_factory.create_streaming_model()
-        return _chat_model
+        return get_chat_model()
     if name == "embed_model":
         if _embed_model is None:
             _embed_model = embed_model_factory.create_embedding_model()

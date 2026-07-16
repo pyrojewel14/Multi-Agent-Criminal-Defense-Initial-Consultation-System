@@ -7,7 +7,7 @@ from langsmith import traceable
 
 from app.rag.reorder_service import reorder_service
 from app.rag.vector_store import get_vector_store
-from app.utils.factory import chat_model
+from app.utils.factory import get_chat_model
 from app.utils.logger import get_logger
 from app.utils.prompt_loader import prompt_loader
 
@@ -46,7 +46,7 @@ class RagService:
         self.include_public = include_public
         self.prompt_text = prompt_loader.load("rag_summary_prompt")
         self.prompt_template = PromptTemplate.from_template(self.prompt_text)
-        self.chat_model = chat_model
+        self.chat_model = get_chat_model()
         self.hyde_model = _configure_hyde_model(self.chat_model)
         self.chain = self._init_chain()
         self.hyde_prompt_template = PromptTemplate.from_template(
