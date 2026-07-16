@@ -22,6 +22,7 @@
 - RAG 服务：[backend/app/rag](backend/app/rag)
 - 认证与权限：[backend/app/security](backend/app/security)
 - v1 路由：[backend/app/v1/router](backend/app/v1/router)
+- React 前端：[frontend/src](frontend/src)
 
 ## 核心功能
 
@@ -35,6 +36,7 @@
 - 认证权限：JWT 双令牌、角色鉴权与记录过滤。
 - 知识库：支持文档上传、查看、删除及 ChromaDB 入库。
 - 会话历史：SQLite 持久化，Redis / 内存缓存工作流状态。
+- 前端工作台：client 完成注册、登录、同意、消息与状态刷新；lawyer/admin 按真实权限进入审核队列。
 
 ## 技术栈
 
@@ -47,6 +49,24 @@
 - 阿里云百炼 / Ollama 兼容的 LLM 与 embedding 工厂
 - PyJWT、passlib、RBAC 依赖注入
 - pytest、pytest-asyncio、ruff
+
+前端：
+
+- React、TypeScript、Vite
+- Vitest、Testing Library
+- lucide-react 图标
+
+## 前端 MVP
+
+第一屏直接进入登录/注册与角色工作台。client 页面明确区分 LangGraph/Redis 的 `session_id` 与 SQLite 的 `consultation_id`，并展示工作流 Agent、系统追问、结构化事实、候选法条、风险评估和报告空状态。lawyer/admin 页面只读取真实分配或活跃 workflow 草案；没有律师账号或分配记录时显示权限与空状态，不生成演示案件。
+
+真实后端 client 路径（1440×900）：
+
+![桌面端真实咨询与结构化事实](assets/screenshots/frontend-client-facts-desktop.jpg)
+
+移动端响应式视图（390×844）：
+
+![移动端真实咨询页面](assets/screenshots/frontend-client-facts-mobile.jpg)
 
 ## 系统架构
 
@@ -157,6 +177,16 @@ python main.py
 ```
 
 服务默认启动在 `http://localhost:8000`，接口文档为 `http://localhost:8000/docs`。
+
+前端开发服务：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Vite 默认运行在 `http://127.0.0.1:5173`，开发代理将 `/api` 与 `/health` 转发到 `http://127.0.0.1:8000`。生产构建使用 `npm run build`；前端假定部署后与 `/api/v1` 同源。
 
 Redis：
 
@@ -328,6 +358,7 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 - 当前没有数据库 migration 工具，表结构由 SQLAlchemy metadata 在启动时创建。
 - 评估已有离线 MVP，但还没有覆盖真实 LLM 输出质量、长期对话一致性和人工审核质量的完整指标体系。
 - 后端测试位于 `backend/tests/`，已纳入版本控制，并由受限 GitHub Actions 分组执行。
+- 前端真实 client 路径已联调到 FactDigger 追问与结构化事实；本次没有可用的 lawyer/admin 演示账号或数据库分配，因此律师批准闭环只验证了类型、组件和 mock 网络测试，未作为真实后端证据。
 
 后续优化：
 

@@ -99,7 +99,10 @@ docs/
 evaluation/results/
 
 # ==================== Frontend & Presentation Artifacts ====================
-frontend/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.vite/
 workspace/
 *.pptx
 
