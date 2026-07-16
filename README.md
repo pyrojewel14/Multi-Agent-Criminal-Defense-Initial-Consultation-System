@@ -327,7 +327,7 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 - RAG 检索依赖知识库内容和 embedding / reranker 模型配置；未通过 JSON 法条库验证的结果不会被当作可靠构成要件来源。
 - 当前没有数据库 migration 工具，表结构由 SQLAlchemy metadata 在启动时创建。
 - 评估已有离线 MVP，但还没有覆盖真实 LLM 输出质量、长期对话一致性和人工审核质量的完整指标体系。
-- 后端测试位于 `backend/tests/`；新增 Phase 5 测试未被 `.gitignore` 忽略，但当前工作树尚未提交。
+- 后端测试位于 `backend/tests/`，已纳入版本控制，并由受限 GitHub Actions 分组执行。
 
 后续优化：
 
@@ -343,8 +343,10 @@ curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
 - [docs/demo.md](docs/demo.md)：三条标准 case、完整可复现流程、FastAPI curl 路径和演示边界。
 - [docs/architecture.md](docs/architecture.md)：LangGraph 工作流、节点职责、条件边和人工介入。
 - [docs/rag.md](docs/rag.md)：真实 RAG 调用链、实现状态、fallback、运行证据和简历表述边界。
+- [docs/evaluation.md](docs/evaluation.md)：30 条正式离线评估集、指标定义、实际结果和失败边界。
 - [docs/testing.md](docs/testing.md)：测试分组、Phase 5 契约映射、受限 CI 和已知限制。
 - [demos/](demos/)：咨询 Demo case、RAG 查询、历史失败记录和 2026-07-14 live 结果。
+- [evaluation/](evaluation/)：唯一活动评估入口及旧版 MVP 历史报告。
 
 ## 许可证
 
