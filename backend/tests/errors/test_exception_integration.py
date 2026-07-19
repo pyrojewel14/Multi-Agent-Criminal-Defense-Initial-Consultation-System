@@ -48,4 +48,3 @@ async def test_registered_handlers_keep_a_stable_error_envelope():
         "error": {"code": "INTERNAL_ERROR", "message": "系统内部错误，请稍后重试"}
     }
     assert "internal detail" not in unexpected_error.text
-

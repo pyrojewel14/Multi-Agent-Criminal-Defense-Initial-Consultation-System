@@ -56,7 +56,7 @@ class TestJWTConfig:
         """测试过期分钟数验证"""
         with pytest.raises(ValueError):
             JWTConfig(access_token_expire_minutes=0)
-        
+
         with pytest.raises(ValueError):
             JWTConfig(access_token_expire_minutes=2000)
 
@@ -64,7 +64,7 @@ class TestJWTConfig:
         """测试过期天数验证"""
         with pytest.raises(ValueError):
             JWTConfig(refresh_token_expire_days=0)
-        
+
         with pytest.raises(ValueError):
             JWTConfig(refresh_token_expire_days=100)
 
@@ -72,7 +72,7 @@ class TestJWTConfig:
         """测试短密钥警告"""
         import logging
         caplog.set_level(logging.WARNING)
-        
+
         config = JWTConfig(secret_key="short")
         assert "too short" in caplog.text.lower() or config.secret_key == "short"
 

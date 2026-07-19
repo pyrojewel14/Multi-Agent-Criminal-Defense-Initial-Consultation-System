@@ -114,14 +114,14 @@
   "current_agent": "RiskAssessor",
   "assessment_date": "2024-01-15",
   "case_summary": "案件摘要",
-  
+
   "charge_analysis": {
     "primary_charge": "主要罪名",
     "alternative_charges": ["其他可能罪名"],
     "charge_confidence": 0.75,
     "key_uncertainty": "主要不确定性因素"
   },
-  
+
   "sentencing_prediction": {
     "baseline_sentence": "基准刑",
     "predicted_range": "预测区间",
@@ -132,19 +132,19 @@
     "optimistic_scenario": "乐观情况",
     "pessimistic_scenario": "不利情况"
   },
-  
+
   "compulsory_measure_risk": {
     "detention_risk_level": "高/中/低",
     "risk_factors": [],
     "protective_factors": []
   },
-  
+
   "evidence_risk_assessment": {
     "overall_strength": "强/中/弱",
     "key_issues": [],
     "preservation_urgency": []
   },
-  
+
   "overall_risk_level": "高/中/低",
   "key_concerns": ["重点关注事项"]
 }

@@ -141,10 +141,10 @@
 #### 追问类型
 1. **补充性追问**：补充遗漏的事实要素
    - "您提到在XX地点发生的，能具体说明是什么场所吗？"
-   
+
 2. **澄清性追问**：澄清模糊的事实描述
    - "您说对方'拿走了'东西，能详细说明是怎么拿走的吗？"
-   
+
 3. **验证性追问**：验证关键事实细节
    - "您说没有使用暴力，当时具体是什么情况？"
 
@@ -215,7 +215,7 @@ while element_coverage < 0.8:
     await user_response()
     extract_new_facts()
     update_coverage()
-    
+
 if element_coverage >= 0.8:
     generate_summary()
     await user_confirmation()
