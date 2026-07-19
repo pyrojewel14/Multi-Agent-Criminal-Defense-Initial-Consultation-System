@@ -306,17 +306,16 @@ cd backend
 
 这组结果只描述固定小样例中的确定性规则基线。runner 不调用真实 LLM、Ollama、Chroma、向量检索或 reranker，因此不能外推真实 LLM/RAG 准确率、开放输入表现或生产稳定性。历史 8 条 MVP 使用不同输入契约，也不与这组结果直接比较。
 
-## 当前限制
+## 限制、安全边界与改进方向
 
-- 本项目是工程原型，输出用于初步信息整理，不替代执业律师意见，也没有真实用户、线上业务或商业指标证据。
-- `MemorySaver`、Redis、进程内状态和 SQLite 不是强一致存储；完整 workflow state 不从数据库恢复，WebSocket 消息也未写入 `consultation_messages`。
-- Redis 是后端启动硬依赖；access token 没有服务端即时撤销列表。
-- Chroma 默认空库，知识上传格式与模型依赖仍有边界；JSON 关键词匹配、法条编号抽取和 `rag_unverified` 候选都可能产生噪声。
-- 已用一条修复后的虚构案件在同一后端进程内自然走到 HumanReview，并完成 admin 分配、真实 lawyer 前端批准和 client 完成态；演示账号由本地受控 CLI/API 临时创建，仓库不分发账号或密码。
-- 本次自然运行中的候选法条、风险字段、费用占位和报告措辞是小模型草案，存在空值、占位与不可靠建议；截图只证明数据和审核链路，不构成法律质量评估。
-- `PUT /sessions/{session_id}/review` 会完成活跃 workflow，但当前不会把最终文本、完成时间和状态强一致回写 SQLite consultation；服务重启后 `MemorySaver` checkpoint 和活跃队列不能恢复，Redis/SQLite 只读状态也不能继续执行该图。演示完整闭环必须在同一后端进程内完成。
-- 当前测试入口采用定向后端回归和前端测试；历史完整 pytest 收集曾出现 `Killed: 9`，因此没有宣称全量测试、覆盖率或全部 Ruff 规则已通过。
-- Compose 尚未取得完整 build/up/health 证据，也没有前端镜像、模型服务和 reranker 权重分发方案。
+- 本项目是工程原型：输出用于初步信息整理和律师审核前草案，不替代执业律师意见，不能承诺法律适用、量刑、程序或案件结果。30 条评估是固定 input-only deterministic baseline，不调用真实 LLM、Ollama、Chroma 或 reranker；一次同进程的 Ollama/Chroma 自然链只证明工程路径曾跑通，不代表法律正确性或生产稳定性。
+- 事实覆盖低于 `0.8` 会追问，循环最多 10 次；这能限制无限等待，却不能证明短输入、待鉴定证据或多人多行为叙述已经查明。`FactDigger` 对已覆盖的特定要件做保守规则，但尚无事件图、跨主体一致性或证据来源校验。[事实覆盖实现](backend/app/agents/fact_digger.py)
+- RAG 候选先经本地法条 JSON 验证；`rag_unverified` 不参与覆盖度计算，但“已验证”也不等于个案结论。向量库、embedding、关键词回退、编号抽取和 rerank 仍可能漏召回、误召回或排序不当。[LawRef 验证路径](backend/app/agents/law_ref.py)
+- 模型输出可能空缺、不稳定或含占位；RiskAssessor 解析失败会保留“待评估/待确认”默认结构，而非给出可信风险结论。人工审核仍是必要断点。[风险降级](backend/app/agents/risk_assessor.py) · [审核断点](backend/app/orchestrator/workflow.py)
+- 已有免责声明、知情同意门禁、PII 正则脱敏、高风险转人工和律师审核路径：FactDigger 在写入 `facts_raw` 前脱敏；高风险规则会进入 HumanAlert，HTTP/WS 暴露告警。但规则可能误报/漏报，脱敏并未构成端到端数据治理，HumanAlert 没有已证实的外部工单/通知闭环；通用“拒答”目前只在离线 baseline 中实现，不是主运行时统一策略。[安全过滤](backend/app/security/sensitive_filter.py) · [HumanAlert](backend/app/agents/human_alert.py) · [离线拒答基线](evaluation/run_eval.py)
+- `MemorySaver`、进程内活跃队列、Redis 与 SQLite 不是强一致状态系统。律师批准的 workflow 完成态不会强一致回写 SQLite consultation；服务重启后不能由 Redis/SQLite 继续执行原图。当前没有完整容器 build/up/health、线上监控、容量或成本证据，不能表述为生产部署能力。[状态同步](backend/app/v1/service/consultation_service.py)
+
+优先改进顺序是：先用持久化 checkpoint 和一致性回写补齐恢复能力，并把拒答/人工转交/模型失败处理做成共享运行时策略；再以更大、版本化的评估集验证 rerank、检索和事件图；最后在现有 client owner、assigned lawyer、admin 校验基础上继续细化案件/字段/动作级授权，补 access token 即时撤销、角色或禁用变化的及时生效、审核轨迹与最小权限，并建设脱敏可观测性、成本统计及前端对草案、降级和不可恢复状态的明确展示。
 
 ## 可迁移场景
 
