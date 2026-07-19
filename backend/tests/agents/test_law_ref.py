@@ -173,6 +173,28 @@ async def test_search_laws_by_rag():
 
 
 @pytest.mark.asyncio
+async def test_search_laws_by_rag_flattens_structured_behavior_items():
+    """FactDigger 的对象型行为序列应能组成 RAG 查询。"""
+    facts = {
+        "behavior_sequence": [
+            {"time": "2026年6月18日", "actor": "被调查人", "action": "徒手击打面部"},
+        ],
+        "consequence": "鼻部软组织挫伤",
+    }
+    mock_rag_service = MagicMock()
+    mock_rag_service.initialize_retriever = AsyncMock()
+    mock_rag_service.get_documents_and_summary = AsyncMock(return_value={"documents": []})
+
+    with patch("app.rag.rag_service.RagService", return_value=mock_rag_service):
+        results = await search_laws_by_rag(facts, "user-001")
+
+    assert results == []
+    query = mock_rag_service.initialize_retriever.await_args.args[0]
+    assert "徒手击打面部" in query
+    assert "鼻部软组织挫伤" in query
+
+
+@pytest.mark.asyncio
 async def test_search_laws_by_rag_without_user_id_skips_retrieval():
     facts = {"behavior_sequence": ["盗窃"], "consequence": "财产损失"}
 
@@ -310,6 +332,39 @@ async def test_law_ref_node_with_matching_facts():
     assert len(result.get("applied_laws", [])) > 0
     assert result.get("current_agent") == "LawRef"
     assert result.get("element_to_law_mapping") is not None
+
+
+@pytest.mark.asyncio
+async def test_search_laws_by_keyword_accepts_structured_behavior_items():
+    """对象型行为序列不应让关键词补充路径在 lower() 处崩溃。"""
+    facts = {
+        "behavior_sequence": [
+            {"time": "2026年6月18日", "actor": "被调查人", "action": "徒手击打"},
+        ],
+        "consequence": "软组织挫伤",
+    }
+    law_data = {
+        "chapters": [
+            {
+                "chapter": "侵犯公民人身权利罪",
+                "articles": [
+                    {
+                        "article_number": "第二百三十四条",
+                        "title": "故意伤害罪",
+                        "content": "故意伤害他人身体",
+                        "elements": [],
+                        "base_sentence": "三年以下有期徒刑",
+                        "charge_tags": ["击打"],
+                        "common_keywords": ["徒手击打"],
+                    }
+                ],
+            }
+        ]
+    }
+
+    results = await search_laws_by_keyword(facts, law_data)
+
+    assert results[0]["article_number"] == "第二百三十四条"
 
 
 # ---------------------------------------------------------------------------

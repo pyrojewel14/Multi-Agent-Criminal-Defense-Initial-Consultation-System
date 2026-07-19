@@ -145,6 +145,7 @@ code { overflow-wrap: anywhere; }
 .consent-box h4 { margin-bottom: 4px; font-size: 14px; }
 .consent-box p { margin: 0; color: #675a3e; font-size: 12px; line-height: 1.55; }
 .composer { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; padding: 14px; border-top: 1px solid var(--line); }
+.composer-status { grid-column: 1 / -1; margin: 0; color: var(--sage); font-size: 12px; font-weight: 750; }
 .composer textarea { resize: vertical; min-height: 78px; padding: 11px 12px; line-height: 1.55; }
 .send-button { width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--terracotta); color: #fff; }
 .insight-stack, .review-evidence { min-width: 0; display: grid; gap: 12px; }

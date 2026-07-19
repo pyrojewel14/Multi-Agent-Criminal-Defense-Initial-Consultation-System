@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { api } from '../api/client'
-import type { CreateSessionResponse, SessionState } from '../api/types'
+import type { CreateSessionResponse, SessionListItem, SessionState } from '../api/types'
 import { ClientWorkspace } from './ClientWorkspace'
 
 const created: CreateSessionResponse = {
@@ -26,6 +26,29 @@ const initialState: SessionState = {
   pending_questions: [],
   alert_triggered: false,
   status: 'active',
+}
+
+const completedSession: SessionListItem = {
+  session_id: created.session_id,
+  consultation_id: created.consultation_id,
+  user_id: 'client-1',
+  user_type: 'suspect',
+  current_agent: 'HumanReview',
+  status: 'completed',
+  consent_given: true,
+  alert_triggered: false,
+  awaiting_lawyer_review: false,
+  created_at: created.created_at,
+  updated_at: created.created_at,
+}
+
+const completedState: SessionState = {
+  ...initialState,
+  consent_given: true,
+  current_agent: 'HumanReview',
+  final_output: '律师审核后的最终报告',
+  lawyer_id: 'lawyer-1',
+  status: 'completed',
 }
 
 describe('ClientWorkspace core requests', () => {
@@ -64,5 +87,22 @@ describe('ClientWorkspace core requests', () => {
       consent_given: true,
       consent_version: 'v1',
     })))
+  })
+
+  it('shows reviewed completion and disables further client messages', async () => {
+    vi.spyOn(api, 'get').mockImplementation(async (path: string) => {
+      if (path === '/sessions') return { sessions: [completedSession], total: 1 }
+      if (path === `/sessions/${created.session_id}/state`) return completedState
+      throw new Error(`unexpected GET ${path}`)
+    })
+    const user = userEvent.setup()
+    render(<ClientWorkspace />)
+
+    await user.click(await screen.findByText('律师审核'))
+
+    expect(await screen.findByText('律师已审核')).toBeInTheDocument()
+    expect(screen.getByText('律师审核后的最终报告')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '补充案情' })).toBeDisabled()
+    expect(screen.getByText('咨询流程已完成，新的案情请创建新咨询。')).toBeInTheDocument()
   })
 })

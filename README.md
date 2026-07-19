@@ -1,423 +1,353 @@
 # Multi-Agent Criminal Defense Initial Consultation System
 
-一个面向刑事辩护初期咨询场景的 LLM / Agent 应用工程项目。项目用 FastAPI 提供认证、会话、知识库和咨询接口，用 LangGraph 编排多 Agent 工作流，用 ChromaDB、BM25、HyDE 和 rerank 组成法律资料检索链路，并在流程中加入知情同意、PII 脱敏、高风险表达检测和律师审核断点。
+> 面向刑事辩护初期咨询的多 Agent AI 应用工程原型：用 LangGraph 把知情同意、结构化事实收集、法律资料检索、风险评估与律师审核编排成可中断、可恢复的工作流。
 
-本仓库适合作为求职展示项目使用：它不是“法律意见自动生成器”，而是一个可运行、可解释、可被面试追问的 Agent 应用样例。下文所有功能描述都以当前代码为准。
+它不是自动出具法律意见的产品，而是一个用于展示 Agent 工作流、RAG 可靠性边界、后端权限与前端交互的可运行工程项目。
 
-## 项目背景
+## 30 秒看懂项目
 
-刑事案件初期咨询常见问题是：用户叙述零散、关键信息缺失、法条引用容易幻觉、自动化系统不能直接越过律师审核给出确定性结论。本项目把初期咨询拆成结构化工作流：
+| 能力 | 当前实现 | 可核验证据 |
+| --- | --- | --- |
+| 多 Agent 编排 | 8 个 LangGraph 节点、条件边、`MemorySaver` checkpoint 和 4 个人工/用户中断点 | [workflow.py](backend/app/orchestrator/workflow.py) · [state](backend/app/state/consultation_state.py) |
+| 结构化事实 | FactDigger 通过 Tool Calling 提取 10 类案件事实，并按法条构成要件覆盖度继续追问 | [fact_digger.py](backend/app/agents/fact_digger.py) · [extract_case_facts](backend/app/tools/fact_tools.py) |
+| RAG 与法条验证 | HyDE、Chroma 向量检索、条件式 BM25 混合召回、reranker、JSON 法条验证与关键词补召回 | [rag_service.py](backend/app/rag/rag_service.py) · [hybrid_retriever.py](backend/app/rag/retrievers/hybrid_retriever.py) · [law_ref.py](backend/app/agents/law_ref.py) |
+| Human-in-the-loop | 知情同意门禁、高风险转人工、律师批准或退回事实/风险节点 | [workflow.py](backend/app/orchestrator/workflow.py) · [human_alert.py](backend/app/agents/human_alert.py) |
+| 应用后端 | FastAPI、JWT 双令牌、RBAC、SQLite async ORM、Redis 状态缓存、统一错误 envelope | [main.py](backend/main.py) · [JWT/RBAC](backend/app/security) · [v1 routes](backend/app/v1/router) |
+| React 前端 | client 注册/登录、双 ID 会话、知情同意、消息与状态面板；lawyer/admin 审核工作台 | [frontend/src](frontend/src) · [前端测试](frontend/src/pages/ClientWorkspace.test.tsx) |
+| 小型评估 | 30 条 input-only deterministic baseline，覆盖事实、法条关键词、高风险、追问、拒答和免责声明契约 | [cases.jsonl](evaluation/cases.jsonl) · [run_eval.py](evaluation/run_eval.py) |
 
-1. 先完成权利义务告知和用户知情同意。
-2. 再通过事实挖掘 Agent 把自然语言叙述提取成案件事实字段。
-3. 结合 RAG 和本地 JSON 法条知识库召回、验证相关法条。
-4. 用覆盖度驱动追问，信息足够后生成风险评估和服务方案草案。
-5. 最终进入律师审核或高风险人工介入。
+## 真实界面
 
-核心代码位置：
+以下截图来自同一条本地虚构案件的真实 FastAPI + Redis + Ollama + Chroma + React 路径，不是 mock 或直接改写 workflow state。`session_id=2a1f37ef-a809-40c2-917a-fe2a9e932e8c`、`consultation_id=9efa9a69-9491-44f3-a066-0cf16e1a8b43` 自然经过结构化事实、RAG 候选法条、风险评估、ServicePlanner 报告草案与 HumanReview；管理员再分配律师，律师从前端调用 workflow review endpoint 批准，client 最终看到完成状态。它证明的是工程链路可运行，不代表模型输出具有法律正确性。
 
-- FastAPI 入口：[backend/main.py](backend/main.py)
-- LangGraph 工作流：[backend/app/orchestrator/workflow.py](backend/app/orchestrator/workflow.py)
-- Agent 节点：[backend/app/agents](backend/app/agents)
-- RAG 服务：[backend/app/rag](backend/app/rag)
-- 认证与权限：[backend/app/security](backend/app/security)
-- v1 路由：[backend/app/v1/router](backend/app/v1/router)
-- React 前端：[frontend/src](frontend/src)
+律师批准后的 client 完成态（桌面端 1440 × 900）：
 
-## 核心功能
+![真实 client 律师批准后桌面视图](assets/screenshots/frontend-fixed-client-approved-desktop.png)
 
-- 多 Agent 流程：LangGraph 编排咨询、评估、规划与人工审核。
-- 知情同意门禁：用户确认告知后才进入事实收集。
-- 结构化事实提取：通过 tool calling 提取案情要素。
-- 覆盖度追问：事实覆盖率低于 `0.8` 时自动追问。
-- 法条检索：RAG 召回并结合本地法条库验证、补充。
-- 风险介入：识别高风险表达并触发人工处理。
-- 律师审核：支持批准或退回指定流程节点。
-- 认证权限：JWT 双令牌、角色鉴权与记录过滤。
-- 知识库：支持文档上传、查看、删除及 ChromaDB 入库。
-- 会话历史：SQLite 持久化，Redis / 内存缓存工作流状态。
-- 前端工作台：client 完成注册、登录、同意、消息与状态刷新；lawyer/admin 按真实权限进入审核队列。
+同一完成态（移动端 390 × 844）：
 
-## 技术栈
+![真实 client 律师批准后移动视图](assets/screenshots/frontend-fixed-client-approved-mobile.png)
 
-后端：
-
-- FastAPI、Uvicorn、Pydantic
-- SQLAlchemy async ORM、SQLite、Redis
-- LangGraph、LangChain
-- ChromaDB、BM25Retriever、EnsembleRetriever
-- 阿里云百炼 / Ollama 兼容的 LLM 与 embedding 工厂
-- PyJWT、passlib、RBAC 依赖注入
-- pytest、pytest-asyncio、ruff
-
-前端：
-
-- React、TypeScript、Vite
-- Vitest、Testing Library
-- lucide-react 图标
-
-## 前端 MVP
-
-第一屏直接进入登录/注册与角色工作台。client 页面明确区分 LangGraph/Redis 的 `session_id` 与 SQLite 的 `consultation_id`，并展示工作流 Agent、系统追问、结构化事实、候选法条、风险评估和报告空状态。lawyer/admin 页面只读取真实分配或活跃 workflow 草案；没有律师账号或分配记录时显示权限与空状态，不生成演示案件。
-
-真实后端 client 路径（1440×900）：
-
-![桌面端真实咨询与结构化事实](assets/screenshots/frontend-client-facts-desktop.jpg)
-
-移动端响应式视图（390×844）：
-
-![移动端真实咨询页面](assets/screenshots/frontend-client-facts-mobile.jpg)
+早期 client 追问与结构化事实截图仍保留在 [assets/screenshots](assets/screenshots)，用于区分第一轮 MVP 证据与本次自然闭环证据。
 
 ## 系统架构
 
-```text
-FastAPI backend
-  ├─ /api/v1/auth           注册、登录、刷新、当前用户、登出
-  ├─ /api/v1/sessions       Agent 会话创建、消息、同意、状态、审核、关闭
-  ├─ /api/v1/consultations  咨询历史、消息、分配律师、状态更新
-  ├─ /api/v1/knowledge      文档上传、检索库管理
-  ├─ /api/v1/users          用户管理
-  ├─ /api/v1/lawyer(s)      律师相关接口
-  └─ /api/v1/sessions/{id}/ws WebSocket 消息和心跳
+```mermaid
+flowchart LR
+    User["咨询用户 / 律师 / 管理员"] --> Frontend["React + TypeScript 前端"]
+    Frontend -->|"REST + 状态轮询"| API["FastAPI /api/v1"]
+    ClientWS["client WebSocket"] -->|"access token + session owner"| API
 
-LangGraph StateGraph
-  Receptionist
-    -> FactDigger
-    -> WaitForUser -> LawRef -> FactDigger
-    -> RiskAssessor -> ServicePlanner -> HumanReview
-    -> HumanAlert
-
-Data and retrieval
-  ├─ SQLite: users, consultations, consultation_messages
-  ├─ Redis: session:{session_id} 状态缓存
-  ├─ LangGraph MemorySaver: workflow checkpoint
-  ├─ ChromaDB: 文档向量检索
-  └─ backend/data/law_knowledge/criminal_law_chapters.json: 法条结构化知识库
+    API --> Auth["JWT access/refresh + RBAC"]
+    API --> Sessions["会话与咨询 service"]
+    API --> Knowledge["知识库管理"]
+    Sessions --> Graph["LangGraph StateGraph"]
+    Sessions --> Redis["Redis session cache"]
+    Sessions --> SQLite["SQLite + SQLAlchemy async"]
+    Graph --> Checkpoint["MemorySaver checkpoint"]
+    Graph --> Agents["Receptionist / FactDigger / WaitForUser / LawRef / RiskAssessor / ServicePlanner / HumanReview / HumanAlert"]
+    Knowledge --> Chroma["Chroma persistent collection"]
+    Agents --> RAG["HyDE + Chroma / BM25 + reranker"]
+    RAG --> Chroma
+    RAG --> LawJSON["本地结构化法条 JSON 验证库"]
 ```
 
-## Agent 工作流说明
+存储边界不是一套强一致事务：LangGraph checkpoint 在进程内，Redis 是会话缓存，SQLite 保存用户、咨询与 HTTP 消息等数据；完整 workflow state 目前不能仅靠 SQLite 恢复。
 
-工作流定义在 `ConsultationOrchestrator._build_workflow()`：
+## LangGraph 工作流
 
-```text
-START
-  -> receptionist
-  -> check_consent
-       continue -> fact_digger
-       end      -> END
+源码拓扑定义在 [`ConsultationOrchestrator._build_workflow()`](backend/app/orchestrator/workflow.py)。
 
-fact_digger
-  -> check_facts_sufficient
-       complete -> risk_assessor -> service_planner -> human_review
-       loop     -> wait_for_user -> law_ref -> fact_digger
-       alert    -> human_alert -> END
-       max_loop -> risk_assessor
+```mermaid
+flowchart TD
+    Start(["START"]) --> Receptionist["receptionist"]
+    Receptionist --> Consent{"check_consent"}
+    Consent -->|"未同意"| End(["END"])
+    Consent -->|"已同意"| FactDigger["fact_digger"]
 
-human_review
-  -> lawyer_decision
-       approved     -> END
-       revise_facts -> fact_digger
-       revise_risk  -> risk_assessor
+    FactDigger --> Facts{"check_facts_sufficient"}
+    Facts -->|"alert_triggered"| HumanAlert["human_alert"]
+    HumanAlert --> End
+    Facts -->|"coverage < 0.8"| WaitForUser["wait_for_user"]
+    WaitForUser -->|"外部输入后恢复"| LawRef["law_ref"]
+    LawRef --> FactDigger
+    Facts -->|"coverage >= 0.8 或循环 >= 10"| RiskAssessor["risk_assessor"]
+    RiskAssessor --> ServicePlanner["service_planner"]
+    ServicePlanner --> HumanReview["human_review"]
+
+    HumanReview --> Decision{"lawyer_decision"}
+    Decision -->|"approved"| End
+    Decision -->|"revise_facts"| FactDigger
+    Decision -->|"revise_risk"| RiskAssessor
+    Decision -->|"尚无有效决定"| HumanReview
 ```
 
-关键控制点：
+`receptionist`、`wait_for_user`、`human_review`、`human_alert` 执行后会中断。高风险分支到达 `END` 表示自动图停止，不表示外部律师工单或通知已发送。
 
-- `interrupt_after=["receptionist", "wait_for_user", "human_review", "human_alert"]`：这些节点执行后暂停，等待外部用户或律师输入。
-- `COVERAGE_THRESHOLD = 0.8`：事实覆盖度达到阈值后进入风险评估。
-- `fact_law_loop_count >= 10`：防止 FactDigger / LawRef 无限循环，达到上限后强制进入风险评估。
-- `alert_triggered`：高风险表达会从 FactDigger 分流到 HumanAlert。
-- `lawyer_decision`：律师审核决定控制最终批准或回退到前序节点。
+## RAG 检索与验证流程
 
-更详细的节点输入输出见 [docs/architecture.md](docs/architecture.md)。
-
-## RAG 检索流程
-
-RAG 主链路由 `RagService`、`HybridRetriever`、`VectorStoreService` 和 `LawRef` 共同完成：
-
-```text
-结构化事实
-  -> 拼接 behavior_sequence / consequence 为查询
-  -> HyDE 生成假设性回答
-  -> ChromaDB 向量检索 + BM25 混合召回
-  -> reranker 重排序
-  -> 文档摘要
-  -> LawRef 从文档中提取法条编号
-  -> JSON 法条库精确验证并增强元数据
-  -> JSON 关键词检索补召回
-  -> LLM 提取结构化法律分析
-  -> applied_laws / element_to_law_mapping 写回 state
+```mermaid
+flowchart TD
+    Facts["facts_structured + user_id"] --> Query["拼接行为与后果为 query"]
+    Query --> Keyword["本地 JSON 关键词补召回"]
+    Query --> HyDE["HyDE 假设文本；失败回退原 query"]
+    HyDE --> Hybrid["按 user_id / public 范围建立 retriever"]
+    Hybrid --> Vector["Chroma 向量召回"]
+    Hybrid -. "query < 200 且有语料" .-> BM25["从同范围 Chroma 文档临时构建 BM25"]
+    Vector --> Ensemble["向量结果或 Ensemble 融合"]
+    BM25 --> Ensemble
+    Ensemble --> Dedupe["正文前缀 MD5 去重"]
+    Dedupe --> Rerank["reranker；失败保留原顺序"]
+    Rerank --> Article["从候选正文提取法条编号"]
+    Article --> Verify["本地法条 JSON 精确验证与元数据增强"]
+    Verify --> Mark["标记 rag_verified / rag_unverified"]
+    Mark --> Merge["与 JSON 关键词结果合并去重"]
+    Keyword --> Merge
+    Merge --> Extract["LLM 提取结构化法律分析；失败使用候选回退"]
+    Extract --> State["applied_laws + element_to_law_mapping"]
+    State --> Coverage["rag_unverified 不参与事实覆盖度计算"]
 ```
 
-需要注意：当前工作流主要消费的是检索到的 `documents` 和法条验证结果，而不是把 RAG summary 直接作为法律结论。未通过 JSON 法条库验证的 RAG 结果会标记为 `rag_unverified`，事实覆盖度计算会跳过这类结果。
+内置法条 JSON 是验证与规则补召回数据，不等于已填充的 Chroma 向量库。真实 RAG 还依赖可用的 embedding、已入库文档和本地 reranker；[`demos/rag/results/2026-07-14-ollama.json`](demos/rag/results/2026-07-14-ollama.json) 保存了一次 5 条查询的 live 子链记录，仅作运行证据，不是质量指标。
 
-2026-07-13 首次验收保留了“空 Chroma + Ollama 502”的失败记录；修复 loopback 请求误走系统代理并通过现有 service 链路入库后，2026-07-14 五条样例已实际运行 HyDE、Chroma + BM25/Ensemble、去重、reranker 与 JSON 验证子链。两次运行条件、真实 top-k 和仍存在的边界见 [docs/rag.md](docs/rag.md) 和 [demos/rag/](demos/rag/)。
+## 快速启动
 
-## 本地启动方式
+### 前置条件
 
-推荐从仓库根目录使用统一入口：
+- Python `>=3.10`；统一 Make 入口默认用 `uv` 创建 Python 3.12 环境。
+- Node.js、npm、Redis 7+。
+- Ollama 本地模型，或可用的阿里云百炼兼容接口。
+
+### Make 入口
 
 ```bash
 cp backend/.env.example backend/.env
-# 编辑 backend/.env：替换 JWT 密钥，并选择 Ollama 或阿里云模型路径
+# 修改 JWT_SECRET_KEY，并选择 Ollama 或阿里云聊天 / embedding 配置
+
 make install
-redis-server              # 单独终端
-make run-backend          # 单独终端，127.0.0.1:8000
-make run-frontend         # 单独终端，127.0.0.1:5173
+redis-server              # 终端 1；当前后端启动硬依赖
+make run-backend          # 终端 2：http://127.0.0.1:8000
+make run-frontend         # 终端 3：http://127.0.0.1:5173
 ```
 
-然后访问 `http://127.0.0.1:5173`；后端健康检查为 `http://127.0.0.1:8000/health`，OpenAPI 为 `http://127.0.0.1:8000/docs`。
+验证入口：
 
-后端手动安装仍可使用通用 `uv` 环境：
+```bash
+curl http://127.0.0.1:8000/health
+# {"status":"healthy"}
+
+make test                 # 定向后端回归 + 全部前端测试，不是完整 pytest
+make eval                 # 30 条 deterministic baseline
+```
+
+### 通用 `uv` 后端环境
 
 ```bash
 cd backend
 cp .env.example .env
-# 编辑 .env，至少配置 JWT_SECRET_KEY 和 LLM / embedding 相关变量
-uv venv
+# 至少替换 JWT_SECRET_KEY，并配置 LLM / embedding
+uv venv --python 3.12
 uv pip install --python .venv/bin/python -r requirements.txt
 .venv/bin/python main.py
 ```
 
-也可以使用 `requirements.txt`：
-
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python main.py
-```
-
-服务默认启动在 `http://localhost:8000`，接口文档为 `http://localhost:8000/docs`。
-
-前端开发服务：
+前端可单独运行：
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Vite 默认运行在 `http://127.0.0.1:5173`，开发代理将 `/api` 与 `/health` 转发到 `http://127.0.0.1:8000`。生产构建使用 `npm run build`；前端假定部署后与 `/api/v1` 同源。
+配置模板见 [backend/.env.example](backend/.env.example)，统一命令见 [Makefile](Makefile)。
 
-Redis：
+### 本地演示角色初始化
+
+公开注册始终只能创建 `client`。本地演示如需 `admin` / `lawyer`，先用受控 CLI 初始化管理员，再由管理员调用既有 API 创建律师与分配案件；CLI 不接受命令行明文密码、要求显式本地确认，并拒绝 `APP_ENV=production`：
 
 ```bash
-redis-server
+cd backend
+read -s PHASE9_ADMIN_PASSWORD && export PHASE9_ADMIN_PASSWORD
+.venv/bin/python -m examples.phase9_demo_admin \
+  --confirm-local-demo \
+  --username phase9_admin \
+  --password-env PHASE9_ADMIN_PASSWORD
+unset PHASE9_ADMIN_PASSWORD
 ```
 
-或使用本机服务管理器启动 Redis。后端启动时会执行 `init_redis()`，Redis 不可用会导致启动失败。
+管理员登录后使用 `POST /api/v1/lawyers/` 创建临时律师账号，再用 `POST /api/v1/consultations/assign` 提交 `consultation_id` 与 `lawyer_id`。两步均受 admin JWT 保护；演示密码只放在当前终端环境或无回显输入中，不写入仓库。律师主要审核动作使用 workflow `session_id` 调用 `PUT /api/v1/sessions/{session_id}/review`，不能用 SQLite-only 报告更新替代 LangGraph 恢复。
 
-模型与数据配置：
+### 模型、数据与 Docker 边界
 
-- 本地 Ollama：保持 `LLM_TYPE=OLLAMA`、`EMBED_MODEL_TYPE=OLLAMA`，提前执行 `ollama pull qwen3.5:0.8b` 和 `ollama pull qwen3-embedding:0.6b`。聊天模型读取 `OLLAMA_MODEL_NAME`，embedding 实际读取 `TEXT_EMBEDDING_MODEL_NAME`。
-- 阿里云百炼：把两种类型都改为 `ALIYUN`，填写 `ALIYUN_ACCESS_KEY_SECRET`，并核对聊天与 embedding 模型名。不要把真实密钥写回 `.env.example`。
-- SQLite 表由后端 lifespan 自动创建；默认文件是 `backend/data/chat_history.db`。Redis 是启动硬依赖。
-- Chroma 默认目录是 `backend/data/chromadb`，初始可为空；管理员仍需通过知识库接口实际入库。内置 JSON 法条库不等于已填充的向量库。
-- reranker 权重不随 Git 或 Docker 镜像分发；本地模型缺失时重排序记录错误并回退原检索顺序。
+- Ollama 默认示例使用 `qwen3.5:0.8b` 和 `qwen3-embedding:0.6b`；阿里云模式需自行提供 key，不能把真实密钥写回仓库。
+- SQLite 表由 lifespan 创建；Redis 连接失败会阻止后端启动。
+- Chroma 初始可以为空，需通过知识库链路实际入库；健康检查不准备向量数据，也不调用 LLM。
+- reranker 权重不随 Git 或 Docker 镜像分发；模型缺失或加载失败时保留原召回顺序。
+- [docker-compose.yml](docker-compose.yml) 只包含 backend + Redis。Ollama / 阿里云、reranker 权重和前端均在 Compose 外。
+- `docker compose config --quiet` 已验证；镜像 build、Compose up 和容器健康检查尚未完整验证，不能把配置校验视为部署成功。
 
-Docker Compose 当前只包含 FastAPI 后端和 Redis：
+## API 最小闭环
+
+基础地址为 `http://127.0.0.1:8000/api/v1`，OpenAPI 页面为 `http://127.0.0.1:8000/docs`。
+
+### 1. 注册与登录
+
+公开注册只创建 `client`，不能通过请求体自助创建 `lawyer` 或 `admin`。
 
 ```bash
-cp backend/.env.example backend/.env
-# 编辑密钥和模型配置
-make compose-config
-make compose-up
-curl http://127.0.0.1:8000/health
-make compose-down
+curl -X POST http://127.0.0.1:8000/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"client1","password":"Passw0rd!","email":"client1@example.com","real_name":"测试用户"}'
+
+curl -X POST http://127.0.0.1:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"client1","password":"Passw0rd!"}'
 ```
 
-Redis 使用独立命名卷；SQLite、Chroma、MD5 记录和容器内模型缓存使用另一个命名卷。Ollama 不在 Compose 内，容器通过 `host.docker.internal:11434` 访问宿主机；前端也不在容器中，仍用 `make run-frontend` 启动。本阶段 `docker compose config --quiet` 与 Docker daemon 检查通过，但镜像检查停在 `python:3.12-slim` 元数据拉取并在有限等待后取消，因此没有宣称镜像 build、Compose up 或容器健康检查通过。
+认证路由运行时成功响应使用 envelope：
 
-常见启动问题：
-
-- 后端无法启动：先用 `redis-cli ping` 检查 Redis，再核对主机、端口、DB 和密码。
-- Ollama 调用失败：检查 `ollama list`、模型名、服务地址，以及容器到宿主机的可达性。
-- 阿里云返回 401/403：检查 API key、base URL、模型权限与网络，不要在日志或 issue 中粘贴密钥。
-- Chroma 检索为空：健康检查不会自动准备向量数据，需要先完成 embedding 配置和知识库入库。
-- 端口冲突：可用 `BACKEND_PORT=... make run-backend` 或 `FRONTEND_PORT=... make run-frontend`；Vite 开发代理仍固定指向后端 8000。
-- Docker 无法连接 daemon：先启动 Docker Desktop / Docker Engine；镜像仓库不可达时，Compose 配置通过也不代表镜像已构建。
-
-统一测试与离线评估入口：
-
-```bash
-make test
-make eval
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "access_token": "<access_token>",
+    "refresh_token": "<refresh_token>",
+    "token_type": "bearer",
+    "expires_in": 900,
+    "user": {"id": "<user_id>", "role": "client"}
+  }
+}
 ```
 
-`make test` 是后端定向回归加全部前端测试，不等同于完整 pytest。历史完整收集曾被 `Killed: 9`，因此项目继续按风险分组；`make eval` 是 30 条确定性 baseline，不代表真实 LLM / RAG 质量。
-
-## 环境变量说明
-
-见 [backend/.env.example](backend/.env.example)。常用变量如下：
-
-| 变量 | 说明 | 默认 / 示例 |
-| --- | --- | --- |
-| `JWT_SECRET_KEY` | JWT 签名密钥，生产环境必须替换 | `CHANGE_ME_IN_PRODUCTION` |
-| `JWT_ALGORITHM` | JWT 算法 | `HS256` |
-| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | access token 有效期 | `15` |
-| `JWT_REFRESH_TOKEN_EXPIRE_DAYS` | refresh token 有效期 | `7` |
-| `LLM_TYPE` | 聊天模型后端 | `ALIYUN` 或 `OLLAMA` |
-| `ALIYUN_ACCESS_KEY_SECRET` | 阿里云百炼 API key | 无默认可用值 |
-| `ALIYUN_BASE_URL` | OpenAI 兼容接口地址 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| `ALIYUN_MODEL_NAME` | 阿里云聊天模型 | `qwen3-max` |
-| `OLLAMA_BASE_URL` | Ollama 服务地址 | `http://localhost:11434` |
-| `OLLAMA_MODEL_NAME` | Ollama 聊天模型 | `qwen3.5:0.8b` |
-| `EMBED_MODEL_TYPE` | embedding 后端 | `ALIYUN` 或 `OLLAMA` |
-| `ALIYUN_EMBED_MODEL_NAME` | 阿里云 embedding 模型 | `text-embedding-v4` |
-| `TEXT_EMBEDDING_MODEL_NAME` | Ollama embedding 模型 | `qwen3-embedding:0.6b` |
-| `DATABASE_PATH` | SQLite 数据库路径 | `./data/chat_history.db` |
-| `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | Redis 连接配置 | `localhost` / `6379` / `3` |
-| `CHROMA_PERSIST_DIRECTORY` | Chroma 持久化目录 | `data/chromadb` |
-| `RERANKER_MODEL_PATH` | reranker 本地模型路径 | `./data/models/Qwen/Qwen3-Reranker-0.6B` |
-| `LOG_LEVEL` | 全局日志级别 | `INFO` |
-
-## API 示例
-
-注册：
+把登录返回的 token 写入当前终端：
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "client1",
-    "password": "Passw0rd!",
-    "email": "client1@example.com",
-    "real_name": "测试用户"
-  }'
+export ACCESS_TOKEN='<access_token>'
 ```
 
-登录：
+### 2. 创建 workflow 会话
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "client1", "password": "Passw0rd!"}'
-```
-
-创建咨询会话：
-
-```bash
-curl -X POST http://localhost:8000/api/v1/sessions \
+curl -X POST http://127.0.0.1:8000/api/v1/sessions \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "client_id": "client1",
-    "user_type": "suspect",
-    "initial_message": "我想咨询一个刑事案件",
-    "source": "web"
-  }'
+  -H 'Content-Type: application/json' \
+  -d '{"user_type":"suspect","source":"readme"}'
 ```
 
-确认知情同意：
+`/sessions` 路由直接返回其 Pydantic response model，不包在 `data` 中：
+
+```json
+{
+  "session_id": "<workflow_session_id>",
+  "consultation_id": "<sqlite_consultation_id>",
+  "welcome_message": "<权利义务告知>",
+  "current_agent": "Receptionist",
+  "created_at": "<ISO-8601>"
+}
+```
+
+两个 ID 不能混用：
+
+- `session_id`：LangGraph、Redis 和 `/sessions/{session_id}` 实时 workflow 路由使用。
+- `consultation_id`：SQLite 咨询记录、历史和律师分配等数据库路由使用。
+
+### 3. 知情同意与消息
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/sessions/$SESSION_ID/confirm-consent \
+export SESSION_ID='<workflow_session_id>'
+
+curl -X POST "http://127.0.0.1:8000/api/v1/sessions/$SESSION_ID/confirm-consent" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "session_id": "'$SESSION_ID'",
-    "consent_given": true,
-    "consent_timestamp": "2026-07-03T10:00:00Z",
-    "consent_version": "v1",
-    "identity_info": {"role": "suspect"}
-  }'
-```
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"$SESSION_ID\",\"consent_given\":true,\"consent_timestamp\":\"2026-07-16T08:00:00Z\",\"consent_version\":\"v1\",\"identity_info\":{\"role\":\"suspect\"}}"
 
-发送案件描述：
-
-```bash
-curl -X POST http://localhost:8000/api/v1/sessions/$SESSION_ID/message \
+curl -X POST "http://127.0.0.1:8000/api/v1/sessions/$SESSION_ID/message" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "session_id": "'$SESSION_ID'",
-    "content": "事情发生在杭州，我和对方发生争执，对方先动手，我推了他一下，他摔倒后报警了。",
-    "message_type": "text"
-  }'
+  -H 'Content-Type: application/json' \
+  -d "{\"session_id\":\"$SESSION_ID\",\"content\":\"事情发生在杭州，我和对方发生争执，对方先动手，我推了他一下。\",\"message_type\":\"text\"}"
 ```
 
-律师审核：
+核心权限边界：client 只能访问自己的会话；lawyer 只能访问已分配会话；admin 可管理用户、律师和知识库。律师审核使用 `PUT /api/v1/sessions/{session_id}/review`，可选择 `approved`、`revise_facts` 或 `revise_risk`。运行时错误统一为：
+
+```json
+{"error":{"code":"FORBIDDEN","message":"无权访问此会话"}}
+```
+
+部分历史成功路由仍返回 `{code,message,data}`，workflow `/sessions` 路由返回裸 response model；前端客户端同时兼容两种成功格式。自动生成的 422 OpenAPI schema 也可能仍显示 FastAPI 默认 `detail`，但运行时由全局处理器转换为 `error` envelope。
+
+## Demo 与评估证据
+
+### 可审计 Demo 资产
+
+- [三条咨询 case 的数据契约](demos/consultation/README.md) 与 [普通伤害 case](demos/consultation/cases/ordinary_assault.json)：用于展示普通追问、事实不足和高风险转人工控制路径，不是真实案件。
+- [确定性咨询 Demo runner](backend/examples/demo_complete.py) 与 [对应测试](backend/tests/demo/test_demo_complete.py)：固定节点输出会标记 `data_source=demo_fixture`，不冒充真实 RAG。
+- [五条 RAG query](demos/rag/queries.json)、[历史失败记录](demos/rag/results/2026-07-13.json) 与 [Ollama live 记录](demos/rag/results/2026-07-14-ollama.json)：保留成功与失败条件，不能当作召回率或稳定性统计。
+
+运行普通咨询 Demo：
 
 ```bash
-curl -X PUT http://localhost:8000/api/v1/sessions/$SESSION_ID/review \
-  -H "Authorization: Bearer $LAWYER_ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "decision": "revise_facts",
-    "feedback": "请补充伤情鉴定和是否取得谅解。"
-  }'
+cd backend
+.venv/bin/python -m examples.demo_complete --case ordinary_assault
 ```
 
-## 示例输入输出
+### 30 条 deterministic baseline
 
-输入：
+当前唯一活动评估入口是 [evaluation/run_eval.py](evaluation/run_eval.py)，输入为 [30 条固定 JSONL case](evaluation/cases.jsonl)，模式为 `offline-deterministic-baseline`。
 
-```text
-我家人因为和别人打架被带走了。事情发生在杭州，对方说受伤了，但我们不清楚有没有鉴定。
-```
+| 指标 | 已有结果 |
+| --- | ---: |
+| 事实字段抽取覆盖 | 74 / 77（96.1%） |
+| 法条关键词 hit@5 | 36 / 36（100.0%） |
+| 高风险触发 | 30 / 30（100.0%） |
+| 追问触发 | 29 / 30（96.7%） |
+| 拒答触发 | 29 / 30（96.7%） |
+| 免责声明 | 30 / 30（100.0%） |
 
-可能输出：
+这组结果只描述固定小样例中的确定性规则基线。runner 不调用真实 LLM、Ollama、Chroma、向量检索或 reranker，因此不能外推真实 LLM/RAG 准确率、开放输入表现或生产稳定性。历史 8 条 MVP 使用不同输入契约，也不与这组结果直接比较。
 
-```text
-为了更准确地分析案件，请您补充以下信息：
+## 当前限制
 
-1. 事件发生的具体时间、地点和参与人员分别是什么？
-2. 双方冲突过程中具体有哪些行为？是否有人使用工具？
-3. 对方伤情是否已有医院诊断或伤情鉴定？
-4. 公安机关目前采取了什么措施，是否已刑事拘留？
-```
+- 本项目是工程原型，输出用于初步信息整理，不替代执业律师意见，也没有真实用户、线上业务或商业指标证据。
+- `MemorySaver`、Redis、进程内状态和 SQLite 不是强一致存储；完整 workflow state 不从数据库恢复，WebSocket 消息也未写入 `consultation_messages`。
+- Redis 是后端启动硬依赖；access token 没有服务端即时撤销列表。
+- Chroma 默认空库，知识上传格式与模型依赖仍有边界；JSON 关键词匹配、法条编号抽取和 `rag_unverified` 候选都可能产生噪声。
+- 已用一条修复后的虚构案件在同一后端进程内自然走到 HumanReview，并完成 admin 分配、真实 lawyer 前端批准和 client 完成态；演示账号由本地受控 CLI/API 临时创建，仓库不分发账号或密码。
+- 本次自然运行中的候选法条、风险字段、费用占位和报告措辞是小模型草案，存在空值、占位与不可靠建议；截图只证明数据和审核链路，不构成法律质量评估。
+- `PUT /sessions/{session_id}/review` 会完成活跃 workflow，但当前不会把最终文本、完成时间和状态强一致回写 SQLite consultation；服务重启后 `MemorySaver` checkpoint 和活跃队列不能恢复，Redis/SQLite 只读状态也不能继续执行该图。演示完整闭环必须在同一后端进程内完成。
+- 当前测试入口采用定向后端回归和前端测试；历史完整 pytest 收集曾出现 `Killed: 9`，因此没有宣称全量测试、覆盖率或全部 Ruff 规则已通过。
+- Compose 尚未取得完整 build/up/health 证据，也没有前端镜像、模型服务和 reranker 权重分发方案。
 
-高风险输入示例：
+## 可迁移场景
 
-```text
-我想让朋友统一口径，不要把关键事实说出去。
-```
+下列是这套“结构化抽取 → 检索验证 → 条件路由 → 人工审核”架构可适配的方向，不是本仓库已经交付的产品：
 
-可能输出：
+- 企业知识库问答：将法条 JSON 验证替换为企业制度、产品或技术规范校验。
+- 智能客服预审：用结构化 Tool Calling 收集工单要素，缺项时持续追问。
+- 工单分流：把风险条件边替换为优先级、部门或 SLA 路由。
+- 合规审核：对检索证据与规则库做双层验证，并保留人工批准门禁。
+- 内部流程助手：复用 checkpoint、中断恢复、RBAC 和审计数据边界。
 
-```text
-为保护您的权益，此部分内容建议直接与律师单独沟通。
-```
+## 后续计划
 
-说明：真实输出取决于配置的 LLM、知识库内容、当前工作流状态和已收集事实。
+1. 使用持久化 LangGraph checkpointer，并明确 SQLite、Redis 与 workflow state 的一致性及最终审核回写策略。
+2. 完善知识库文档解析、向量库初始化与带版本的 RAG 评估集。
+3. 增加 Alembic、容器 build/up smoke、前端部署与更细的失败场景测试。
+4. 将 deterministic baseline 与固定模型/提示词/索引版本的 live LLM/RAG 评估分开报告。
 
-## 当前限制与后续优化方向
+## 代码入口
 
-当前限制：
+- [FastAPI 入口](backend/main.py)
+- [LangGraph 工作流](backend/app/orchestrator/workflow.py)
+- [Agent 节点](backend/app/agents)
+- [RAG 服务](backend/app/rag)
+- [API 路由](backend/app/v1/router)
+- [React 前端](frontend/src)
+- [Demo 资产](demos/README.md)
+- [离线评估](evaluation/README.md)
+- [部署配置](backend/.env.example)
+- [LICENSE](LICENSE)
 
-- LangGraph 使用 `MemorySaver` 作为 checkpointer，服务重启后的断点恢复能力有限；Redis 是额外缓存，不等价于完整工作流持久化。
-- `Consultation` 表包含事实、法条、风险、报告字段，但当前主流程主要保存消息和部分状态，数据库字段与工作流 state 仍可进一步打通。
-- WebSocket 端点在握手前校验 access token 和会话所有权；浏览器客户端通过 `?token=` 传递 token，当前只允许会话所有者的 `client` 连接。
-- RAG 检索依赖知识库内容和 embedding / reranker 模型配置；未通过 JSON 法条库验证的结果不会被当作可靠构成要件来源。
-- 当前没有数据库 migration 工具，表结构由 SQLAlchemy metadata 在启动时创建。
-- 评估已有离线 MVP，但还没有覆盖真实 LLM 输出质量、长期对话一致性和人工审核质量的完整指标体系。
-- 后端测试位于 `backend/tests/`，已纳入版本控制，并由受限 GitHub Actions 分组执行。
-- 前端真实 client 路径已联调到 FactDigger 追问与结构化事实；本次没有可用的 lawyer/admin 演示账号或数据库分配，因此律师批准闭环只验证了类型、组件和 mock 网络测试，未作为真实后端证据。
+## License
 
-后续优化：
-
-- 把 LangGraph checkpoint 切换到可持久化后端，并统一 DB / Redis / checkpoint 的状态边界。
-- 逐步扩大现有受限 CI，并补 Alembic migration、容器构建门禁和端到端冒烟测试。
-- 为 RAG 建立标注集，评估 recall@k、rerank 命中率、法条验证通过率、未验证结果占比。
-- 增加律师审核操作的审计日志和报告版本管理。
-- 补 WebSocket token 传输加固、速率限制和消息持久化。
-- 为高风险检测增加更系统的测试样本，降低误报与漏报。
-
-## 文档
-
-- [docs/demo.md](docs/demo.md)：三条标准 case、完整可复现流程、FastAPI curl 路径和演示边界。
-- [docs/architecture.md](docs/architecture.md)：LangGraph 工作流、节点职责、条件边和人工介入。
-- [docs/rag.md](docs/rag.md)：真实 RAG 调用链、实现状态、fallback、运行证据和简历表述边界。
-- [docs/evaluation.md](docs/evaluation.md)：30 条正式离线评估集、指标定义、实际结果和失败边界。
-- [docs/testing.md](docs/testing.md)：测试分组、Phase 5 契约映射、受限 CI 和已知限制。
-- [docs/api.md](docs/api.md)：核心接口、JWT/RBAC 权限、错误码、Redis/SQLite 边界和可复制 curl。
-- [backend/.env.example](backend/.env.example)：安全配置模板与全部启动变量。
-- [Makefile](Makefile)：安装、前后端启动、测试、评估与 Compose 入口。
-- [docker-compose.yml](docker-compose.yml)：backend + Redis 容器范围和持久卷配置。
-- [demos/](demos/)：咨询 Demo case、RAG 查询、历史失败记录和 2026-07-14 live 结果。
-- [evaluation/](evaluation/)：唯一活动评估入口及旧版 MVP 历史报告。
-
-## 许可证
-
-见 [LICENSE](LICENSE)。
+本项目按 [MIT License](LICENSE) 开源。

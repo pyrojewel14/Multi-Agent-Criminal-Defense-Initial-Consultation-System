@@ -338,6 +338,10 @@ async def get_session_state(
         state.get("current_agent"),
     )
 
+    is_approved = state.get("lawyer_decision") == "approved"
+    workflow_finished = await orchestrator.is_workflow_finished(session_id)
+    status = "completed" if is_approved and workflow_finished else "active"
+
     return SessionStateResponse(
         session_id=session_id,
         consultation_id=state.get("consultation_id"),
@@ -354,7 +358,7 @@ async def get_session_state(
         risk_assessment=state.get("risk_assessment"),
         final_output=state.get("final_output"),
         lawyer_id=state.get("lawyer_id"),
-        status="active",
+        status=status,
     )
 
 

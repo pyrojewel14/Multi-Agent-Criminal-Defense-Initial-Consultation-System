@@ -170,6 +170,40 @@ async def test_session_state_rejects_unassigned_lawyer(test_app):
 
 
 @pytest.mark.asyncio
+async def test_client_state_reports_completed_after_lawyer_approval(test_app):
+    state = make_consultation_state(
+        session_id="session-approved",
+        consultation_id="consultation-approved",
+        user_id="client-1",
+        lawyer_id="lawyer-1",
+        current_agent="HumanReview",
+        awaiting_lawyer_review=False,
+        lawyer_decision="approved",
+        final_output="律师审核后的最终报告",
+    )
+    with patch(
+        "app.v1.service.consultation_service.get_session_state",
+        new_callable=AsyncMock,
+        return_value=state,
+    ), patch(
+        "app.v1.router.consultation.routes.orchestrator.is_workflow_finished",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/v1/sessions/session-approved/state",
+                headers=_headers("client-1", "client"),
+            )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert response.json()["final_output"] == "律师审核后的最终报告"
+
+
+@pytest.mark.asyncio
 async def test_unknown_signed_role_fails_closed(test_app):
     async with AsyncClient(
         transport=ASGITransport(app=test_app), base_url="http://test"

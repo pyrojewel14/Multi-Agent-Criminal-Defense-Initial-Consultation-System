@@ -333,6 +333,26 @@ def _build_element_to_law_mapping(laws: List[Dict[str, Any]], elements_key: str 
     return mapping
 
 
+def _flatten_fact_terms(value: Any) -> List[str]:
+    """将 FactDigger 的嵌套事实值展开为可检索文本。"""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, dict):
+        terms: List[str] = []
+        for nested_value in value.values():
+            terms.extend(_flatten_fact_terms(nested_value))
+        return terms
+    if isinstance(value, (list, tuple, set)):
+        terms = []
+        for item in value:
+            terms.extend(_flatten_fact_terms(item))
+        return terms
+    return [str(value)]
+
+
 async def search_laws_by_keyword(facts_structured: Dict[str, Any], law_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """通过关键词搜索匹配的刑法条文。
 
@@ -346,13 +366,8 @@ async def search_laws_by_keyword(facts_structured: Dict[str, Any], law_data: Dic
     behavior_sequence = facts_structured.get("behavior_sequence", [])
     consequence = facts_structured.get("consequence", "")
 
-    search_terms = []
-    if isinstance(behavior_sequence, list):
-        search_terms.extend(behavior_sequence)
-    else:
-        search_terms.append(str(behavior_sequence))
-    if consequence:
-        search_terms.append(str(consequence))
+    search_terms = _flatten_fact_terms(behavior_sequence)
+    search_terms.extend(_flatten_fact_terms(consequence))
 
     matched_laws = []
 
@@ -426,13 +441,8 @@ async def search_laws_by_rag(facts_structured: Dict[str, Any], user_id: str | No
         behavior_sequence = facts_structured.get("behavior_sequence", [])
         consequence = facts_structured.get("consequence", "")
 
-        query_parts = []
-        if isinstance(behavior_sequence, list):
-            query_parts.extend(behavior_sequence)
-        else:
-            query_parts.append(str(behavior_sequence))
-        if consequence:
-            query_parts.append(str(consequence))
+        query_parts = _flatten_fact_terms(behavior_sequence)
+        query_parts.extend(_flatten_fact_terms(consequence))
 
         query = " ".join(query_parts)
         if not query.strip():

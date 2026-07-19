@@ -138,6 +138,230 @@ async def test_analyze_coverage_all_covered():
 
 
 @pytest.mark.asyncio
+async def test_analyze_coverage_requires_confirmed_injury_result():
+    """软组织挫伤且待鉴定时不能确认轻伤、重伤或死亡要件。"""
+    facts = {
+        "behavior_sequence": [{"action": "故意挥拳击打对方面部"}],
+        "consequence": "鼻部软组织挫伤，伤情待鉴定",
+    }
+    laws = [
+        {
+            "elements": ["故意损害他人身体健康", "造成轻伤、重伤或死亡"],
+            "data_source": "rag_verified",
+        }
+    ]
+
+    result = await _analyze_coverage(facts, laws)
+
+    assert result["coverage_rate"] == 0.5
+    assert result["covered_elements"] == 1
+    assert result["missing_elements"] == ["造成轻伤、重伤或死亡"]
+
+
+@pytest.mark.asyncio
+async def test_analyze_coverage_rejects_public_order_false_positives():
+    """单次推搡和明确否定结果不能覆盖寻衅滋事的五类要件。"""
+    facts = {
+        "behavior_sequence": [{"action": "双方争执时推了对方一下"}],
+        "consequence": "没有财物损毁，未造成公共秩序混乱",
+    }
+    laws = [
+        {
+            "elements": [
+                "随意殴打他人",
+                "追逐拦截辱骂恐吓他人",
+                "强拿硬要或任意损毁占用公私财物",
+                "在公共场所起哄闹事",
+                "破坏社会秩序",
+            ],
+            "data_source": "rag_verified",
+        }
+    ]
+
+    result = await _analyze_coverage(facts, laws)
+
+    assert result["coverage_rate"] < 1.0
+    assert result["covered_elements"] == 0
+    assert set(result["missing_elements"]) == set(laws[0]["elements"])
+
+
+@pytest.mark.asyncio
+async def test_article_234_rejects_explicit_denial_of_intent():
+    """“不是故意”不能作为故意伤害要件的肯定证据。"""
+    facts = {
+        "behavior_sequence": [{"action": "我不是故意殴打，是拉扯中误碰"}],
+        "consequence": "经司法鉴定构成轻伤二级",
+    }
+    elements = ["故意损害他人身体健康", "造成轻伤、重伤或死亡"]
+
+    result = await _analyze_coverage(
+        facts,
+        [{"article_number": "第二百三十四条", "elements": elements, "data_source": "rag_verified"}],
+    )
+
+    assert result["covered_elements"] == 1
+    assert result["coverage_rate"] == 0.5
+    assert result["missing_elements"] == ["故意损害他人身体健康"]
+
+
+@pytest.mark.asyncio
+async def test_article_293_rejects_explicit_denial_of_arbitrary_assault():
+    """“并非随意殴打”不能覆盖随意殴打要件。"""
+    facts = {
+        "behavior_sequence": [{"action": "并非随意殴打，是制止对方时发生拉扯"}],
+        "consequence": "公共秩序严重混乱",
+    }
+    elements = ["随意殴打他人", "破坏社会秩序"]
+
+    result = await _analyze_coverage(
+        facts,
+        [{"article_number": "第二百九十三条", "elements": elements, "data_source": "rag_verified"}],
+    )
+
+    assert result["covered_elements"] == 1
+    assert result["coverage_rate"] == 0.5
+    assert result["missing_elements"] == ["随意殴打他人"]
+
+
+@pytest.mark.asyncio
+async def test_article_293_keeps_affirmed_assault_after_disregarding_dissuasion():
+    """“不顾劝阻”不是对后续无故殴打行为的否定。"""
+    facts = {
+        "behavior_sequence": [{"action": "不顾现场人员劝阻仍无故殴打一名路人"}],
+        "consequence": "未造成公共秩序混乱",
+    }
+
+    result = await _analyze_coverage(
+        facts,
+        [
+            {
+                "article_number": "第二百九十三条",
+                "elements": ["随意殴打他人"],
+                "data_source": "rag_verified",
+            }
+        ],
+    )
+
+    assert result["covered_elements"] == 1
+    assert result["coverage_rate"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_single_public_order_behavior_does_not_cover_other_modes():
+    """无故殴打只能覆盖对应行为模式，不能覆盖其余行为和秩序结果。"""
+    facts = {
+        "behavior_sequence": [{"action": "在街边无故随意殴打一名路人"}],
+        "consequence": "未造成公共秩序混乱，也没有财物损坏",
+    }
+    elements = [
+        "随意殴打他人",
+        "追逐拦截辱骂恐吓他人",
+        "强拿硬要或任意损毁占用公私财物",
+        "在公共场所起哄闹事",
+        "破坏社会秩序",
+    ]
+
+    result = await _analyze_coverage(
+        facts,
+        [{"article_number": "第二百九十三条", "elements": elements, "data_source": "rag_verified"}],
+    )
+
+    assert result["covered_elements"] == 1
+    assert result["coverage_rate"] == 0.2
+    assert set(result["missing_elements"]) == set(elements[1:])
+
+
+@pytest.mark.asyncio
+async def test_explicit_public_order_facts_cover_each_supported_mode():
+    """每种行为与秩序后果都有明确事实时才覆盖寻衅滋事要件。"""
+    facts = {
+        "incident_location": "地铁站出入口等公共场所",
+        "behavior_sequence": [
+            {"action": "无故随意殴打路人"},
+            {"action": "持续追逐、拦截并辱骂恐吓两名路人"},
+            {"action": "强拿硬要路人手机并任意砸坏商户桌椅"},
+            {"action": "在地铁站出入口起哄闹事"},
+        ],
+        "consequence": "现场群众被迫疏散，公共场所秩序严重混乱，社会秩序受到破坏",
+    }
+    elements = [
+        "随意殴打他人",
+        "追逐拦截辱骂恐吓他人",
+        "强拿硬要或任意损毁占用公私财物",
+        "在公共场所起哄闹事",
+        "破坏社会秩序",
+    ]
+
+    result = await _analyze_coverage(
+        facts,
+        [{"article_number": "第二百九十三条", "elements": elements, "data_source": "rag_verified"}],
+    )
+
+    assert result["coverage_rate"] == 1.0
+    assert result["covered_elements"] == 5
+    assert result["missing_elements"] == []
+
+
+@pytest.mark.asyncio
+async def test_analyze_coverage_scores_alternative_laws_independently():
+    """互为候选的罪名不得合并要件后稀释最受事实支持的法条。"""
+    facts = {
+        "incident_location": "地铁站出入口这一公共场所",
+        "behavior_sequence": [
+            {"action": "无故随意殴打一名路人"},
+            {"action": "追逐、拦截、辱骂并恐吓另外两名路人"},
+            {"action": "强拿硬要手机并砸坏商户桌椅"},
+            {"action": "在站口持续起哄闹事二十分钟"},
+        ],
+        "consequence": "公共秩序严重混乱，社会秩序受到破坏",
+    }
+    laws = [
+        {
+            "article_number": "第二百九十三条",
+            "elements": [
+                "随意殴打他人",
+                "追逐拦截辱骂恐吓他人",
+                "强拿硬要或任意损毁占用公私财物",
+                "在公共场所起哄闹事",
+                "破坏社会秩序",
+            ],
+            "data_source": "rag_verified",
+        },
+        {
+            "article_number": "第二百三十八条",
+            "elements": ["非法拘禁他人", "非法剥夺人身自由"],
+            "data_source": "rag_verified",
+        },
+    ]
+
+    result = await _analyze_coverage(facts, laws)
+
+    assert result["coverage_rate"] == 1.0
+    assert result["total_elements"] == 5
+    assert result["selected_article_number"] == "第二百九十三条"
+    assert result["json_law_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_confirmed_injury_and_explicit_intent_cover_article_234():
+    """明确故意伤害行为和司法鉴定伤情应覆盖对应要件。"""
+    facts = {
+        "behavior_sequence": [{"action": "因报复故意连续拳打脚踢对方头面部"}],
+        "consequence": "经司法鉴定确认构成轻伤二级",
+    }
+    elements = ["故意损害他人身体健康", "造成轻伤、重伤或死亡"]
+
+    result = await _analyze_coverage(
+        facts,
+        [{"article_number": "第二百三十四条", "elements": elements, "data_source": "rag_verified"}],
+    )
+
+    assert result["coverage_rate"] == 1.0
+    assert result["covered_elements"] == 2
+    assert result["missing_elements"] == []
+
+
+@pytest.mark.asyncio
 async def test_analyze_coverage_partial():
     """When some elements are missing, coverage is partial."""
     facts = {"incident_time": "2024-01-01"}
@@ -700,6 +924,27 @@ async def test_extract_structured_facts_no_result_warns():
 
     assert result.get("facts_structured") == {}
     assert result.get("current_agent") == "FactDigger"
+
+
+@pytest.mark.asyncio
+async def test_empty_reextraction_preserves_existing_structured_facts():
+    """后续模型未返回工具结果时不得抹掉已确认的结构化事实。"""
+    existing = {"behavior_sequence": ["徒手击打"], "consequence": "软组织挫伤"}
+    state = make_consultation_state(
+        consent_given=True,
+        facts_raw=["已有完整案情"],
+        current_input="补充确认",
+        facts_structured=existing,
+        applied_laws=[],
+    )
+
+    with patch("app.agents.fact_digger.llm_gateway") as mock_llm:
+        mock_llm.generate_with_tools = AsyncMock(
+            return_value={"content": "非结构化回复", "tool_calls": [], "has_tool_call": False}
+        )
+        result = await fact_digger_node(state)
+
+    assert result.get("facts_structured") == existing
 
 
 @pytest.mark.asyncio

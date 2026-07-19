@@ -1,4 +1,5 @@
 import json
+import re
 from typing import TYPE_CHECKING, Any, Dict, List
 
 from app.security.disclaimer import disclaimer
@@ -14,6 +15,47 @@ if TYPE_CHECKING:
 _logger = get_logger("Agent.FactDigger")
 
 COVERAGE_THRESHOLD = 0.8
+
+_FACT_KEY_MAPPING = {
+    "time": "incident_time",
+    "location": "incident_location",
+    "parties": "parties",
+    "behavior": "behavior_sequence",
+    "consequence": "consequence",
+    "evidence": "evidence_mentioned",
+    "arrest": "arrest_status",
+    "surrender": "surrender",
+    "forgiveness": "victim_forgiveness",
+    "record": "prior_record",
+}
+
+_NEGATION_MARKERS = (
+    "没有",
+    "未",
+    "尚未",
+    "并未",
+    "未曾",
+    "否认",
+    "不存在",
+    "不构成",
+    "并无",
+    "不是",
+    "并不是",
+    "并非",
+    "无意",
+    "非故意",
+)
+_UNCONFIRMED_MARKERS = (
+    "待鉴定",
+    "待确认",
+    "尚未鉴定",
+    "未作鉴定",
+    "未鉴定",
+    "鉴定中",
+    "不能认定",
+    "无法确认",
+    "不能确认",
+)
 
 # 默认提示词（外部文件加载失败时使用）
 DEFAULT_EXTRACT_CASE_FACTS_PROMPT = """从咨询者描述中提取刑事案件关键事实要素。
@@ -150,11 +192,11 @@ async def _analyze_coverage(facts_structured: Dict[str, Any], applied_laws: List
             "rag_count": len(rag_laws),
         }
 
-    covered_elements = []
-    missing_elements = []
-    weak_elements = []
-
+    law_evaluations = []
     for law in json_laws:
+        covered_elements = []
+        missing_elements = []
+        weak_elements = []
         required_elements = law.get("elements", [])
 
         for element in required_elements:
@@ -165,27 +207,46 @@ async def _analyze_coverage(facts_structured: Dict[str, Any], applied_laws: List
                 element_name = str(element)
                 element_key = str(element)
 
-            fact_value = _get_fact_value(facts_structured, element_key)
+            canonical_key = element_key in _FACT_KEY_MAPPING or element_key in facts_structured
+            fact_value = _get_fact_value(facts_structured, element_key) if canonical_key else None
+            is_covered = (
+                fact_value is not None and fact_value != ""
+                if canonical_key
+                else _is_chinese_element_supported(facts_structured, element_name)
+            )
 
-            if fact_value is not None and fact_value != "":
+            if is_covered:
                 covered_elements.append(element_name)
 
-                if isinstance(fact_value, list) and len(fact_value) == 0:
+                if canonical_key and isinstance(fact_value, list) and len(fact_value) == 0:
                     weak_elements.append(element_name)
-                elif isinstance(fact_value, bool) and not fact_value:
+                elif canonical_key and isinstance(fact_value, bool) and not fact_value:
                     weak_elements.append(element_name)
             else:
                 missing_elements.append(element_name)
 
-    total_elements = len(covered_elements) + len(missing_elements)
-    coverage_rate = len(covered_elements) / total_elements if total_elements > 0 else 0.0
+        total_elements = len(covered_elements) + len(missing_elements)
+        coverage_rate = len(covered_elements) / total_elements if total_elements > 0 else 0.0
+        law_evaluations.append({
+            "article_number": law.get("article_number"),
+            "total_elements": total_elements,
+            "covered_elements": len(covered_elements),
+            "coverage_rate": coverage_rate,
+            "missing_elements": missing_elements,
+            "weak_elements": weak_elements,
+        })
+
+    # 候选罪名可能互斥，不能把所有罪名的要件相加后要求事实同时满足。
+    # 采用事实支持率最高的已验证候选；同分时保留 RAG 原始顺序。
+    selected = max(law_evaluations, key=lambda item: item["coverage_rate"], default={})
 
     return {
-        "total_elements": total_elements,
-        "covered_elements": len(covered_elements),
-        "coverage_rate": coverage_rate,
-        "missing_elements": missing_elements,
-        "weak_elements": weak_elements,
+        "total_elements": selected.get("total_elements", 0),
+        "covered_elements": selected.get("covered_elements", 0),
+        "coverage_rate": selected.get("coverage_rate", 0.0),
+        "missing_elements": selected.get("missing_elements", []),
+        "weak_elements": selected.get("weak_elements", []),
+        "selected_article_number": selected.get("article_number"),
         "source": "json_knowledge",
         "json_law_count": len(json_laws),
         "rag_count": len(rag_laws),
@@ -202,21 +263,103 @@ def _get_fact_value(facts_structured: Dict[str, Any], key: str) -> Any:
     Returns:
         键对应的值，如果不存在返回 None
     """
-    key_mapping = {
-        "time": "incident_time",
-        "location": "incident_location",
-        "parties": "parties",
-        "behavior": "behavior_sequence",
-        "consequence": "consequence",
-        "evidence": "evidence_mentioned",
-        "arrest": "arrest_status",
-        "surrender": "surrender",
-        "forgiveness": "victim_forgiveness",
-        "record": "prior_record",
-    }
-
-    mapped_key = key_mapping.get(key, key)
+    mapped_key = _FACT_KEY_MAPPING.get(key, key)
     return facts_structured.get(mapped_key)
+
+
+def _flatten_fact_text(value: Any) -> str:
+    """将嵌套事实值展开为只用于规则匹配的文本。"""
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        return "。".join(_flatten_fact_text(item) for item in value.values() if item is not None)
+    if isinstance(value, (list, tuple, set)):
+        return "。".join(_flatten_fact_text(item) for item in value if item is not None)
+    return str(value).strip()
+
+
+def _contains_affirmed_term(
+    text: str,
+    terms: tuple[str, ...],
+    *,
+    blockers: tuple[str, ...] = (),
+) -> bool:
+    """判断文本是否肯定陈述目标词，并排除同一分句中的否定或待确认表达。"""
+    for clause in re.split(r"[，。；;！？\n]", text):
+        if not clause or any(blocker in clause for blocker in (*_UNCONFIRMED_MARKERS, *blockers)):
+            continue
+        for term in terms:
+            start = clause.find(term)
+            while start >= 0:
+                # 检查分句起点至目标词结尾，兼容“非故意”等跨越目标词边界的否定短语。
+                evidence_prefix = clause[: start + len(term)]
+                term_prefix = clause[:start]
+                if not any(marker in evidence_prefix for marker in _NEGATION_MARKERS) and not term_prefix.endswith("无"):
+                    return True
+                start = clause.find(term, start + len(term))
+    return False
+
+
+def _is_chinese_element_supported(facts_structured: Dict[str, Any], element: str) -> bool:
+    """用保守、可审计的规则判断中文自由文本要件是否有事实支持。
+
+    未列入规则的要件默认缺失，避免仅因某个事实字段非空就跨过覆盖度门槛。
+    """
+    behavior_text = _flatten_fact_text(facts_structured.get("behavior_sequence"))
+    consequence_text = _flatten_fact_text(facts_structured.get("consequence"))
+    location_text = _flatten_fact_text(facts_structured.get("incident_location"))
+    combined_text = "。".join(part for part in (behavior_text, consequence_text) if part)
+
+    if "随意殴打" in element:
+        return _contains_affirmed_term(behavior_text, ("随意殴打", "任意殴打", "无故殴打"))
+
+    if all(keyword in element for keyword in ("追逐", "拦截")) or all(
+        keyword in element for keyword in ("辱骂", "恐吓")
+    ):
+        return _contains_affirmed_term(
+            behavior_text,
+            ("追逐", "追赶", "拦截", "堵截", "辱骂", "恐吓", "威胁"),
+        )
+
+    if "强拿硬要" in element or ("损毁" in element and "财物" in element):
+        return _contains_affirmed_term(
+            behavior_text,
+            ("强拿硬要", "强拿", "硬要", "任意损毁", "砸坏", "损毁", "占用"),
+        )
+
+    if "公共场所" in element and ("起哄" in element or "闹事" in element):
+        public_place = _contains_affirmed_term(
+            f"{location_text}。{behavior_text}",
+            ("公共场所", "地铁站", "车站", "商场", "广场", "街道", "街边", "餐馆", "医院", "学校", "公园"),
+        )
+        disruptive_act = _contains_affirmed_term(behavior_text, ("起哄", "闹事"))
+        return public_place and disruptive_act
+
+    if "破坏社会秩序" in element or "公共秩序" in element:
+        return _contains_affirmed_term(
+            consequence_text,
+            ("破坏社会秩序", "社会秩序受到破坏", "公共秩序混乱", "秩序严重混乱"),
+        )
+
+    if any(keyword in element for keyword in ("造成轻伤", "致人轻伤", "致人重伤", "轻伤、重伤或死亡")):
+        return _contains_affirmed_term(
+            consequence_text,
+            ("轻伤一级", "轻伤二级", "构成轻伤", "重伤一级", "重伤二级", "构成重伤", "死亡"),
+            blockers=_UNCONFIRMED_MARKERS,
+        )
+
+    if "故意" in element and any(keyword in element for keyword in ("伤害", "损害", "身体健康")):
+        intent_confirmed = _contains_affirmed_term(combined_text, ("故意", "蓄意", "报复"))
+        harmful_act = _contains_affirmed_term(
+            behavior_text,
+            ("殴打", "击打", "拳打", "脚踢", "持械伤害", "刺伤", "砍伤"),
+        )
+        return intent_confirmed and harmful_act
+
+    if "过失" in element or "疏忽大意" in element or "过于自信" in element:
+        return _contains_affirmed_term(combined_text, ("过失", "疏忽大意", "过于自信"))
+
+    return False
 
 
 async def _generate_follow_up_questions(missing_elements: List[str], facts_structured: Dict[str, Any]) -> List[str]:
@@ -518,8 +661,12 @@ async def fact_digger_node(state: "ConsultationState") -> "ConsultationState":
         facts_raw.append(sanitized_input)
         _logger.debug("【fact_digger_node】追加用户输入到 facts_raw，当前共 %d 条", len(facts_raw))
 
-    facts_structured = await _extract_structured_facts(facts_raw)
-    _logger.debug("【fact_digger_node】提取结构化事实完成")
+    extracted_facts = await _extract_structured_facts(facts_raw)
+    if extracted_facts:
+        facts_structured = extracted_facts
+        _logger.debug("【fact_digger_node】提取结构化事实完成")
+    elif facts_structured:
+        _logger.warning("【fact_digger_node】本轮未提取到结构化事实，保留上一轮有效结果")
 
     state["facts_structured"] = facts_structured
     state["facts_raw"] = facts_raw

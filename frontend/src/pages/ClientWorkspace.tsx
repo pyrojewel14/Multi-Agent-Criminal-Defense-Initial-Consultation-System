@@ -122,6 +122,7 @@ export function ClientWorkspace() {
 
   const currentAgent = state?.current_agent || active?.current_agent
   const consentGiven = state?.consent_given ?? false
+  const workflowCompleted = state?.status === 'completed'
   const selectedIds = useMemo(() => ({ sessionId: active?.session_id, consultationId: active?.consultation_id || state?.consultation_id }), [active, state])
 
   return (
@@ -154,7 +155,7 @@ export function ClientWorkspace() {
         ) : (
           <>
             <header className="workspace-header">
-              <div><p className="eyebrow">当前会话</p><h2>{userTypeNames[(state?.user_type || userType) as UserType] || '刑事初次咨询'}</h2><div className="status-line"><StatusBadge tone={state?.alert_triggered ? 'danger' : consentGiven ? 'good' : 'warn'}>{state?.alert_triggered ? '已转人工' : consentGiven ? '已同意' : '等待知情同意'}</StatusBadge><StatusBadge>{agentNames[currentAgent || ''] || currentAgent || '状态加载中'}</StatusBadge></div></div>
+              <div><p className="eyebrow">当前会话</p><h2>{userTypeNames[(state?.user_type || userType) as UserType] || '刑事初次咨询'}</h2><div className="status-line"><StatusBadge tone={state?.alert_triggered ? 'danger' : workflowCompleted || consentGiven ? 'good' : 'warn'}>{state?.alert_triggered ? '已转人工' : workflowCompleted ? '律师已审核' : consentGiven ? '已同意' : '等待知情同意'}</StatusBadge><StatusBadge>{workflowCompleted ? '流程完成' : agentNames[currentAgent || ''] || currentAgent || '状态加载中'}</StatusBadge></div></div>
               <div className="header-tools"><ConnectionStatus online={online} refreshing={refreshing} lastUpdated={lastUpdated} /><button className="secondary-button" type="button" onClick={() => void refreshState()} disabled={refreshing}><RefreshCw size={16} />刷新</button></div>
             </header>
             <IdPair sessionId={selectedIds.sessionId} consultationId={selectedIds.consultationId} />
@@ -169,7 +170,7 @@ export function ClientWorkspace() {
                 {!consentGiven ? (
                   <div className="consent-box"><ShieldCheck size={23} /><div><h4>继续前需确认</h4><p>我已阅读欢迎语中的权利义务告知，理解系统输出仅用于初步信息整理，并同意记录本次咨询内容。</p></div><button className="primary-button" type="button" disabled={busy === 'consent'} onClick={confirmConsent}>{busy === 'consent' ? '正在记录…' : '确认并继续'}<Check size={17} /></button></div>
                 ) : (
-                  <form className="composer" onSubmit={sendMessage}><label htmlFor="consultation-message" className="sr-only">补充案情</label><textarea id="consultation-message" rows={3} value={draft} onChange={event => setDraft(event.target.value)} placeholder="请按时间顺序描述经过、地点、人员、证据和当前办案状态…" disabled={busy === 'message' || state?.alert_triggered} /><button className="send-button" type="submit" aria-label="发送消息" disabled={!draft.trim() || busy === 'message' || state?.alert_triggered}>{busy === 'message' ? <RefreshCw className="spin" size={19} /> : <ArrowUp size={19} />}</button></form>
+                  <form className="composer" onSubmit={sendMessage}>{workflowCompleted && <p className="composer-status">咨询流程已完成，新的案情请创建新咨询。</p>}<label htmlFor="consultation-message" className="sr-only">补充案情</label><textarea id="consultation-message" rows={3} value={draft} onChange={event => setDraft(event.target.value)} placeholder="请按时间顺序描述经过、地点、人员、证据和当前办案状态…" disabled={busy === 'message' || state?.alert_triggered || workflowCompleted} /><button className="send-button" type="submit" aria-label="发送消息" disabled={!draft.trim() || busy === 'message' || state?.alert_triggered || workflowCompleted}>{busy === 'message' ? <RefreshCw className="spin" size={19} /> : <ArrowUp size={19} />}</button></form>
                 )}
               </section>
               <section className="insight-stack">
