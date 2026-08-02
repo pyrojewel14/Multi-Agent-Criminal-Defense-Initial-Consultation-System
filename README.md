@@ -112,79 +112,275 @@ flowchart TD
 
 ## 快速启动
 
-### 前置条件
+下面是两条独立路径。两条路径先完成同一份配置与模型准备，再分别启动服务，最后按“初始化 Chroma”与“分层就绪检查”验证真实咨询所需依赖；`/health` 成功只说明 FastAPI 进程可响应，不说明 LLM、embedding、Chroma 或 reranker 可用。
 
-- Python `>=3.10`；统一 Make 入口默认用 `uv` 创建 Python 3.12 环境。
-- Node.js、npm、Redis 7+。
-- Ollama 本地模型，或可用的阿里云百炼兼容接口。
+### 两条路径共享：配置与模型准备
 
-### Make 入口
+项目声明 Python `>=3.10`；为了让公开 Make 入口可复现，`Makefile` 默认由 `uv` 管理 Python 3.12。本地开发路径使用该 3.12 环境；`Dockerfile` 构建的 backend 镜像使用 Python 3.12，不要求宿主机另装 Python 或 `uv`。需要本地环境时，从 [Astral 官方安装页](https://docs.astral.sh/uv/getting-started/installation/) 安装 `uv`。
+
+从仓库根目录复制配置，并生成 JWT secret。输出只粘贴到已忽略的 `backend/.env`，不要提交真实密钥：
 
 ```bash
 cp backend/.env.example backend/.env
-# 修改 JWT_SECRET_KEY，并选择 Ollama 或阿里云聊天 / embedding 配置
-
-make install
-redis-server              # 终端 1；当前后端启动硬依赖
-make run-backend          # 终端 2：http://127.0.0.1:8000
-make run-frontend         # 终端 3：http://127.0.0.1:5173
+openssl version
+openssl rand -hex 32
+# 用输出替换 backend/.env 中的 JWT_SECRET_KEY
 ```
 
-验证入口：
+默认 Ollama 路径保留模板中的 `LLM_TYPE="OLLAMA"` 与 `EMBED_MODEL_TYPE="OLLAMA"`。先安装 Ollama 桌面应用或 CLI，并运行 `ollama --version` 确认可用。随后启动桌面应用；只使用 CLI 时，在单独终端运行以下服务并保持该终端开启：
 
 ```bash
-curl http://127.0.0.1:8000/health
-# {"status":"healthy"}
-
-make test                 # 定向后端回归 + 全部前端测试，不是完整 pytest
-make eval                 # 30 条 deterministic baseline
+ollama serve
 ```
 
-### 通用 `uv` 后端环境
+确认服务已启动后，在另一个终端拉取并检查两个精确模型：
+
+```bash
+ollama pull qwen3.5:0.8b
+ollama pull qwen3-embedding:0.6b
+curl -fsS http://127.0.0.1:11434/api/tags
+```
+
+如改用阿里云，把 `LLM_TYPE`、`EMBED_MODEL_TYPE` 改为 `ALIYUN`，填写 `ALIYUN_ACCESS_KEY_SECRET` 及对应模型配置；不要把真实 key 写入仓库。配置字段以 [backend/.env.example](backend/.env.example) 为准。
+
+### 路径 A：本地开发
+
+需要 `uv`、Node.js/npm、Redis 7+，以及共享步骤中选择的模型服务。`uv` 负责安装并选择项目使用的 Python 3.12；先确认命令可用：
+
+```bash
+uv --version
+uv python install 3.12
+uv python find 3.12
+node --version
+npm --version
+redis-server --version
+```
+
+安装后端与前端依赖：
+
+```bash
+make install
+```
+
+然后使用三个终端启动；当前后端 lifespan 把 Redis 作为硬依赖，Redis 不可用时后端不会完成启动：
+
+```bash
+# 终端 1
+redis-server
+
+# 终端 2（仓库根目录）
+make run-backend
+
+# 终端 3（仓库根目录）
+make run-frontend
+```
+
+也可以只用通用 `uv` 命令准备后端环境：
 
 ```bash
 cd backend
-cp .env.example .env
-# 至少替换 JWT_SECRET_KEY，并配置 LLM / embedding
 uv venv --python 3.12
 uv pip install --python .venv/bin/python -r requirements.txt
-.venv/bin/python main.py
+.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-前端可单独运行：
+### 路径 B：Docker 后端 + 宿主机前端/Ollama
+
+[docker-compose.yml](docker-compose.yml) 只启动 `backend` 与 `redis`。前端仍在容器外运行；使用 Ollama 时，Ollama 也运行在宿主机，Compose 将后端地址覆盖为 `http://host.docker.internal:11434`。该路径不需要宿主机 Python 或 `uv`；完整界面才需要 Node.js/npm。完成共享配置与模型准备后，从仓库根目录执行：
 
 ```bash
-cd frontend
-npm ci
-npm run dev
+docker --version
+docker compose version
+docker compose config --quiet
+docker compose up --build -d
+docker compose ps
+curl -fsS http://127.0.0.1:8000/health
 ```
 
-配置模板见 [backend/.env.example](backend/.env.example)，统一命令见 [Makefile](Makefile)。
+按需查看最近日志：
 
-### 本地演示角色初始化
+```bash
+docker compose logs --tail=100 backend redis
+```
 
-公开注册始终只能创建 `client`。本地演示如需 `admin` / `lawyer`，先用受控 CLI 初始化管理员，再由管理员调用既有 API 创建律师与分配案件；CLI 不接受命令行明文密码、要求显式本地确认，并拒绝 `APP_ENV=production`：
+如需持续观察，再单独运行 `docker compose logs -f backend redis`；按 `Ctrl-C` 只会停止观察，不会停止容器。
+
+需要完整界面时，在另一个宿主机终端启动 Compose 外的前端：
+
+```bash
+npm --prefix frontend ci
+npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
+```
+
+宿主机先检查 Ollama API 和两个模型：
+
+```bash
+curl -fsS http://127.0.0.1:11434/api/tags
+curl -fsS http://127.0.0.1:11434/api/tags | grep -F 'qwen3.5:0.8b'
+curl -fsS http://127.0.0.1:11434/api/tags | grep -F 'qwen3-embedding:0.6b'
+```
+
+Compose 已运行时，再从 backend 容器检查宿主机连通性：
+
+```bash
+docker compose exec backend python -c \
+  "import urllib.request; print(urllib.request.urlopen('http://host.docker.internal:11434/api/tags', timeout=5).status)"
+```
+
+只有当容器访问宿主机 Ollama 失败时，才考虑用 `OLLAMA_HOST=0.0.0.0:11434 ollama serve` 重新启动服务；这会扩大监听范围，应同时限制本机防火墙和网络暴露。它不是所有平台默认必需的设置。
+
+### Reranker 与持久化边界
+
+reranker 权重不在 Git 或 Docker 镜像中。当前正常 app/RAG 路径不会自动调用 `check_and_download_model()`；首次 rerank 只会懒加载 `RERANKER_MODEL_PATH`。推荐在真实 RAG 演示前显式预下载，以下命令需要能够访问 ModelScope。
+
+本地路径（先完成 `make install`）：
 
 ```bash
 cd backend
-read -s PHASE9_ADMIN_PASSWORD && export PHASE9_ADMIN_PASSWORD
-.venv/bin/python -m examples.phase9_demo_admin \
-  --confirm-local-demo \
-  --username phase9_admin \
-  --password-env PHASE9_ADMIN_PASSWORD
-unset PHASE9_ADMIN_PASSWORD
+.venv/bin/python -c \
+  'from app.rag.reranker import RerankerConfig; from app.rag.reorder_service import check_and_download_model; print(check_and_download_model(RerankerConfig.from_env()))'
+test -f data/models/Qwen/Qwen3-Reranker-0.6B/config.json
+cd ..
 ```
 
-管理员登录后使用 `POST /api/v1/lawyers/` 创建临时律师账号，再用 `POST /api/v1/consultations/assign` 提交 `consultation_id` 与 `lawyer_id`。两步均受 admin JWT 保护；演示密码只放在当前终端环境或无回显输入中，不写入仓库。律师主要审核动作使用 workflow `session_id` 调用 `PUT /api/v1/sessions/{session_id}/review`，不能用 SQLite-only 报告更新替代 LangGraph 恢复。
+Docker 路径（Compose 保持运行）：
 
-### 模型、数据与 Docker 边界
+```bash
+docker compose exec backend python -c \
+  'from app.rag.reranker import RerankerConfig; from app.rag.reorder_service import check_and_download_model; print(check_and_download_model(RerankerConfig.from_env()))'
+docker compose exec backend test -f \
+  /app/runtime/models/Qwen/Qwen3-Reranker-0.6B/config.json
+```
 
-- Ollama 默认示例使用 `qwen3.5:0.8b` 和 `qwen3-embedding:0.6b`；阿里云模式需自行提供 key，不能把真实密钥写回仓库。
-- SQLite 表由 lifespan 创建；Redis 连接失败会阻止后端启动。
-- Chroma 初始可以为空，需通过知识库链路实际入库；健康检查不准备向量数据，也不调用 LLM。
-- reranker 权重不随 Git 或 Docker 镜像分发；模型缺失或加载失败时保留原召回顺序。
-- [docker-compose.yml](docker-compose.yml) 只包含 backend + Redis。Ollama / 阿里云、reranker 权重和前端均在 Compose 外。
-- `docker compose config --quiet` 已验证；镜像 build、Compose up 和容器健康检查尚未完整验证，不能把配置校验视为部署成功。
+下载函数使用 `RerankerConfig.from_env()`，把模型写入本地 `backend/data/models`，或写入 Compose 映射到 `backend-runtime` 的 `/app/runtime/models`。命令输出下载路径且上述 `config.json` 检查成功，表示权重文件已就位；首次真实 rerank 后还应在 backend 日志中确认“模型加载成功”。如果不下载，或下载/加载失败，app 仍可启动，RAG 会保留原召回顺序并以“无 reranker”降级运行。运行真实 RAG 演示前应明确记录当前是完整排序还是该降级路径。本仓库仍未把容器内下载或加载写成 fresh 已验证事实。
+
+持久化分工如下：
+
+- `backend-runtime`：SQLite、Chroma、MD5 记录、reranker/model cache。
+- `redis-data`：Redis AOF 数据。
+- Ollama 模型和前端依赖：不在 Compose 命名卷内。
+
+新建的 `backend-runtime` 是空卷；换机器需要重新下载或迁移模型，并单独迁移需要保留的命名卷数据。重新 build 镜像不会自动补齐 Chroma；`docker compose down -v` 会删除本地命名卷及其中运行数据，不要把它当作普通重启命令。
+
+### 初始化 Chroma 公共知识库
+
+新卷或新的本地数据目录中，Chroma 默认可能为空。先启动后端并准备好 embedding 服务，再用受控 CLI 创建本地 demo admin。公开注册只能创建 `client`；CLI 会无回显询问至少 8 位密码，不接受命令行明文密码，并拒绝 `APP_ENV=production`。
+
+本地 `.venv` 路径：
+
+```bash
+cd backend
+.venv/bin/python -m examples.phase9_demo_admin \
+  --confirm-local-demo \
+  --username readme_admin
+cd ..
+```
+
+Docker 路径（Compose 已运行）：
+
+```bash
+docker compose exec backend python -m examples.phase9_demo_admin \
+  --confirm-local-demo \
+  --username readme_admin
+```
+
+登录时由 Python 标准库 `getpass` 无回显读取密码，再由 `json.dumps` 序列化请求；双引号、反斜杠及换行等 JSON 特殊字符会被正确转义，明文也不会进入 shell history。命令不创建密码环境变量。
+
+本地 `.venv` 路径：
+
+```bash
+backend/.venv/bin/python -c '
+import getpass, json, urllib.request
+payload = json.dumps({"username": "readme_admin", "password": getpass.getpass("Admin password: ")}).encode()
+request = urllib.request.Request("http://127.0.0.1:8000/api/v1/auth/login", data=payload, headers={"Content-Type": "application/json"})
+print(urllib.request.urlopen(request).read().decode())
+'
+```
+
+Docker 路径（Compose 保持运行）：
+
+```bash
+docker compose exec backend python -c '
+import getpass, json, urllib.request
+payload = json.dumps({"username": "readme_admin", "password": getpass.getpass("Admin password: ")}).encode()
+request = urllib.request.Request("http://127.0.0.1:8000/api/v1/auth/login", data=payload, headers={"Content-Type": "application/json"})
+print(urllib.request.urlopen(request).read().decode())
+'
+```
+
+成功响应是 `{"code":200,"message":"success","data":{"access_token":"...",...}}`。从 `data.access_token` 复制 access token，再无回显写入当前终端变量：
+
+```bash
+read -s ADMIN_ACCESS_TOKEN
+export ADMIN_ACCESS_TOKEN
+echo
+```
+
+从仓库根目录把跟踪的法条 JSON 作为 multipart 字段 `file` 上传为公共文档，然后检查列表：
+
+```bash
+curl -fsS -X POST \
+  'http://127.0.0.1:8000/api/v1/knowledge/add/single?is_public=true' \
+  -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" \
+  -F 'file=@backend/data/刑法_formatted.json;type=application/json'
+
+curl -fsS http://127.0.0.1:8000/api/v1/knowledge/list \
+  -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN"
+```
+
+上传成功 envelope 的 `code` 为 `200`；列表响应为 `{"code":200,"message":"success","data":{"documents":[...],"total_count":...}}`。只有 `data.total_count > 0` 才能说明该 admin 可见的 Chroma 文档列表非空；`/health` 不会创建向量、调用 embedding 或证明 RAG 可用。
+
+如还需 `lawyer` 角色，管理员可使用 `POST /api/v1/lawyers/` 创建临时律师账号，再用 `POST /api/v1/consultations/assign` 提交 `consultation_id` 与 `lawyer_id`。律师主要审核动作使用 workflow `session_id` 调用 `PUT /api/v1/sessions/{session_id}/review`，不能用 SQLite-only 报告更新替代 LangGraph 恢复。
+
+### 分层就绪检查
+
+按顺序确认每层，而不是只看单个绿色状态。以下模型检查针对默认 Ollama 路径；阿里云路径应改为实际聊天与 embedding 调用验证，不能用 `/health` 代替：
+
+```bash
+# 1. FastAPI
+curl -fsS http://127.0.0.1:8000/health
+
+# 2. Redis：本地路径；Docker 路径另看 redis 是否 healthy
+redis-cli ping
+docker compose ps
+
+# 3. Ollama API 与两个模型
+curl -fsS http://127.0.0.1:11434/api/tags
+curl -fsS http://127.0.0.1:11434/api/tags | grep -F 'qwen3.5:0.8b'
+curl -fsS http://127.0.0.1:11434/api/tags | grep -F 'qwen3-embedding:0.6b'
+
+# 4. Reranker：任选当前路径检查权重；缺失时可继续，但必须记录为降级
+test -f backend/data/models/Qwen/Qwen3-Reranker-0.6B/config.json
+docker compose exec backend test -f \
+  /app/runtime/models/Qwen/Qwen3-Reranker-0.6B/config.json
+
+# 5. Chroma：复用上一步得到的 admin access token，确认 total_count > 0
+curl -fsS http://127.0.0.1:8000/api/v1/knowledge/list \
+  -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN"
+
+# 6. Compose 外的前端
+curl -I http://127.0.0.1:5173
+```
+
+默认 Ollama 路径只有在 FastAPI、Redis、Ollama 两个模型、非空 Chroma 列表和前端都就绪，并明确记录 reranker 是完整排序还是降级后，才运行真实咨询/RAG/律师审核演示；阿里云路径须用对应上游调用验证替代 Ollama 两项。通用验证入口仍是：
+
+```bash
+make test  # 定向后端回归 + 全部前端测试，不是完整 pytest
+make eval  # 30 条 deterministic baseline，不调用真实 LLM/RAG
+```
+
+### 常见故障
+
+- `uv: command not found`：先安装 `uv` 并重新执行版本检查；不要改用未确认版本的 Python 环境。
+- 后端停在启动阶段或报 Redis 连接错误：Redis 是当前 lifespan 的硬依赖；本地启动 `redis-server`，Docker 查看 `docker compose ps` 与 `docker compose logs redis`。
+- 容器无法访问 Ollama：先验证宿主机 `/api/tags`，再执行容器内 `host.docker.internal` 检查；仅失败时考虑前述 `OLLAMA_HOST` 排障。
+- Ollama 返回 model not found：重新执行两个精确的 `ollama pull`，并在 `/api/tags` 中分别确认模型名。
+- reranker 下载或加载失败：查看 backend 日志；当前设计会保留原召回顺序，但这只是降级，不代表排序质量等价。
+- `/health` 正常但无 RAG 结果：检查 embedding 模型和 `knowledge/list`；空 Chroma 不会被健康检查发现。
+- 端口占用：用 `lsof -nP -iTCP:8000 -iTCP:5173 -iTCP:6379 -iTCP:11434` 确认冲突进程，再选择停止冲突服务或显式改端口。
+- volume 重建后数据消失：`backend-runtime` 与 `redis-data` 是本机 Docker 数据；删除命名卷或换机器前应先做迁移/备份，镜像与 Git 不包含这些运行数据。
+
+当前历史部署证据只确认 Compose 配置解析；没有 fresh 的镜像 build、`compose up`、容器健康和真实 LLM/RAG 全链结果时，不能写成“完整 Docker 部署已验证”。统一命令见 [Makefile](Makefile)。
 
 ## API 最小闭环
 
@@ -289,6 +485,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/sessions/$SESSION_ID/message" \
 ```bash
 cd backend
 .venv/bin/python -m examples.demo_complete --case ordinary_assault
+cd ..
 ```
 
 ### 30 条 deterministic baseline
@@ -305,6 +502,17 @@ cd backend
 | 免责声明 | 30 / 30（100.0%） |
 
 这组结果只描述固定小样例中的确定性规则基线。runner 不调用真实 LLM、Ollama、Chroma、向量检索或 reranker，因此不能外推真实 LLM/RAG 准确率、开放输入表现或生产稳定性。历史 8 条 MVP 使用不同输入契约，也不与这组结果直接比较。
+
+## 停止服务
+
+完成上方连通性检查、API 闭环和所需 Demo 后，再清理当前终端中的临时 token/ID。Docker 路径从仓库根目录停止 backend 与 Redis，但保留命名卷：
+
+```bash
+unset ADMIN_ACCESS_TOKEN ACCESS_TOKEN SESSION_ID
+docker compose down
+```
+
+本地开发路径分别在 FastAPI、Redis 和前端终端按 `Ctrl-C`。前端与 Ollama 不属于 Compose；Docker 路径如启动了宿主机前端或 `ollama serve`，也需在各自终端停止，或退出 Ollama 桌面应用。
 
 ## 限制、安全边界与改进方向
 
