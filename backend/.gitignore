@@ -1,0 +1,18 @@
+# Backend-only secrets and runtime state. Root rules remain the public baseline;
+# this file keeps the same protections when backend/ is used on its own.
+.env
+.env.*
+!.env.example
+.venv/
+
+data/
+logs/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/

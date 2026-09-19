@@ -1,5 +1,8 @@
 .git
 .github
+.private
+.scratch
+AGENTS.md
 .DS_Store
 **/__pycache__
 **/*.py[cod]
@@ -11,12 +14,8 @@ frontend/node_modules
 frontend/dist
 backend/tests
 backend/logs
-backend/data/models
-backend/data/chromadb
-backend/data/md5_hex_store
-backend/data/*.db
-backend/data/*.sqlite
-backend/data/*.sqlite3
+# 本地法条来源、数据库、索引、模型和上传资料均不得进入镜像构建上下文。
+backend/data
 evaluation/results
 docs
 workspace

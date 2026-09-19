@@ -1,6 +1,6 @@
 # Demo case 数据契约
 
-`cases/*.json` 是 Phase 2 的标准展示用例，不是真实案件，也不是模型评测集。
+`cases/*.json` 是合成展示用例，不是真实案件，也不是模型评测集。
 
 每条 case 统一包含：
 
@@ -17,11 +17,11 @@
 从 `backend/` 运行完整普通咨询 Demo：
 
 ```bash
-conda run -n Agent_dev python -m examples.demo_complete --case ordinary_assault
+.venv/bin/python -m examples.demo_complete --case ordinary_assault
 ```
 
 验证全部 case 的数据契约和三条控制路径：
 
 ```bash
-conda run -n Agent_dev pytest tests/demo/test_demo_complete.py -q
+.venv/bin/python -m pytest tests/demo/test_demo_complete.py -q
 ```

@@ -1,9 +1,9 @@
 # ==================== Git ====================
 .trae/
-backend/.gitignore
 
-# ==================== Docs ====================
-backend/data/
+# ==================== Local data ====================
+# 法条来源文件、数据库、索引、模型和上传资料均不进入当前提交树。
+/backend/data/
 Docs/多Agent刑事辩护初期咨询系统开发文档.md
 
 
@@ -93,10 +93,15 @@ docker-compose.override.yml
 secrets/
 *.secret
 
-# ==================== Project TODO & generated docs ====================
-PROJECT_TODO.md
-docs/
+# ==================== Generated artifacts ====================
 evaluation/results/
+
+# Private companion repository
+/.private/
+/AGENTS.md
+
+# Temporary Codex / AI working files
+/.scratch/
 
 # ==================== Frontend & Presentation Artifacts ====================
 frontend/node_modules/
@@ -113,6 +118,3 @@ temp/
 *.bak
 *.swp
 cache/
-
-# ===================codex=====================
-AGENTS.md
