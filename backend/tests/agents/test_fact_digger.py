@@ -110,6 +110,80 @@ async def test_analyze_coverage_no_laws():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("data_source", ["rag_unverified", "llm_extracted"])
+async def test_analyze_coverage_rejects_unverified_sources(data_source):
+    """未经 allowlist 连接的来源不得用模型要件声明抬高覆盖度。"""
+    laws = [
+        {
+            "article_number": "第999条",
+            "required_elements": ["虚构要件一", "虚构要件二"],
+            "elements_matched": ["虚构要件一", "虚构要件二"],
+            "elements_missing": [],
+            "data_source": data_source,
+        }
+    ]
+
+    result = await _analyze_coverage(
+        {"behavior_sequence": ["虚构要件一，虚构要件二"]},
+        laws,
+    )
+
+    assert result["coverage_rate"] == 0.0
+    assert result["total_elements"] == 0
+    assert result["source"] == data_source
+    assert result["degraded"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("data_source", ["rag_verified", "json_keyword"])
+async def test_analyze_coverage_uses_full_authoritative_element_set(data_source):
+    """可靠来源必须以完整 required_elements 为分母。"""
+    laws = [
+        {
+            "article_number": "第234条",
+            "required_elements": ["故意损害他人身体健康", "造成轻伤、重伤或死亡"],
+            "elements_matched": ["故意损害他人身体健康"],
+            "elements_missing": ["造成轻伤、重伤或死亡"],
+            "data_source": data_source,
+        }
+    ]
+
+    result = await _analyze_coverage(
+        {
+            "behavior_sequence": [{"action": "因报复故意挥拳击打对方面部"}],
+            "consequence": "伤情待鉴定",
+        },
+        laws,
+    )
+
+    assert result["coverage_rate"] == 0.5
+    assert result["total_elements"] == 2
+    assert result["covered_elements"] == 1
+    assert result["missing_elements"] == ["造成轻伤、重伤或死亡"]
+    assert result["source"] == data_source
+    assert result["degraded"] is False
+
+
+@pytest.mark.asyncio
+async def test_analyze_coverage_rejects_unknown_source_value():
+    """schema 枚举之外的来源不得被当作 JSON 可靠来源。"""
+    result = await _analyze_coverage(
+        {"behavior_sequence": ["任意事实"]},
+        [
+            {
+                "article_number": "第999条",
+                "required_elements": ["任意事实"],
+                "data_source": "json_knowledge",
+            }
+        ],
+    )
+
+    assert result["coverage_rate"] == 0.0
+    assert result["source"] == "invalid_source"
+    assert result["degraded"] is True
+
+
+@pytest.mark.asyncio
 async def test_analyze_coverage_all_covered():
     """When all elements have corresponding fact values, coverage is 1.0."""
     facts = {
@@ -120,7 +194,7 @@ async def test_analyze_coverage_all_covered():
     }
     laws = [
         {
-            "elements": [
+            "required_elements": [
                 {"name": "时间", "key": "time"},
                 {"name": "地点", "key": "location"},
                 {"name": "后果", "key": "consequence"},
@@ -134,7 +208,7 @@ async def test_analyze_coverage_all_covered():
     assert result["total_elements"] == 4
     assert result["covered_elements"] == 4
     assert result["missing_elements"] == []
-    assert result["source"] == "json_knowledge"
+    assert result["source"] == "json_keyword"
 
 
 @pytest.mark.asyncio
@@ -146,7 +220,7 @@ async def test_analyze_coverage_requires_confirmed_injury_result():
     }
     laws = [
         {
-            "elements": ["故意损害他人身体健康", "造成轻伤、重伤或死亡"],
+            "required_elements": ["故意损害他人身体健康", "造成轻伤、重伤或死亡"],
             "data_source": "rag_verified",
         }
     ]
@@ -167,7 +241,7 @@ async def test_analyze_coverage_rejects_public_order_false_positives():
     }
     laws = [
         {
-            "elements": [
+            "required_elements": [
                 "随意殴打他人",
                 "追逐拦截辱骂恐吓他人",
                 "强拿硬要或任意损毁占用公私财物",
@@ -182,7 +256,7 @@ async def test_analyze_coverage_rejects_public_order_false_positives():
 
     assert result["coverage_rate"] < 1.0
     assert result["covered_elements"] == 0
-    assert set(result["missing_elements"]) == set(laws[0]["elements"])
+    assert set(result["missing_elements"]) == set(laws[0]["required_elements"])
 
 
 @pytest.mark.asyncio
@@ -196,7 +270,7 @@ async def test_article_234_rejects_explicit_denial_of_intent():
 
     result = await _analyze_coverage(
         facts,
-        [{"article_number": "第二百三十四条", "elements": elements, "data_source": "rag_verified"}],
+        [{"article_number": "第二百三十四条", "required_elements": elements, "data_source": "rag_verified"}],
     )
 
     assert result["covered_elements"] == 1
@@ -215,7 +289,7 @@ async def test_article_293_rejects_explicit_denial_of_arbitrary_assault():
 
     result = await _analyze_coverage(
         facts,
-        [{"article_number": "第二百九十三条", "elements": elements, "data_source": "rag_verified"}],
+        [{"article_number": "第二百九十三条", "required_elements": elements, "data_source": "rag_verified"}],
     )
 
     assert result["covered_elements"] == 1
@@ -236,7 +310,7 @@ async def test_article_293_keeps_affirmed_assault_after_disregarding_dissuasion(
         [
             {
                 "article_number": "第二百九十三条",
-                "elements": ["随意殴打他人"],
+                "required_elements": ["随意殴打他人"],
                 "data_source": "rag_verified",
             }
         ],
@@ -263,7 +337,7 @@ async def test_single_public_order_behavior_does_not_cover_other_modes():
 
     result = await _analyze_coverage(
         facts,
-        [{"article_number": "第二百九十三条", "elements": elements, "data_source": "rag_verified"}],
+        [{"article_number": "第二百九十三条", "required_elements": elements, "data_source": "rag_verified"}],
     )
 
     assert result["covered_elements"] == 1
@@ -294,7 +368,7 @@ async def test_explicit_public_order_facts_cover_each_supported_mode():
 
     result = await _analyze_coverage(
         facts,
-        [{"article_number": "第二百九十三条", "elements": elements, "data_source": "rag_verified"}],
+        [{"article_number": "第二百九十三条", "required_elements": elements, "data_source": "rag_verified"}],
     )
 
     assert result["coverage_rate"] == 1.0
@@ -318,7 +392,7 @@ async def test_analyze_coverage_scores_alternative_laws_independently():
     laws = [
         {
             "article_number": "第二百九十三条",
-            "elements": [
+            "required_elements": [
                 "随意殴打他人",
                 "追逐拦截辱骂恐吓他人",
                 "强拿硬要或任意损毁占用公私财物",
@@ -329,7 +403,7 @@ async def test_analyze_coverage_scores_alternative_laws_independently():
         },
         {
             "article_number": "第二百三十八条",
-            "elements": ["非法拘禁他人", "非法剥夺人身自由"],
+            "required_elements": ["非法拘禁他人", "非法剥夺人身自由"],
             "data_source": "rag_verified",
         },
     ]
@@ -353,7 +427,7 @@ async def test_confirmed_injury_and_explicit_intent_cover_article_234():
 
     result = await _analyze_coverage(
         facts,
-        [{"article_number": "第二百三十四条", "elements": elements, "data_source": "rag_verified"}],
+        [{"article_number": "第二百三十四条", "required_elements": elements, "data_source": "rag_verified"}],
     )
 
     assert result["coverage_rate"] == 1.0
@@ -367,7 +441,7 @@ async def test_analyze_coverage_partial():
     facts = {"incident_time": "2024-01-01"}
     laws = [
         {
-            "elements": [
+            "required_elements": [
                 {"name": "时间", "key": "time"},
                 {"name": "地点", "key": "location"},
             ],
@@ -381,16 +455,17 @@ async def test_analyze_coverage_partial():
 
 @pytest.mark.asyncio
 async def test_analyze_coverage_rag_only():
-    """When only unverified RAG results exist, coverage source is rag_only."""
+    """When only unverified RAG results exist, coverage is degraded."""
     laws = [
         {
-            "elements": [{"name": "test", "key": "test"}],
+            "required_elements": [{"name": "test", "key": "test"}],
             "data_source": "rag_unverified",
         }
     ]
     result = await _analyze_coverage({}, laws)
-    assert result["source"] == "rag_only"
+    assert result["source"] == "rag_unverified"
     assert result["coverage_rate"] == 0.0
+    assert result["degraded"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -737,7 +812,7 @@ async def test_analyze_coverage_weak_empty_list():
     facts = {"behavior_sequence": []}  # present, but empty list
     laws = [
         {
-            "elements": [{"name": "行为", "key": "behavior"}],
+            "required_elements": [{"name": "行为", "key": "behavior"}],
             "data_source": "json_keyword",
         }
     ]
@@ -752,7 +827,7 @@ async def test_analyze_coverage_weak_false_bool():
     facts = {"surrender": False}
     laws = [
         {
-            "elements": [{"name": "自首", "key": "surrender"}],
+            "required_elements": [{"name": "自首", "key": "surrender"}],
             "data_source": "json_keyword",
         }
     ]
@@ -965,3 +1040,31 @@ async def test_extract_structured_facts_exception_returns_empty():
     assert result.get("facts_structured") == {}
     # Even on extraction failure, state should be valid
     assert result.get("current_agent") in ("FactDigger", "RiskAssessor")
+
+
+@pytest.mark.asyncio
+async def test_failed_fact_intake_retry_appends_current_input_once():
+    """摄取阶段失败不得污染原状态，重试成功后只追加一次本轮输入。"""
+    state = make_consultation_state(
+        consent_given=True,
+        facts_raw=["上一轮事实"],
+        current_input="本轮补充事实",
+        facts_structured={"behavior_sequence": ["上一轮事实"]},
+        applied_laws=[],
+    )
+
+    with patch(
+        "app.agents.fact_digger._extract_structured_facts",
+        new_callable=AsyncMock,
+        side_effect=[RuntimeError("提取阶段中断"), {"behavior_sequence": ["本轮补充事实"]}],
+    ):
+        with pytest.raises(RuntimeError, match="提取阶段中断"):
+            await fact_digger_node(state)
+
+        assert state["facts_raw"] == ["上一轮事实"]
+        assert state["current_input"] == "本轮补充事实"
+
+        result = await fact_digger_node(state)
+
+    assert result["facts_raw"] == ["上一轮事实", "本轮补充事实"]
+    assert result["current_input"] is None

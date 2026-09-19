@@ -67,10 +67,10 @@ async def run_case(case_id: str = "ordinary_assault") -> dict[str, Any]:
         trace.append({"stage": "consent_gate", "agent": "Receptionist", "consent_given": False})
         return state
 
-    async def fact_digger(state: ConsultationState) -> ConsultationState:
+    async def fact_intake(state: ConsultationState) -> ConsultationState:
         state["current_agent"] = "FactDigger"
         state["facts_structured"] = case["expected_fact_fields"]
-        state["fact_law_loop_count"] = 1
+        state["current_input"] = None
 
         if case["should_trigger_human"]:
             state["alert_triggered"] = True
@@ -85,8 +85,12 @@ async def run_case(case_id: str = "ordinary_assault") -> dict[str, Any]:
             )
             return state
 
+        return state
+
+    async def fact_digger(state: ConsultationState) -> ConsultationState:
+        state["current_agent"] = "FactDigger"
+        state["fact_law_loop_count"] = 1
         laws = fixture.get("candidate_laws", [])
-        state["applied_laws"] = laws
         if case["should_follow_up"]:
             questions = fixture["pending_questions"]
             state["facts_coverage_rate"] = 0.4
@@ -161,7 +165,8 @@ async def run_case(case_id: str = "ordinary_assault") -> dict[str, Any]:
 
     with (
         patch("app.orchestrator.workflow.receptionist_node", receptionist),
-        patch("app.orchestrator.workflow.fact_digger_node", fact_digger),
+        patch("app.orchestrator.workflow.fact_intake_node", fact_intake),
+        patch("app.orchestrator.workflow.fact_coverage_node", fact_digger),
         patch("app.orchestrator.workflow.law_ref_node", law_ref),
         patch("app.orchestrator.workflow.risk_assessor_node", risk_assessor),
         patch("app.orchestrator.workflow.service_planner_node", service_planner),

@@ -55,7 +55,7 @@ async def test_missing_facts_demo_stops_for_follow_up():
     assert result["finished"] is False
     assert result["requires_human_intervention"] is False
     assert result["output_type"] == "follow_up_questions"
-    assert result["next_node"] == "law_ref"
+    assert result["next_node"] == "fact_intake"
     assert result["trace"][-1]["pending_questions"]
 
 

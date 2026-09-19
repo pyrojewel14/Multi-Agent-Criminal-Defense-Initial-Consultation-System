@@ -148,6 +148,39 @@ class TestCalculateCoverageRate:
         state = make_consultation_state(applied_laws=[], facts_raw=["陈述"])
         assert _calculate_coverage_rate(state) == 0.0
 
+    def test_llm_extracted_law_returns_zero(self):
+        law = {
+            "article_number": "第999条",
+            "required_elements": [{"key": "time", "name": "时间"}],
+            "elements": [{"key": "time", "name": "时间"}],
+            "data_source": "llm_extracted",
+        }
+        state = make_consultation_state(
+            applied_laws=[law],
+            facts_structured={"incident_time": "2026年3月"},
+            facts_raw=["陈述"],
+        )
+
+        assert _calculate_coverage_rate(state) == 0.0
+
+    def test_authoritative_missing_element_stays_in_denominator(self):
+        law = {
+            "article_number": "第234条",
+            "required_elements": [
+                {"key": "time", "name": "时间"},
+                {"key": "location", "name": "地点"},
+            ],
+            "elements": [{"key": "time", "name": "时间"}],
+            "data_source": "rag_verified",
+        }
+        state = make_consultation_state(
+            applied_laws=[law],
+            facts_structured={"incident_time": "2026年3月"},
+            facts_raw=["陈述"],
+        )
+
+        assert _calculate_coverage_rate(state) == 0.5
+
     def test_full_coverage(self):
         law = make_applied_law(
             elements=[
@@ -454,6 +487,10 @@ class TestStartWorkflow:
             current_state["facts_coverage_rate"] = 1.0
             return current_state
 
+        async def _fake_law_ref(current_state):
+            current_state["current_agent"] = "LawRef"
+            return current_state
+
         async def _fake_risk_assessor(current_state):
             current_state["current_agent"] = "RiskAssessor"
             return current_state
@@ -464,7 +501,9 @@ class TestStartWorkflow:
             return current_state
 
         with patch("app.orchestrator.workflow.receptionist_node", side_effect=_fake_receptionist), \
-             patch("app.orchestrator.workflow.fact_digger_node", side_effect=_fake_fact_digger), \
+             patch("app.orchestrator.workflow.fact_intake_node", side_effect=_fake_fact_digger), \
+             patch("app.orchestrator.workflow.law_ref_node", side_effect=_fake_law_ref), \
+             patch("app.orchestrator.workflow.fact_coverage_node", side_effect=_fake_fact_digger), \
              patch("app.orchestrator.workflow.risk_assessor_node", side_effect=_fake_risk_assessor), \
              patch("app.orchestrator.workflow.service_planner_node", side_effect=_fake_service_planner):
             await orch.start_workflow(state)

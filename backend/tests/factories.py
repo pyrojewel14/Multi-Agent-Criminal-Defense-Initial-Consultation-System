@@ -143,20 +143,24 @@ def make_user_dict(**overrides) -> Dict[str, Any]:
 def make_applied_law(**overrides) -> Dict[str, Any]:
     """Build an applied_law dict matching the structure stored in ConsultationState.
 
-    Keys: article_number, charge_name, charge_tags, elements, base_sentence,
-    data_source.
+    Keys: article_number, charge_name, charge_tags, required_elements,
+    elements, base_sentence, data_source.
     """
     defaults = {
         "article_number": "第二百六十四条",
         "charge_name": "盗窃罪",
         "charge_tags": ["财产犯罪", "盗窃"],
-        "elements": [
+        "required_elements": [
             "客体要件：公私财物所有权",
             "客观要件：窃取数额较大的公私财物或多次盗窃",
             "主体要件：一般主体",
             "主观要件：直接故意，且具有非法占有的目的",
         ],
         "base_sentence": "三年以下有期徒刑、拘役或者管制",
-        "data_source": "刑法",
+        "data_source": "json_keyword",
     }
-    return {**defaults, **overrides}
+    result = {**defaults, **overrides}
+    if "required_elements" not in overrides and "elements" in overrides:
+        result["required_elements"] = overrides["elements"]
+    result["elements"] = result["required_elements"]
+    return result

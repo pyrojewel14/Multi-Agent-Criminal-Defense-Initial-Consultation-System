@@ -13,7 +13,7 @@ class ConsultationState(TypedDict, total=False):
     consent_given: bool  # 是否已获得用户的知情同意
     facts_raw: List[str]  # 原始用户叙述段落，包含未经处理的案件描述
     facts_structured: dict  # 通过LLM函数调用提取的结构化案件事实
-    applied_laws: List[dict]  # 法律法规检索结果，包含罪名、条款、相关案例
+    applied_laws: List[dict]  # 法条候选，包含枚举来源、权威 required_elements 及模型判定
     current_agent: str  # 当前活跃的agent名称
     pending_questions: List[str]  # 待提问的后续问题列表
     alert_triggered: bool  # 是否触发高风险陈述警报
@@ -27,6 +27,12 @@ class ConsultationState(TypedDict, total=False):
     current_input: Optional[str]  # 用户最新一条输入消息，Agent 节点从中读取当前轮内容
     facts_coverage_rate: Optional[float]  # 构成要件覆盖度（0.0-1.0），FactDigger 用于判断是否继续追问
     fact_law_loop_count: int  # FactDigger/LawRef 循环次数，用于防止工作流无限追问
+    fact_law_attempts: List[dict]  # 每次事实与法条循环的结构化审计记录
+    fact_law_termination_reason: Optional[str]  # 循环终止原因，供降级处理和审计使用
+    fact_law_failure_streak: int  # 当前重试窗口内任意非事实失败的连续总数
+    fact_law_last_failure: Optional[str]  # 当前重试窗口内最近一次非事实失败类型
+    law_search_status: Optional[str]  # 法条检索状态（success/missing_facts/no_law_match/dependency_failure）
+    workflow_status: Optional[str]  # 工作流运行状态，依赖失败终止时为 degraded
     element_to_law_mapping: Optional[dict]  # 构成要件到法条的映射，LawRef 生成后供 FactDigger 计算覆盖度
     identity_info: Optional[dict]  # 用户身份详细信息（姓名脱敏、联系方式等），Receptionist 阶段收集
     user_role: Optional[str]  # 用户在系统中的角色（client/lawyer/admin），用于 RBAC 权限判断

@@ -7,14 +7,16 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StateSnapshot
+from pydantic import ValidationError
 
-from app.agents.fact_digger import fact_digger_node
+from app.agents.fact_digger import fact_coverage_node, fact_intake_node
 from app.agents.human_alert import human_alert_node
 from app.agents.law_ref import law_ref_node
 from app.agents.receptionist import receptionist_node
 from app.agents.risk_assessor import risk_assessor_node
 from app.agents.service_planner import service_planner_node
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
+from app.schemas.law_schemas import CoverageCandidateSchema, LawDataSource
 from app.security.disclaimer import disclaimer
 from app.state.consultation_state import ConsultationState, validate_consultation_state
 from app.utils.logger import get_logger
@@ -53,7 +55,17 @@ def check_consent(state: ConsultationState) -> Literal["continue", "end"]:
     return "end"
 
 
-def check_facts_sufficient(state: ConsultationState) -> Literal["complete", "loop", "alert", "max_loop"]:
+def check_fact_intake(state: ConsultationState) -> Literal["continue", "alert"]:
+    """条件边：事实摄取后优先分流高风险输入。"""
+    if state.get("alert_triggered"):
+        _logger.info("事实摄取检测到高风险内容，触发人工介入")
+        return "alert"
+    return "continue"
+
+
+def check_facts_sufficient(
+    state: ConsultationState,
+) -> Literal["complete", "loop", "alert", "max_loop", "degraded"]:
     """条件边：根据事实收集覆盖度决定流程走向。
 
     Args:
@@ -64,10 +76,19 @@ def check_facts_sufficient(state: ConsultationState) -> Literal["complete", "loo
         "loop" - 覆盖度 < 80%，等待用户输入后继续追问
         "alert" - 触发人工介入
         "max_loop" - 达到最大循环次数，强制进入 RiskAssessor
+        "degraded" - 知识或模型依赖持续失败，转人工审核
     """
     if state.get("alert_triggered"):
         _logger.info("检测到高风险内容，触发人工介入")
         return "alert"
+
+    if state.get("workflow_status") == "degraded":
+        _logger.warning(
+            "【check_facts_sufficient】自动循环已降级，转人工审核: session_id=%s, reason=%s",
+            state.get("session_id", "unknown"),
+            state.get("fact_law_termination_reason", "unknown"),
+        )
+        return "degraded"
 
     # 循环计数保护
     loop_count = state.get("fact_law_loop_count", 0)
@@ -152,6 +173,28 @@ async def human_review_node(state: ConsultationState) -> ConsultationState:
         _logger.info("【human_review_node】收到律师决策: %s", decision)
         return state
 
+    if state.get("workflow_status") == "degraded":
+        reason = state.get("fact_law_termination_reason", "dependency_failure_retry_exhausted")
+        if reason.startswith("no_law_match"):
+            degraded_message = "自动检索持续未找到匹配法条，系统已停止重试并转交人工审核。"
+        else:
+            degraded_message = "知识或模型服务当前不可用，系统已停止重试并转交人工审核。"
+        state["final_output"] = disclaimer.inject(degraded_message)
+        state["awaiting_lawyer_review"] = True
+        state["lawyer_review_needed"] = True
+        state["current_agent"] = "HumanReview"
+        if "conversation_history" not in state:
+            state["conversation_history"] = []
+        state["conversation_history"].append(
+            {
+                "agent": "HumanReview",
+                "action": "degraded_review",
+                "session_id": session_id,
+                "termination_reason": reason,
+            }
+        )
+        return state
+
     report_draft = state.get("report_draft", "")
     service_plan = state.get("service_plan", {})
 
@@ -194,19 +237,45 @@ async def wait_for_user_node(state: ConsultationState) -> ConsultationState:
     """等待用户输入的中转节点。
 
     当 FactDigger 判定覆盖度不足时，流程经此节点后中断，
-    等待用户发送下一条消息。恢复后自动进入 LawRef 检索法条，
-    再回到 FactDigger 继续收集事实。
+    等待用户发送下一条消息。恢复后先由 FactDigger 摄取本轮事实，
+    再进入 LawRef 检索法条并计算覆盖度。
     """
     _logger.info("【wait_for_user_node】等待用户输入，session_id: %s", state.get("session_id", "unknown"))
     return state
 
 
-async def _fact_digger_workflow_node(state: ConsultationState) -> ConsultationState:
-    """进入事实补充前消费律师退回指令和上一轮用户输入。"""
+def _reset_degraded_retry_state(state: ConsultationState) -> None:
+    """开始人工批准的事实重试，并保留既有 attempt 审计历史。"""
+    if state.get("workflow_status") != "degraded":
+        return
+
+    previous_reason = state.get("fact_law_termination_reason", "unknown")
+    state["workflow_status"] = None
+    state["fact_law_termination_reason"] = None
+    state["fact_law_failure_streak"] = 0
+    state["fact_law_last_failure"] = None
+    state["law_search_status"] = None
+    state["lawyer_review_needed"] = False
+    _logger.info(
+        "【degraded_retry_reset】session_id=%s, previous_reason=%s, retained_attempts=%d",
+        state.get("session_id", "unknown"),
+        previous_reason,
+        len(state.get("fact_law_attempts", [])),
+    )
+
+
+async def _fact_intake_workflow_node(state: ConsultationState) -> ConsultationState:
+    """进入事实摄取前消费一次性的律师退回指令。"""
     if state.get("lawyer_decision") == "revise_facts":
+        _reset_degraded_retry_state(state)
         state["lawyer_decision"] = None
         state["current_input"] = None
-    return await fact_digger_node(state)
+    return await fact_intake_node(state)
+
+
+async def _fact_digger_workflow_node(state: ConsultationState) -> ConsultationState:
+    """使用已刷新事实和法条执行覆盖度分析。"""
+    return await fact_coverage_node(state)
 
 
 async def _risk_assessor_workflow_node(state: ConsultationState) -> ConsultationState:
@@ -221,8 +290,8 @@ def _calculate_coverage_rate(state: ConsultationState) -> float:
     已废弃
     计算当前事实覆盖度。
 
-    注意：跳过未验证的 RAG 检索结果，只使用 JSON 知识库的结果计算覆盖度，
-    与 fact_digger._analyze_coverage 保持一致。
+    仅使用来源可靠且带有权威 required_elements 的候选，
+    与 fact_digger._analyze_coverage 的来源和分母契约保持一致。
 
     Args:
         state: 当前咨询状态
@@ -236,20 +305,23 @@ def _calculate_coverage_rate(state: ConsultationState) -> float:
     if not applied_laws:
         return 0.0
 
-    # 延迟导入避免循环依赖
-    from app.agents.law_ref import _is_unverified_rag_result
+    verified_laws = []
+    for law in applied_laws:
+        try:
+            candidate = CoverageCandidateSchema.model_validate(law)
+        except ValidationError:
+            continue
+        if candidate.data_source in {LawDataSource.RAG_VERIFIED, LawDataSource.JSON_KEYWORD}:
+            verified_laws.append(candidate)
 
-    # 过滤掉未验证的 RAG 结果，只用 JSON 知识库验证过的结果计算覆盖度
-    json_laws = [law for law in applied_laws if not _is_unverified_rag_result(law)]
-
-    if not json_laws:
+    if not verified_laws:
         return 0.0
 
     total_elements = 0
     covered_elements = 0
 
-    for law in json_laws:
-        elements = law.get("elements", [])
+    for law in verified_laws:
+        elements = law.required_elements
         total_elements += len(elements)
 
         for element in elements:
@@ -302,13 +374,13 @@ class ConsultationOrchestrator:
     工作流拓扑（使用 checkpointer + interrupt_after 实现自动流转与人工断点）：
 
         START → Receptionist ──[interrupt]──→ [consent_given?]
-                                               ├── continue → FactDigger → [coverage?]
+                                               ├── continue → FactIntake → LawRef → FactDigger → [coverage?]
                                                │     ├── complete → RiskAssessor → ServicePlanner → HumanReview ──[interrupt]
                                                │     │                                                              ↓
                                                │     │                                                        [lawyer_decision]
                                                │     │                                                              ↓
                                                │     │                                                              ├── wait → HumanReview(保持中断)
-                                               │     ├── loop → WaitForUser ──[interrupt]──→ LawRef → FactDigger(循环)
+                                               │     ├── loop → WaitForUser ──[interrupt]──→ FactIntake → LawRef → FactDigger(循环)
                                                │     ├── alert → HumanAlert ──[interrupt]──→ END
                                                │     └── max_loop → RiskAssessor
                                                └── end → END
@@ -334,6 +406,7 @@ class ConsultationOrchestrator:
         workflow: WorkflowGraph = StateGraph(ConsultationState)
 
         workflow.add_node("receptionist", receptionist_node)
+        workflow.add_node("fact_intake", _fact_intake_workflow_node)
         workflow.add_node("fact_digger", _fact_digger_workflow_node)
         workflow.add_node("law_ref", law_ref_node)
         workflow.add_node("risk_assessor", _risk_assessor_workflow_node)
@@ -345,7 +418,14 @@ class ConsultationOrchestrator:
         workflow.set_entry_point("receptionist")
 
         # Receptionist → 根据同意状态分流
-        workflow.add_conditional_edges("receptionist", check_consent, {"continue": "fact_digger", "end": END})
+        workflow.add_conditional_edges("receptionist", check_consent, {"continue": "fact_intake", "end": END})
+
+        # FactDigger 摄取本轮输入后优先处理高风险，否则再按新事实检索法条
+        workflow.add_conditional_edges(
+            "fact_intake",
+            check_fact_intake,
+            {"continue": "law_ref", "alert": "human_alert"},
+        )
 
         # FactDigger → 根据覆盖度分流（移除了旧的无条件边 fact_digger → law_ref）
         workflow.add_conditional_edges(
@@ -356,11 +436,12 @@ class ConsultationOrchestrator:
                 "loop": "wait_for_user",  # 覆盖度不足 → 等待用户输入
                 "alert": "human_alert",
                 "max_loop": "risk_assessor",
+                "degraded": "human_review",
             },
         )
 
-        # WaitForUser → LawRef → FactDigger（用户输入后自动检索法条再回到事实收集）
-        workflow.add_edge("wait_for_user", "law_ref")
+        # WaitForUser → FactIntake → LawRef → FactDigger
+        workflow.add_edge("wait_for_user", "fact_intake")
         workflow.add_edge("law_ref", "fact_digger")
 
         # 后半段线性链 + 律师审核条件边
@@ -371,7 +452,7 @@ class ConsultationOrchestrator:
             lawyer_decision,
             {
                 "approved": END,
-                "revise_facts": "fact_digger",
+                "revise_facts": "fact_intake",
                 "revise_risk": "risk_assessor",
                 "wait": "human_review",
             },
@@ -477,9 +558,18 @@ class ConsultationOrchestrator:
         if snapshot.values is None or not snapshot.values:
             raise ValueError(f"会话不存在: {session_id}")
 
-        # 如果有状态更新，先写入 checkpointer
-        if state_updates:
-            await compiled.aupdate_state(config, state_updates, as_node=None)
+        # current_input 只允许在事实摄取节点前写入；后续节点失败后的重放不再恢复该一次性字段。
+        effective_updates = dict(state_updates) if state_updates else {}
+        if "current_input" in effective_updates and "fact_intake" not in snapshot.next:
+            effective_updates.pop("current_input")
+            self._logger.info(
+                "忽略已越过事实摄取节点的 current_input 重放: session_id=%s, next=%s",
+                session_id,
+                snapshot.next,
+            )
+
+        if effective_updates:
+            await compiled.aupdate_state(config, effective_updates, as_node=None)
 
         snapshot = await compiled.aget_state(config)
         self._logger.info("恢复工作流: session_id=%s, next=%s", session_id, snapshot.next)

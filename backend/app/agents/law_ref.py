@@ -4,6 +4,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List
 
+from pydantic import ValidationError
+
+from app.schemas.law_schemas import LawDataSource, LawSourceSchema
 from app.security.sensitive_filter import mask_pii
 from app.utils.llm_gateway import llm_gateway
 from app.utils.logger import get_logger
@@ -15,6 +18,20 @@ if TYPE_CHECKING:
 _logger = get_logger("Agent.LawRef")
 
 LAW_KNOWLEDGE_PATH = Path(__file__).parent.parent.parent / "data" / "law_knowledge" / "criminal_law_chapters.json"
+
+
+class LawSearchResults(list):
+    """携带依赖失败标记的法条检索结果，保持与普通列表兼容。"""
+
+    def __init__(
+        self,
+        values: List[Dict[str, Any]] | None = None,
+        *,
+        dependency_failed: bool = False,
+    ):
+        super().__init__(values or [])
+        self.dependency_failed = dependency_failed
+
 
 DEFAULT_LAW_EXTRACT_PROMPT = """你是一名刑事法律专家，根据用户描述的案件事实和匹配的刑法条文，提取结构化的法律信息。
 
@@ -37,8 +54,10 @@ DEFAULT_LAW_EXTRACT_PROMPT = """你是一名刑事法律专家，根据用户描
 
 重要：
 1. 只分析匹配度较高的罪名
-2. 如果无法确定，明确说明
-3. 所有法律引用必须准确
+2. article_number 必须来自输入候选，禁止生成未检索命中的法条
+3. elements_matched 与 elements_missing 必须共同覆盖输入候选的完整构成要件，且不得重叠
+4. 如果无法确定，将对应要件放入 elements_missing
+5. 所有法律引用必须准确
 """
 
 
@@ -235,6 +254,7 @@ def _verify_and_enrich_with_json(
                 **rag_law,
                 "title": json_match.get("title", rag_law.get("title", "")),
                 "content": json_match.get("content", rag_law.get("content", "")),
+                "required_elements": json_match.get("elements", []),
                 "elements": json_match.get("elements", []),
                 "base_sentence": json_match.get("base_sentence", ""),
                 "charge_tags": json_match.get("charge_tags", []),
@@ -307,6 +327,21 @@ def _is_unverified_rag_result(law: Dict[str, Any]) -> bool:
         True 表示是未验证的 RAG 结果，False 表示是可靠结果
     """
     return law.get("data_source") == "rag_unverified"
+
+
+def _validated_data_source(value: Any) -> str:
+    """将候选来源校验为 schema 枚举，非法值按 LLM 未验证来源处理。"""
+    try:
+        return LawSourceSchema(data_source=value).data_source.value
+    except ValidationError:
+        return LawDataSource.LLM_EXTRACTED.value
+
+
+def _element_name(element: Any) -> str:
+    """提取权威构成要件的可比较名称。"""
+    if isinstance(element, dict):
+        return str(element.get("name", ""))
+    return str(element)
 
 
 def _build_element_to_law_mapping(laws: List[Dict[str, Any]], elements_key: str = "elements") -> Dict[str, Dict[str, str]]:
@@ -401,6 +436,7 @@ async def search_laws_by_keyword(facts_structured: Dict[str, Any], law_data: Dic
                         "article_number": article.get("article_number", ""),
                         "title": article.get("title", ""),
                         "content": article.get("content", ""),
+                        "required_elements": article.get("elements", []),
                         "elements": article.get("elements", []),
                         "base_sentence": article.get("base_sentence", ""),
                         "charge_tags": article.get("charge_tags", []),
@@ -408,6 +444,7 @@ async def search_laws_by_keyword(facts_structured: Dict[str, Any], law_data: Dic
                         "chapter": chapter.get("chapter", ""),
                         "relevance_score": relevance_score,
                         "matched_tags": matched_tags,
+                        "data_source": LawDataSource.JSON_KEYWORD.value,
                     }
                 )
 
@@ -478,16 +515,16 @@ async def search_laws_by_rag(facts_structured: Dict[str, Any], user_id: str | No
                     "chapter": "",
                     "relevance_score": 1.0,
                     "matched_tags": ["RAG 向量检索"],
-                    "data_source": "rag",
+                    "data_source": LawDataSource.RAG_UNVERIFIED.value,
                 }
             )
 
         _logger.info("【search_laws_by_rag】RAG 检索找到 %d 条相关法条", len(matched_laws))
-        return matched_laws
+        return LawSearchResults(matched_laws)
 
     except Exception as e:
         _logger.error("【search_laws_by_rag】RAG 检索失败: %s", str(e))
-        return []
+        return LawSearchResults(dependency_failed=True)
 
 
 async def extract_structured_laws(
@@ -507,12 +544,14 @@ async def extract_structured_laws(
 
     laws_context = []
     for i, law in enumerate(matched_laws[:5], 1):
+        required_elements = law.get("required_elements") or law.get("elements") or []
+        element_names = [_element_name(element) for element in required_elements]
         law_parts = [
             f"【法条 {i}】",
             f"- 条款: {law.get('article_number', '')}",
             f"- 罪名: {law.get('title', '')}",
             f"- 内容: {law.get('content', '')[:200]}...",
-            f"- 构成要件: {', '.join(law.get('elements', []))}",
+            f"- 构成要件: {', '.join(name for name in element_names if name)}",
             f"- 基准刑: {law.get('base_sentence', '')}",
             f"- 标签: {', '.join(law.get('charge_tags', []))}",
         ]
@@ -561,8 +600,8 @@ def _build_applied_laws_from_structured(
 ) -> List[Dict[str, Any]]:
     """从 LLM 结构化结果构建 applied_laws。
 
-    LLM 结构化提取是对所有 matched_laws 的综合分析，因此 data_source
-    取对应法条编号在 matched_laws 中的来源；若无法匹配则默认为可靠来源。
+    仅法条编号与 matched_laws 连接成功时继承来源和权威构成要件；
+    未命中或来源非法的模型候选统一标记为 llm_extracted。
 
     Args:
         structured_laws: LLM 结构化提取的法律信息列表
@@ -571,26 +610,49 @@ def _build_applied_laws_from_structured(
     Returns:
         构建好的 applied_laws 列表
     """
-    # 构建法条编号到 data_source 的映射
-    source_map: Dict[str, str] = {}
+    # 编号连接同时携带来源和权威要件，避免模型自行声明 coverage 分母。
+    matched_map: Dict[str, Dict[str, Any]] = {}
     for law in matched_laws:
         num = _normalize_article_number(law.get("article_number", ""))
         if num:
-            source_map[num] = law.get("data_source", "json_keyword")
+            matched_map[num] = law
 
     applied_laws = []
     for law in structured_laws:
         charge_name = law.get("charge_name", "")
         article_number = law.get("article_number", "")
         normalized = _normalize_article_number(article_number)
-        data_source = source_map.get(normalized, "llm_extracted")
+        matched_law = matched_map.get(normalized)
+        data_source = (
+            _validated_data_source(matched_law.get("data_source"))
+            if matched_law
+            else LawDataSource.LLM_EXTRACTED.value
+        )
+        if matched_law and data_source != LawDataSource.LLM_EXTRACTED.value:
+            required_elements = list(matched_law.get("required_elements") or matched_law.get("elements") or [])
+        else:
+            required_elements = []
+
+        claimed_matched = {str(item) for item in law.get("elements_matched", [])}
+        elements_matched = [
+            _element_name(element)
+            for element in required_elements
+            if _element_name(element) in claimed_matched
+        ]
+        elements_missing = [
+            _element_name(element)
+            for element in required_elements
+            if _element_name(element) not in claimed_matched
+        ]
 
         applied_laws.append(
             {
                 "charge_name": charge_name,
                 "article_number": article_number,
-                "elements": law.get("elements_matched", []),
-                "elements_missing": law.get("elements_missing", []),
+                "required_elements": required_elements,
+                "elements": required_elements,
+                "elements_matched": elements_matched,
+                "elements_missing": elements_missing,
                 "base_sentence": law.get("base_sentence", ""),
                 "probability": law.get("probability", "medium"),
                 "data_source": data_source,
@@ -611,15 +673,16 @@ def _build_applied_laws_from_matched(matched_laws: List[Dict[str, Any]]) -> List
     applied_laws = []
     for law in matched_laws:
         charge_name = law.get("title", "")
-        elements = law.get("elements", [])
+        required_elements = list(law.get("required_elements") or law.get("elements") or [])
         applied_laws.append(
             {
                 "charge_name": charge_name,
                 "article_number": law.get("article_number", ""),
-                "elements": elements,
+                "required_elements": required_elements,
+                "elements": required_elements,
                 "base_sentence": law.get("base_sentence", ""),
                 "charge_tags": law.get("charge_tags", []),
-                "data_source": law.get("data_source", "json_keyword"),
+                "data_source": _validated_data_source(law.get("data_source")),
             }
         )
     return applied_laws
@@ -648,6 +711,7 @@ async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
     if not facts_structured:
         _logger.warning("【law_ref_node】facts_structured 为空，跳过法条检索")
         state["applied_laws"] = []
+        state["law_search_status"] = "missing_facts"
         state["current_agent"] = "LawRef"
         return state
 
@@ -656,6 +720,7 @@ async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
     # 阶段1：RAG 语义检索（召回层）
     _logger.info("【law_ref_node】阶段1：RAG 语义检索")
     rag_results = await search_laws_by_rag(facts_structured, user_id)
+    rag_dependency_failed = bool(getattr(rag_results, "dependency_failed", False))
     _logger.info(
         "【law_ref_node】RAG 检索返回 %d 条结果: %s",
         len(rag_results),
@@ -709,17 +774,34 @@ async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
     # 统计各来源数量
     rag_verified = sum(1 for law in matched_laws if law.get("data_source") == "rag_verified")
     rag_unverified = sum(1 for law in matched_laws if law.get("data_source") == "rag_unverified")
-    json_keyword = sum(1 for law in matched_laws if law.get("data_source") != "rag_verified" and law.get("data_source") != "rag_unverified")
-    has_verified = rag_verified > 0
+    json_keyword = sum(1 for law in matched_laws if law.get("data_source") == "json_keyword")
+    has_verified = rag_verified + json_keyword > 0
 
     state["applied_laws"] = applied_laws
     state["element_to_law_mapping"] = element_to_law_mapping
     state["current_agent"] = "LawRef"
     state["rag_only"] = not has_verified and len(applied_laws) > 0
 
+    knowledge_available = bool(law_data.get("chapters"))
+    has_coverage_candidate = any(
+        law.get("data_source") in {
+            LawDataSource.RAG_VERIFIED.value,
+            LawDataSource.JSON_KEYWORD.value,
+        }
+        and bool(law.get("required_elements"))
+        for law in applied_laws
+    )
+    if has_coverage_candidate:
+        law_search_status = "success"
+    elif rag_dependency_failed or not knowledge_available:
+        law_search_status = "dependency_failure"
+    else:
+        law_search_status = "no_law_match"
+    state["law_search_status"] = law_search_status
+
     if not has_verified and len(applied_laws) > 0:
         _logger.warning(
-            "【law_ref_node】无 JSON 知识库验证结果，仅使用 RAG 未验证结果，覆盖度可能受影响"
+            "【law_ref_node】无可信 allowlist 来源，候选仅供人工复核且不参与 coverage"
         )
 
     if "conversation_history" not in state:
@@ -732,6 +814,7 @@ async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
             "rag_verified": rag_verified,
             "rag_unverified": rag_unverified,
             "json_keyword": json_keyword,
+            "search_status": law_search_status,
             "session_id": session_id,
         }
     )

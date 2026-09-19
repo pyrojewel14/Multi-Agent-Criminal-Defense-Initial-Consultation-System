@@ -20,9 +20,21 @@ async def _receptionist(state: ConsultationState) -> ConsultationState:
     return state
 
 
-async def _fact_digger(state: ConsultationState) -> ConsultationState:
+async def _fact_intake(state: ConsultationState) -> ConsultationState:
     state["current_agent"] = "FactDigger"
     state["facts_structured"] = {"incident_time": "2026-07-12", "incident_location": "示例地点"}
+    state["current_input"] = None
+    return state
+
+
+async def _law_ref(state: ConsultationState) -> ConsultationState:
+    state["current_agent"] = "LawRef"
+    state["applied_laws"] = [{"article_number": "示例法条", "elements": []}]
+    return state
+
+
+async def _fact_digger(state: ConsultationState) -> ConsultationState:
+    state["current_agent"] = "FactDigger"
     state["facts_coverage_rate"] = 1.0
     state["fact_law_loop_count"] = 1
     return state
@@ -74,7 +86,9 @@ async def run_demo() -> list[dict[str, Any]]:
 
     with (
         patch("app.orchestrator.workflow.receptionist_node", _receptionist),
-        patch("app.orchestrator.workflow.fact_digger_node", _fact_digger),
+        patch("app.orchestrator.workflow.fact_intake_node", _fact_intake),
+        patch("app.orchestrator.workflow.law_ref_node", _law_ref),
+        patch("app.orchestrator.workflow.fact_coverage_node", _fact_digger),
         patch("app.orchestrator.workflow.risk_assessor_node", _risk_assessor),
         patch("app.orchestrator.workflow.service_planner_node", _service_planner),
     ):

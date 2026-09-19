@@ -128,6 +128,8 @@ async def test_search_laws_by_keyword_matching():
     # Should find the theft article
     assert len(results) > 0
     assert any("盗窃" in r.get("title", "") or "盗窃" in r.get("charge_tags", []) for r in results)
+    theft_law = next(result for result in results if result["article_number"] == "第二百六十四条")
+    assert theft_law["required_elements"] == theft_law["elements"]
 
 
 @pytest.mark.asyncio
@@ -167,7 +169,7 @@ async def test_search_laws_by_rag():
         results = await search_laws_by_rag(facts, "user-001")
 
     assert len(results) > 0
-    assert results[0]["data_source"] == "rag"
+    assert results[0]["data_source"] == "rag_unverified"
     assert "第二百六十四条" in results[0].get("article_number", "") or results[0]["content"] != ""
     rag_service_class.assert_called_once_with(user_id="user-001", include_public=True)
 
@@ -217,6 +219,7 @@ async def test_search_laws_by_rag_failure():
         results = await search_laws_by_rag(facts, "session-001")
 
     assert results == []
+    assert results.dependency_failed is True
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +256,7 @@ def test_verify_and_enrich_with_json_match():
     assert len(result) == 1
     assert result[0]["data_source"] == "rag_verified"
     assert result[0]["title"] == "盗窃罪"
+    assert result[0]["required_elements"] == ["element1"]
 
 
 def test_verify_and_enrich_with_json_no_match():
@@ -644,7 +648,7 @@ async def test_search_laws_by_rag_with_string_documents():
     assert len(results) == 1
     # article_number is stored as raw extracted text (not normalized to Arabic)
     assert "第二百六十四条" in results[0]["article_number"]
-    assert results[0]["data_source"] == "rag"
+    assert results[0]["data_source"] == "rag_unverified"
 
 
 @pytest.mark.asyncio
@@ -661,7 +665,7 @@ async def test_search_laws_by_rag_with_document_objects():
         results = await search_laws_by_rag(facts, "session-001")
 
     assert len(results) == 1
-    assert results[0]["data_source"] == "rag"
+    assert results[0]["data_source"] == "rag_unverified"
     assert "第二百三十四条" in results[0]["article_number"]
 
 
@@ -769,6 +773,40 @@ async def test_extract_structured_laws_valid_json_response():
 
 
 @pytest.mark.asyncio
+async def test_extract_structured_laws_formats_authoritative_object_elements():
+    """对象形式的权威要件应按名称进入 LLM 上下文。"""
+    matched = [
+        {
+            "article_number": "第二百六十四条",
+            "title": "盗窃罪",
+            "content": "盗窃公私财物。",
+            "elements": [
+                {"name": "客体要件", "key": "property"},
+                {"name": "客观要件", "key": "behavior"},
+            ],
+            "base_sentence": "三年以下",
+            "charge_tags": ["盗窃"],
+            "data_source": "json_keyword",
+        }
+    ]
+    captured_user_message = ""
+
+    async def _capture_generate(system_prompt, user_message, **kwargs):
+        nonlocal captured_user_message
+        captured_user_message = user_message
+        return '{"charges": []}'
+
+    with patch("app.agents.law_ref.llm_gateway.generate", side_effect=_capture_generate):
+        result = await extract_structured_laws(
+            matched,
+            {"behavior_sequence": ["盗窃"], "consequence": ""},
+        )
+
+    assert result == []
+    assert "构成要件: 客体要件, 客观要件" in captured_user_message
+
+
+@pytest.mark.asyncio
 async def test_extract_structured_laws_no_json_in_response():
     """If LLM returns text without JSON, return empty list."""
     matched = [
@@ -819,21 +857,32 @@ def test_build_applied_laws_from_structured_with_matched_data_source():
         {
             "charge_name": "盗窃罪",
             "article_number": "第264条",
-            "elements_matched": ["客体要件"],
-            "elements_missing": ["主观要件"],
+            "elements_matched": ["客体要件", "模型虚构要件"],
+            "elements_missing": [],
             "base_sentence": "三年以下",
             "probability": "medium",
         }
     ]
     matched = [
-        {"article_number": "第264条", "data_source": "rag_verified"},
+        {
+            "article_number": "第264条",
+            "elements": ["客体要件", "主观要件"],
+            "data_source": "rag_verified",
+        },
     ]
     applied = _build_applied_laws_from_structured(structured, matched)
     assert len(applied) == 1
     assert applied[0]["charge_name"] == "盗窃罪"
     assert applied[0]["data_source"] == "rag_verified"
-    assert applied[0]["elements"] == ["客体要件"]
+    assert applied[0]["required_elements"] == ["客体要件", "主观要件"]
+    assert applied[0]["elements"] == ["客体要件", "主观要件"]
+    assert applied[0]["elements_matched"] == ["客体要件"]
     assert applied[0]["elements_missing"] == ["主观要件"]
+    assert set(applied[0]["elements_matched"]).isdisjoint(applied[0]["elements_missing"])
+    assert set(applied[0]["elements_matched"] + applied[0]["elements_missing"]) == {
+        "客体要件",
+        "主观要件",
+    }
 
 
 def test_build_applied_laws_from_structured_no_match_falls_back():
@@ -853,6 +902,31 @@ def test_build_applied_laws_from_structured_no_match_falls_back():
     ]
     applied = _build_applied_laws_from_structured(structured, matched)
     assert applied[0]["data_source"] == "llm_extracted"
+    assert applied[0]["required_elements"] == []
+
+
+def test_build_applied_laws_from_structured_rejects_unknown_source():
+    """非法来源值不能绕过来源枚举成为 coverage 候选。"""
+    structured = [
+        {
+            "charge_name": "盗窃罪",
+            "article_number": "第264条",
+            "elements_matched": ["客体要件"],
+            "elements_missing": [],
+        }
+    ]
+    matched = [
+        {
+            "article_number": "第264条",
+            "elements": ["客体要件"],
+            "data_source": "json_knowledge",
+        }
+    ]
+
+    applied = _build_applied_laws_from_structured(structured, matched)
+
+    assert applied[0]["data_source"] == "llm_extracted"
+    assert applied[0]["required_elements"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -1029,6 +1103,7 @@ async def test_law_ref_node_rag_unverified_only():
 
     # matched_laws is non-empty (the unverified RAG result), rag_verified == 0 → rag_only True
     assert result.get("rag_only") is True
+    assert result.get("law_search_status") == "no_law_match"
 
 
 @pytest.mark.asyncio

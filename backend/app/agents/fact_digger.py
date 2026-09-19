@@ -2,6 +2,14 @@ import json
 import re
 from typing import TYPE_CHECKING, Any, Dict, List
 
+from pydantic import ValidationError
+
+from app.schemas.law_schemas import (
+    CoverageCandidateSchema,
+    CoverageSource,
+    LawDataSource,
+    LawSourceSchema,
+)
 from app.security.disclaimer import disclaimer
 from app.security.sensitive_filter import detect_high_risk, mask_pii, sanitize_input
 from app.tools.fact_tools import extract_case_facts
@@ -15,6 +23,7 @@ if TYPE_CHECKING:
 _logger = get_logger("Agent.FactDigger")
 
 COVERAGE_THRESHOLD = 0.8
+NON_FACT_RETRY_LIMIT = 3
 
 _FACT_KEY_MAPPING = {
     "time": "incident_time",
@@ -151,7 +160,8 @@ def _load_summary_prompt() -> str:
 async def _analyze_coverage(facts_structured: Dict[str, Any], applied_laws: List[Dict[str, Any]]) -> Dict[str, Any]:
     """分析构成要件覆盖度。
 
-    注意：跳过 RAG 检索结果，只使用 JSON 知识库的结果计算覆盖度。
+    只有来源枚举合法、已连接检索或 JSON allowlist，且保存完整权威要件的
+    候选才能参与计算。未验证候选返回零覆盖度并进入 degraded 路径。
 
     Args:
         facts_structured: 结构化事实数据
@@ -167,20 +177,47 @@ async def _analyze_coverage(facts_structured: Dict[str, Any], applied_laws: List
             "coverage_rate": 0.0,
             "missing_elements": [],
             "weak_elements": [],
-            "source": "no_laws",
+            "source": CoverageSource.NO_LAWS.value,
+            "degraded": True,
         }
 
-    # 延迟导入避免循环依赖
-    from app.agents.law_ref import _is_unverified_rag_result
+    verified_laws = []
+    unverified_sources = []
+    invalid_source_count = 0
+    missing_required_elements_count = 0
+    for law in applied_laws:
+        try:
+            source = LawSourceSchema.model_validate(law).data_source
+        except ValidationError:
+            invalid_source_count += 1
+            continue
 
-    # 过滤掉未验证的 RAG 结果，只用 JSON 知识库验证过的结果计算覆盖度
-    json_laws = [law for law in applied_laws if not _is_unverified_rag_result(law)]
-    rag_laws = [law for law in applied_laws if _is_unverified_rag_result(law)]
+        if source in {LawDataSource.RAG_UNVERIFIED, LawDataSource.LLM_EXTRACTED}:
+            unverified_sources.append(source)
+            continue
 
-    if not json_laws and rag_laws:
+        try:
+            candidate = CoverageCandidateSchema.model_validate(law)
+        except ValidationError:
+            missing_required_elements_count += 1
+            continue
+        verified_laws.append((law, candidate))
+
+    if not verified_laws:
+        if invalid_source_count:
+            source = CoverageSource.INVALID_SOURCE.value
+        elif unverified_sources:
+            source = unverified_sources[0].value
+        elif missing_required_elements_count:
+            source = CoverageSource.MISSING_REQUIRED_ELEMENTS.value
+        else:
+            source = CoverageSource.NO_LAWS.value
         _logger.warning(
-            "【_analyze_coverage】无可用的 JSON 知识库结果，%d 个 RAG 结果被跳过",
-            len(rag_laws),
+            "【_analyze_coverage】无可靠且具备权威要件的候选，"
+            "未验证=%d，非法来源=%d，缺少权威要件=%d",
+            len(unverified_sources),
+            invalid_source_count,
+            missing_required_elements_count,
         )
         return {
             "total_elements": 0,
@@ -188,16 +225,20 @@ async def _analyze_coverage(facts_structured: Dict[str, Any], applied_laws: List
             "coverage_rate": 0.0,
             "missing_elements": [],
             "weak_elements": [],
-            "source": "rag_only",
-            "rag_count": len(rag_laws),
+            "source": source,
+            "degraded": True,
+            "rag_count": sum(item == LawDataSource.RAG_UNVERIFIED for item in unverified_sources),
+            "llm_count": sum(item == LawDataSource.LLM_EXTRACTED for item in unverified_sources),
+            "invalid_source_count": invalid_source_count,
+            "missing_required_elements_count": missing_required_elements_count,
         }
 
     law_evaluations = []
-    for law in json_laws:
+    for law, candidate in verified_laws:
         covered_elements = []
         missing_elements = []
         weak_elements = []
-        required_elements = law.get("elements", [])
+        required_elements = candidate.required_elements
 
         for element in required_elements:
             if isinstance(element, dict):
@@ -229,6 +270,7 @@ async def _analyze_coverage(facts_structured: Dict[str, Any], applied_laws: List
         coverage_rate = len(covered_elements) / total_elements if total_elements > 0 else 0.0
         law_evaluations.append({
             "article_number": law.get("article_number"),
+            "source": candidate.data_source.value,
             "total_elements": total_elements,
             "covered_elements": len(covered_elements),
             "coverage_rate": coverage_rate,
@@ -247,9 +289,13 @@ async def _analyze_coverage(facts_structured: Dict[str, Any], applied_laws: List
         "missing_elements": selected.get("missing_elements", []),
         "weak_elements": selected.get("weak_elements", []),
         "selected_article_number": selected.get("article_number"),
-        "source": "json_knowledge",
-        "json_law_count": len(json_laws),
-        "rag_count": len(rag_laws),
+        "source": selected.get("source"),
+        "degraded": False,
+        "json_law_count": len(verified_laws),
+        "rag_count": sum(item == LawDataSource.RAG_UNVERIFIED for item in unverified_sources),
+        "llm_count": sum(item == LawDataSource.LLM_EXTRACTED for item in unverified_sources),
+        "invalid_source_count": invalid_source_count,
+        "missing_required_elements_count": missing_required_elements_count,
     }
 
 
@@ -623,11 +669,102 @@ async def _handle_sufficient_coverage(
     return state
 
 
-async def fact_digger_node(state: "ConsultationState") -> "ConsultationState":
-    """FactDigger Agent 节点函数
+def _record_fact_law_attempt(state: "ConsultationState", outcome: str) -> int:
+    """记录一次事实与法条循环，并返回当前窗口的连续非事实失败次数。"""
+    attempt = state.get("fact_law_loop_count", 0) + 1
+    attempts = list(state.get("fact_law_attempts", []))
+    entry = {
+        "attempt": attempt,
+        "outcome": outcome,
+        "session_id": state.get("session_id", "unknown"),
+    }
+    attempts.append(entry)
+    state["fact_law_loop_count"] = attempt
+    state["fact_law_attempts"] = attempts
 
-    处理事实收集、结构化提取和追问逻辑
-    与 LawRef 双向交互：当 applied_laws 有数据时分析覆盖度
+    _logger.info(
+        "【fact_law_attempt】%s",
+        json.dumps(entry, ensure_ascii=False, sort_keys=True),
+    )
+
+    if outcome in {"no_law_match", "dependency_failure"}:
+        failure_streak = state.get("fact_law_failure_streak", 0) + 1
+        state["fact_law_failure_streak"] = failure_streak
+        state["fact_law_last_failure"] = outcome
+        return failure_streak
+
+    state["fact_law_failure_streak"] = 0
+    state["fact_law_last_failure"] = None
+    return 0
+
+
+def _handle_missing_law_context(
+    state: "ConsultationState",
+    pending_questions: List[str],
+    conversation_history: List[Dict[str, Any]],
+) -> "ConsultationState":
+    """首次检索前用非空事实问题维持正常补充路径。"""
+    question = "请补充涉案行为、造成的结果以及目前已掌握的证据情况。"
+    if question not in pending_questions:
+        pending_questions.append(question)
+    response_text = disclaimer.inject(f"为了更准确地分析案件，请您补充以下信息：\n\n1. {question}")
+    conversation_history.append({"agent": "FactDigger", "role": "assistant", "content": response_text})
+    state["pending_questions"] = pending_questions
+    state["final_output"] = response_text
+    state["current_agent"] = "FactDigger"
+    state["conversation_history"] = conversation_history
+    return state
+
+
+def _handle_non_fact_failure(
+    state: "ConsultationState",
+    outcome: str,
+    consecutive_failures: int,
+    pending_questions: List[str],
+    conversation_history: List[Dict[str, Any]],
+) -> "ConsultationState":
+    """对无匹配和依赖失败进行有限重试，耗尽后转人工审核。"""
+    if outcome == "dependency_failure":
+        prompt = "知识或模型服务当前不可用，您是否愿意稍后重试？若持续失败，系统将转人工审核。"
+    else:
+        prompt = "当前未检索到匹配法条，您是否愿意补充案情后重试？若持续无匹配，系统将转人工审核。"
+
+    if prompt not in pending_questions:
+        pending_questions.append(prompt)
+
+    if consecutive_failures >= NON_FACT_RETRY_LIMIT:
+        termination_reason = f"{outcome}_retry_exhausted"
+        state["workflow_status"] = "degraded"
+        state["fact_law_termination_reason"] = termination_reason
+        state["lawyer_review_needed"] = True
+        response_text = f"{prompt}\n\n系统已在有限次数内停止自动重试，并转交人工审核。"
+        termination_log = {
+            "session_id": state.get("session_id", "unknown"),
+            "attempt": state.get("fact_law_loop_count", 0),
+            "termination_reason": termination_reason,
+        }
+        _logger.warning(
+            "【fact_law_termination】%s",
+            json.dumps(termination_log, ensure_ascii=False, sort_keys=True),
+        )
+    else:
+        response_text = prompt
+
+    response_text = disclaimer.inject(response_text)
+    conversation_history.append({"agent": "FactDigger", "role": "assistant", "content": response_text})
+    state["facts_coverage_rate"] = 0.0
+    state["pending_questions"] = pending_questions
+    state["final_output"] = response_text
+    state["current_agent"] = "FactDigger"
+    state["conversation_history"] = conversation_history
+    return state
+
+
+async def fact_intake_node(state: "ConsultationState") -> "ConsultationState":
+    """消费本轮输入并刷新结构化事实。
+
+    使用 facts_raw 副本完成追加和提取，只有提取阶段正常返回后才写回状态，
+    避免节点失败重试时重复追加同一条输入。
 
     Args:
         state: 当前 ConsultationState
@@ -635,7 +772,51 @@ async def fact_digger_node(state: "ConsultationState") -> "ConsultationState":
     Returns:
         更新后的 ConsultationState
     """
-    _logger.info("【fact_digger_node】FactDigger 节点开始执行")
+    _logger.info("【fact_intake_node】FactDigger 事实摄取开始执行")
+
+    facts_raw = list(state.get("facts_raw", []))
+    facts_structured = state.get("facts_structured", {})
+    conversation_history = state.get("conversation_history", [])
+    user_input = state.get("current_input", "")
+
+    if not facts_raw and not user_input:
+        return _handle_first_interaction(state)
+
+    if user_input:
+        state = _handle_high_risk_input(state, user_input, conversation_history)
+        if state.get("current_agent") == "HumanAlert":
+            state["current_input"] = None
+            return state
+
+        sanitized_input = sanitize_input(user_input)
+        facts_raw.append(sanitized_input)
+        _logger.debug("【fact_intake_node】追加用户输入到 facts_raw，当前共 %d 条", len(facts_raw))
+
+    extracted_facts = await _extract_structured_facts(facts_raw)
+    if extracted_facts:
+        facts_structured = extracted_facts
+        _logger.debug("【fact_intake_node】提取结构化事实完成")
+    elif facts_structured:
+        _logger.warning("【fact_intake_node】本轮未提取到结构化事实，保留上一轮有效结果")
+
+    state["facts_structured"] = facts_structured
+    state["facts_raw"] = facts_raw
+    state["current_input"] = None
+    state["current_agent"] = "FactDigger"
+    state["conversation_history"] = conversation_history
+    return state
+
+
+async def fact_coverage_node(state: "ConsultationState") -> "ConsultationState":
+    """基于刷新后的事实和法条计算覆盖度并生成追问或摘要。
+
+    Args:
+        state: 当前 ConsultationState
+
+    Returns:
+        更新后的 ConsultationState
+    """
+    _logger.info("【fact_coverage_node】FactDigger 覆盖度分析开始执行")
 
     facts_raw = state.get("facts_raw", [])
     facts_structured = state.get("facts_structured", {})
@@ -643,50 +824,46 @@ async def fact_digger_node(state: "ConsultationState") -> "ConsultationState":
     pending_questions = state.get("pending_questions", [])
     conversation_history = state.get("conversation_history", [])
 
-    user_input = state.get("current_input", "")
-
-    # 首次交互：无原始事实且无用户输入
-    if not facts_raw and not user_input:
-        return _handle_first_interaction(state)
-
-    # 处理用户输入
-    if user_input:
-        # P0-2: 高风险语句检测
-        state = _handle_high_risk_input(state, user_input, conversation_history)
-        if state.get("current_agent") == "HumanAlert":
-            return state
-
-        # P0-1: PII 脱敏后存储
-        sanitized_input = sanitize_input(user_input)
-        facts_raw.append(sanitized_input)
-        _logger.debug("【fact_digger_node】追加用户输入到 facts_raw，当前共 %d 条", len(facts_raw))
-
-    extracted_facts = await _extract_structured_facts(facts_raw)
-    if extracted_facts:
-        facts_structured = extracted_facts
-        _logger.debug("【fact_digger_node】提取结构化事实完成")
-    elif facts_structured:
-        _logger.warning("【fact_digger_node】本轮未提取到结构化事实，保留上一轮有效结果")
-
-    state["facts_structured"] = facts_structured
-    state["facts_raw"] = facts_raw
-
     if not applied_laws:
-        _logger.warning(
-            "【fact_digger_node】applied_laws 为空，设置 coverage_rate=0，等待 LawRef 返回"
-        )
         state["facts_coverage_rate"] = 0.0
-        state["current_agent"] = "FactDigger"
-        state["conversation_history"] = conversation_history
-        return state
+        law_search_status = state.get("law_search_status")
+        if law_search_status in {"no_law_match", "dependency_failure"}:
+            consecutive_failures = _record_fact_law_attempt(state, law_search_status)
+            return _handle_non_fact_failure(
+                state,
+                law_search_status,
+                consecutive_failures,
+                pending_questions,
+                conversation_history,
+            )
+
+        _record_fact_law_attempt(state, "missing_facts")
+        _logger.warning("【fact_coverage_node】applied_laws 为空，尚未取得法条检索结果")
+        return _handle_missing_law_context(state, pending_questions, conversation_history)
 
     # 分析覆盖度
     coverage_analysis = await _analyze_coverage(facts_structured, applied_laws)
     coverage_rate = coverage_analysis.get("coverage_rate", 0.0)
 
-    # 更新循环计数
-    loop_count = state.get("fact_law_loop_count", 0) + 1
-    state["fact_law_loop_count"] = loop_count
+    if coverage_analysis.get("degraded"):
+        law_search_status = state.get("law_search_status")
+        outcome = (
+            law_search_status
+            if law_search_status in {"no_law_match", "dependency_failure"}
+            else "no_law_match"
+        )
+        consecutive_failures = _record_fact_law_attempt(state, outcome)
+        return _handle_non_fact_failure(
+            state,
+            outcome,
+            consecutive_failures,
+            pending_questions,
+            conversation_history,
+        )
+
+    outcome = "missing_facts" if coverage_rate < COVERAGE_THRESHOLD else "complete"
+    _record_fact_law_attempt(state, outcome)
+    loop_count = state.get("fact_law_loop_count", 0)
     _logger.debug(
         "【fact_digger_node】当前循环次数: %d/%d",
         loop_count,
@@ -704,5 +881,12 @@ async def fact_digger_node(state: "ConsultationState") -> "ConsultationState":
 
     if coverage_rate < COVERAGE_THRESHOLD:
         return await _handle_insufficient_coverage(state, coverage_analysis, facts_structured, pending_questions, conversation_history)
-    else:
-        return await _handle_sufficient_coverage(state, facts_structured, facts_raw, conversation_history)
+    return await _handle_sufficient_coverage(state, facts_structured, facts_raw, conversation_history)
+
+
+async def fact_digger_node(state: "ConsultationState") -> "ConsultationState":
+    """按事实摄取、覆盖度分析两个阶段执行 FactDigger。"""
+    state = await fact_intake_node(state)
+    if state.get("alert_triggered"):
+        return state
+    return await fact_coverage_node(state)

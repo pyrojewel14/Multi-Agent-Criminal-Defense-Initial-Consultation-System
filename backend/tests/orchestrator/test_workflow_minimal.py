@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.errors.exceptions import LLMServiceException
-from app.orchestrator.workflow import ConsultationOrchestrator, _fact_digger_workflow_node
+from app.orchestrator.workflow import ConsultationOrchestrator, _fact_intake_workflow_node
 from app.state.consultation_state import ConsultationState
 from tests.factories import make_consultation_state
 
@@ -39,6 +39,12 @@ async def _workflow_fixture(
         state["current_agent"] = "Receptionist"
         return state
 
+    async def fact_intake(state: ConsultationState) -> ConsultationState:
+        trace.append("fact_intake")
+        state["current_agent"] = "FactDigger"
+        state["alert_triggered"] = high_risk
+        return state
+
     async def fact_digger(state: ConsultationState) -> ConsultationState:
         nonlocal fact_calls
         trace.append("fact_digger")
@@ -49,7 +55,6 @@ async def _workflow_fixture(
         state["facts_coverage_rate"] = coverage
         state["fact_law_loop_count"] = fact_calls
         state["pending_questions"] = ["请补充关键事实"] if coverage < 0.8 else []
-        state["alert_triggered"] = high_risk
         return state
 
     async def law_ref(state: ConsultationState) -> ConsultationState:
@@ -79,7 +84,8 @@ async def _workflow_fixture(
 
     with (
         patch("app.orchestrator.workflow.receptionist_node", receptionist),
-        patch("app.orchestrator.workflow.fact_digger_node", fact_digger),
+        patch("app.orchestrator.workflow.fact_intake_node", fact_intake),
+        patch("app.orchestrator.workflow.fact_coverage_node", fact_digger),
         patch("app.orchestrator.workflow.law_ref_node", law_ref),
         patch("app.orchestrator.workflow.risk_assessor_node", risk_assessor),
         patch("app.orchestrator.workflow.service_planner_node", service_planner),
@@ -106,7 +112,7 @@ async def test_missing_facts_pause_then_resume_through_law_ref():
         paused = await orchestrator.resume_workflow("phase5-follow-up", {"consent_given": True})
 
         assert paused["pending_questions"] == ["请补充关键事实"]
-        assert await orchestrator.get_next_node("phase5-follow-up") == "law_ref"
+        assert await orchestrator.get_next_node("phase5-follow-up") == "fact_intake"
 
         resumed = await orchestrator.resume_workflow("phase5-follow-up", {"current_input": "补充事实"})
 
@@ -114,12 +120,243 @@ async def test_missing_facts_pause_then_resume_through_law_ref():
         assert resumed["awaiting_lawyer_review"] is True
         assert trace == [
             "receptionist",
+            "fact_intake",
+            "law_ref",
             "fact_digger",
+            "fact_intake",
             "law_ref",
             "fact_digger",
             "risk_assessor",
             "service_planner",
         ]
+
+
+@pytest.mark.asyncio
+async def test_resumed_fact_refreshes_law_query_and_risk_laws():
+    """本轮决定性事实必须先进入真实编译图的检索与风险输入。"""
+    session_id = "p0-current-fact-before-law"
+    rag_queries: list[str] = []
+    risk_inputs: list[tuple[dict, list[dict]]] = []
+
+    class FakeRagService:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        async def initialize_retriever(self, query: str) -> None:
+            rag_queries.append(query)
+
+        async def get_documents_and_summary(self, query: str) -> dict:
+            article = "第二百六十三条" if "持刀" in query else "第二百九十三条"
+            return {"documents": [f"中华人民共和国刑法{article}"]}
+
+    law_data = {
+        "chapters": [
+            {
+                "chapter": "侵犯财产罪",
+                "articles": [
+                    {
+                        "article_number": "第二百六十三条",
+                        "title": "抢劫罪",
+                        "content": "持刀威胁并抢走手机",
+                        "elements": ["暴力取财"],
+                        "base_sentence": "三年以上十年以下有期徒刑",
+                        "charge_tags": ["抢劫"],
+                        "common_keywords": ["持刀威胁并抢走手机"],
+                    },
+                ],
+            },
+            {
+                "chapter": "扰乱公共秩序罪",
+                "articles": [
+                    {
+                        "article_number": "第二百九十三条",
+                        "title": "寻衅滋事罪",
+                        "content": "徒手推搡",
+                        "elements": ["随意殴打"],
+                        "base_sentence": "五年以下有期徒刑",
+                        "charge_tags": ["寻衅滋事"],
+                        "common_keywords": ["徒手推搡"],
+                    },
+                ],
+            },
+        ]
+    }
+
+    async def receptionist(state: ConsultationState) -> ConsultationState:
+        state["current_agent"] = "Receptionist"
+        return state
+
+    async def extract_facts(facts_raw: list[str]) -> dict:
+        if any("持刀" in fact for fact in facts_raw):
+            return {
+                "behavior_sequence": ["持刀威胁并抢走手机"],
+                "consequence": "手机被夺",
+            }
+        return {"behavior_sequence": ["徒手推搡"], "consequence": "轻微伤"}
+
+    async def analyze_coverage(facts: dict, _: list[dict]) -> dict:
+        changed_charge = "持刀" in str(facts.get("behavior_sequence", []))
+        return {
+            "total_elements": 1,
+            "covered_elements": int(changed_charge),
+            "coverage_rate": 1.0 if changed_charge else 0.0,
+            "missing_elements": [] if changed_charge else ["决定性行为"],
+            "weak_elements": [],
+            "source": "json_knowledge",
+        }
+
+    async def risk_assessor(state: ConsultationState) -> ConsultationState:
+        risk_inputs.append((state["facts_structured"], state["applied_laws"]))
+        state["current_agent"] = "RiskAssessor"
+        state["risk_assessment"] = {"risk_level": "high"}
+        return state
+
+    async def service_planner(state: ConsultationState) -> ConsultationState:
+        state["current_agent"] = "ServicePlanner"
+        state["service_plan"] = {"next_step": "lawyer_review"}
+        state["report_draft"] = "确定性报告草案"
+        return state
+
+    initial_state = make_consultation_state(
+        session_id=session_id,
+        consent_given=False,
+        facts_raw=["先前仅发生徒手推搡"],
+        current_input=None,
+        facts_structured={},
+        applied_laws=[],
+        conversation_history=[],
+        lawyer_decision=None,
+    )
+
+    with (
+        patch("app.orchestrator.workflow.receptionist_node", receptionist),
+        patch("app.agents.fact_digger._extract_structured_facts", extract_facts),
+        patch("app.agents.fact_digger._analyze_coverage", analyze_coverage),
+        patch(
+            "app.agents.fact_digger._generate_follow_up_questions",
+            new_callable=AsyncMock,
+            return_value=["请补充是否使用工具"],
+        ),
+        patch(
+            "app.agents.fact_digger._generate_fact_summary",
+            new_callable=AsyncMock,
+            return_value="事实摘要",
+        ),
+        patch("app.rag.rag_service.RagService", FakeRagService),
+        patch("app.agents.law_ref.load_criminal_law_data", return_value=law_data),
+        patch(
+            "app.agents.law_ref.extract_structured_laws",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch("app.orchestrator.workflow.risk_assessor_node", risk_assessor),
+        patch("app.orchestrator.workflow.service_planner_node", service_planner),
+    ):
+        orchestrator = ConsultationOrchestrator()
+        await orchestrator.start_workflow(initial_state)
+        paused = await orchestrator.resume_workflow(session_id, {"consent_given": True})
+
+        assert paused["facts_coverage_rate"] == 0.0
+        assert await orchestrator.get_next_node(session_id) == "fact_intake"
+
+        result = await orchestrator.resume_workflow(
+            session_id,
+            {"current_input": "本轮新增决定性事实：持刀威胁并抢走手机"},
+        )
+
+    assert "持刀威胁并抢走手机" in rag_queries[-1]
+    assert [law["article_number"] for law in result["applied_laws"]] == ["第二百六十三条"]
+    assert len(risk_inputs) == 1
+    risk_facts, risk_laws = risk_inputs[0]
+    assert "持刀威胁并抢走手机" in str(risk_facts)
+    assert [law["article_number"] for law in risk_laws] == ["第二百六十三条"]
+    assert all(law["article_number"] != "第二百九十三条" for law in risk_laws)
+
+
+@pytest.mark.asyncio
+async def test_compiled_workflow_retry_does_not_append_consumed_input_twice():
+    """后续节点失败后从 checkpoint 重试不得再次摄取同一条输入。"""
+    session_id = "p0-retry-current-input-once"
+    law_calls = 0
+
+    async def receptionist(state: ConsultationState) -> ConsultationState:
+        state["current_agent"] = "Receptionist"
+        return state
+
+    async def extract_facts(facts_raw: list[str]) -> dict:
+        return {"behavior_sequence": list(facts_raw)}
+
+    async def law_ref(state: ConsultationState) -> ConsultationState:
+        nonlocal law_calls
+        law_calls += 1
+        if law_calls == 2:
+            raise RuntimeError("检索阶段暂时失败")
+        state["current_agent"] = "LawRef"
+        state["applied_laws"] = [{"article_number": "第二百六十三条", "elements": []}]
+        return state
+
+    async def fact_coverage(state: ConsultationState) -> ConsultationState:
+        complete = "本轮补充事实" in state["facts_raw"]
+        state["current_agent"] = "FactDigger"
+        state["facts_coverage_rate"] = 1.0 if complete else 0.0
+        state["pending_questions"] = [] if complete else ["请补充事实"]
+        state["fact_law_loop_count"] = state.get("fact_law_loop_count", 0) + 1
+        return state
+
+    async def risk_assessor(state: ConsultationState) -> ConsultationState:
+        state["current_agent"] = "RiskAssessor"
+        state["risk_assessment"] = {"risk_level": "medium"}
+        return state
+
+    async def service_planner(state: ConsultationState) -> ConsultationState:
+        state["current_agent"] = "ServicePlanner"
+        state["service_plan"] = {"next_step": "lawyer_review"}
+        state["report_draft"] = "确定性报告草案"
+        return state
+
+    initial_state = make_consultation_state(
+        session_id=session_id,
+        consent_given=False,
+        facts_raw=["上一轮事实"],
+        current_input=None,
+        facts_structured={},
+        applied_laws=[],
+        conversation_history=[],
+        lawyer_decision=None,
+    )
+
+    with (
+        patch("app.orchestrator.workflow.receptionist_node", receptionist),
+        patch("app.agents.fact_digger._extract_structured_facts", extract_facts),
+        patch("app.orchestrator.workflow.law_ref_node", law_ref),
+        patch("app.orchestrator.workflow.fact_coverage_node", fact_coverage),
+        patch("app.orchestrator.workflow.risk_assessor_node", risk_assessor),
+        patch("app.orchestrator.workflow.service_planner_node", service_planner),
+    ):
+        orchestrator = ConsultationOrchestrator()
+        await orchestrator.start_workflow(initial_state)
+        await orchestrator.resume_workflow(session_id, {"consent_given": True})
+
+        with pytest.raises(RuntimeError, match="检索阶段暂时失败"):
+            await orchestrator.resume_workflow(
+                session_id,
+                {"current_input": "本轮补充事实"},
+            )
+
+        failed_snapshot = await orchestrator.get_snapshot(session_id)
+        assert failed_snapshot is not None
+        assert failed_snapshot.values["facts_raw"] == ["上一轮事实", "本轮补充事实"]
+        assert failed_snapshot.values["current_input"] is None
+        assert failed_snapshot.next == ("law_ref",)
+
+        result = await orchestrator.resume_workflow(
+            session_id,
+            {"current_input": "本轮补充事实"},
+        )
+
+    assert result["facts_raw"] == ["上一轮事实", "本轮补充事实"]
+    assert result["current_input"] is None
+    assert law_calls == 3
 
 
 @pytest.mark.asyncio
@@ -129,7 +366,7 @@ async def test_high_risk_routes_to_human_alert():
 
         assert result["current_agent"] == "HumanAlert"
         assert result["lawyer_review_needed"] is True
-        assert trace == ["receptionist", "fact_digger", "human_alert"]
+        assert trace == ["receptionist", "fact_intake", "human_alert"]
         assert await orchestrator.is_workflow_finished("phase5-alert") is True
 
 
@@ -168,7 +405,7 @@ async def test_revise_facts_does_not_append_stale_current_input_again():
         new_callable=AsyncMock,
         return_value={"behavior_sequence": ["补充事实"]},
     ) as extract_facts:
-        result = await _fact_digger_workflow_node(state)
+        result = await _fact_intake_workflow_node(state)
 
     assert result["facts_raw"] == ["补充事实"]
     assert result["current_input"] is None

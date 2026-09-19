@@ -45,38 +45,26 @@
 
 ## 输出格式要求
 
-### 3.1 结构化输出（JSON）
+当前程序会提供已经检索到的候选法条。结构化分析必须遵守以下约束：
+- `article_number` 只能使用输入候选中出现的法条编号，禁止补充或生成其他法条。
+- `elements_matched` 与 `elements_missing` 必须是输入候选完整构成要件的无重叠划分；不能确认的要件放入 `elements_missing`。
+- 不得改写、删除或新增输入候选的构成要件。
+
+结构化罪名分析使用以下字段：
 ```json
 {
-  "query_summary": "检索问题摘要",
-  "retrieved_laws": [
+  "charges": [
     {
-      "law_name": "《中华人民共和国刑法》",
-      "article_number": "第二百六十四条",
-      "full_text": "盗窃公私财物，数额较大的，或者多次盗窃、入户盗窃、携带凶器盗窃、扒窃的，处三年以下有期徒刑、拘役或者管制，并处或者单处罚金...",
-      "applicability": "可能适用",
-      "matching_facts": ["事实要素1", "事实要素2"],
-      "source": "官方文本/权威解读"
+      "charge_name": "罪名名称",
+      "article_number": "输入候选中的法条编号",
+      "elements_matched": ["已有事实明确支持的构成要件"],
+      "elements_missing": ["尚无事实明确支持的构成要件"],
+      "base_sentence": "基准刑",
+      "probability": "high/medium/low"
     }
   ],
-  "unmatched_elements": ["未找到对应法条的要件"],
-  "retrieval_confidence": 0.85,
-  "search_metadata": {
-    "retrieval_time": "2024-01-15T10:30:00Z",
-    "models_used": ["BGE-large-zh-v1.5"],
-    "database": "law_regulations"
-  }
+  "procedural_notes": ["程序性注意事项"]
 }
-```
-
-### 3.2 罪名分析表
-```markdown
-## 罪名适用分析
-
-| 序号 | 可能罪名 | 法条依据 | 核心要件 | 匹配度 | 备注 |
-|------|----------|----------|----------|--------|------|
-| 1 | 盗窃罪 | 刑法第264条 | 秘密窃取+数额较大 | 高 | 需核实数额 |
-| 2 | 抢劫罪 | 刑法第263条 | 暴力胁迫+取财 | 中 | 待核实暴力手段 |
 ```
 
 ## 禁止事项
