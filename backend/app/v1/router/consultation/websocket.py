@@ -81,7 +81,7 @@ def _get_websocket_user(websocket: WebSocket) -> dict | None:
     return {"user_id": user_id, "role": role}
 
 
-@ws_router.websocket("/api/v1/sessions/{session_id}/ws")
+@ws_router.websocket("/sessions/{session_id}/ws")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     """WebSocket 通信端点
 

@@ -5,11 +5,24 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import WebSocketDisconnect
+from starlette.routing import WebSocketRoute
 
 from app.errors.exceptions import LLMTimeoutException
 from app.security.jwt import create_access_token
 from app.v1.router.consultation.websocket import websocket_endpoint
 from tests.factories import make_consultation_state
+
+
+@pytest.mark.asyncio
+async def test_app_registers_websocket_under_public_api_prefix(test_app):
+    websocket_paths = [
+        route.path
+        for route in test_app.routes
+        if isinstance(route, WebSocketRoute)
+    ]
+
+    assert "/api/v1/sessions/{session_id}/ws" in websocket_paths
+    assert "/api/v1/api/v1/sessions/{session_id}/ws" not in websocket_paths
 
 
 @pytest.mark.asyncio
