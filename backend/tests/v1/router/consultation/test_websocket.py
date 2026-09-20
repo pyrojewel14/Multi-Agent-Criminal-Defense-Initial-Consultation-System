@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import WebSocketDisconnect
-from fastapi.routing import APIWebSocketRoute
+from fastapi.testclient import TestClient
 
 from app.errors.exceptions import LLMTimeoutException
 from app.security.jwt import create_access_token
@@ -13,16 +13,18 @@ from app.v1.router.consultation.websocket import websocket_endpoint
 from tests.factories import make_consultation_state
 
 
-@pytest.mark.asyncio
-async def test_app_registers_websocket_under_public_api_prefix(test_app):
-    websocket_paths = [
-        route.path
-        for route in test_app.routes
-        if isinstance(route, APIWebSocketRoute)
-    ]
+def test_app_registers_websocket_under_public_api_prefix(test_app):
+    client = TestClient(test_app)
 
-    assert "/api/v1/sessions/{session_id}/ws" in websocket_paths
-    assert "/api/v1/api/v1/sessions/{session_id}/ws" not in websocket_paths
+    with pytest.raises(WebSocketDisconnect) as public_disconnect:
+        with client.websocket_connect("/api/v1/sessions/probe/ws"):
+            pass
+    with pytest.raises(WebSocketDisconnect) as doubled_disconnect:
+        with client.websocket_connect("/api/v1/api/v1/sessions/probe/ws"):
+            pass
+
+    assert public_disconnect.value.code == 4401
+    assert doubled_disconnect.value.code != 4401
 
 
 @pytest.mark.asyncio
