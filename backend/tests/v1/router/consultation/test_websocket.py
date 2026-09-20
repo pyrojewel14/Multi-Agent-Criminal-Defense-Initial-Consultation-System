@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import WebSocketDisconnect
-from starlette.routing import WebSocketRoute
+from fastapi.routing import APIWebSocketRoute
 
 from app.errors.exceptions import LLMTimeoutException
 from app.security.jwt import create_access_token
@@ -18,7 +18,7 @@ async def test_app_registers_websocket_under_public_api_prefix(test_app):
     websocket_paths = [
         route.path
         for route in test_app.routes
-        if isinstance(route, WebSocketRoute)
+        if isinstance(route, APIWebSocketRoute)
     ]
 
     assert "/api/v1/sessions/{session_id}/ws" in websocket_paths
