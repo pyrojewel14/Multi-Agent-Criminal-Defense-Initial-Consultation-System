@@ -21,21 +21,36 @@ class CrossEncoderReranker(BaseReranker):
         Returns:
             模型和分词器元组。
         """
-        if self._model is None:
-            actual_path = self._resolve_model_path()
-            _logger.info("【_load_model】加载模型: %s", actual_path)
+        return await self._run_blocking(self._load_model_sync)
 
-            self._tokenizer = None
-            self._model = CrossEncoder(
-                actual_path,
-                max_length=self.config.max_length,
-                device=self.config.device if self.config.device != "auto" else "cpu",
-            )
-            self._model.eval()
+    def _load_model_sync(self):
+        """在线程池工作线程中加载交叉编码器模型。"""
+        with self._model_load_lock:
+            if self._model is not None:
+                self._set_load_status("ready")
+                return self._model, self._tokenizer
+
+            self._set_load_status("loading")
+            try:
+                actual_path = self._resolve_model_path()
+                _logger.info("【_load_model】加载模型: %s", actual_path)
+
+                model = CrossEncoder(
+                    actual_path,
+                    max_length=self.config.max_length,
+                    device=self.config.device if self.config.device != "auto" else "cpu",
+                )
+                model.eval()
+                self._tokenizer = None
+                self._model = model
+                self._set_load_status("ready")
+            except Exception as exc:
+                self._set_load_status("error", f"{type(exc).__name__}: {exc}")
+                _logger.exception("【_load_model】模型加载失败")
+                raise
 
             _logger.info("【_load_model】模型加载成功")
-
-        return self._model, self._tokenizer
+            return self._model, self._tokenizer
 
     def _resolve_model_path(self) -> str:
         """解析模型路径，查找包含 config.json 的目录。
@@ -78,7 +93,11 @@ class CrossEncoderReranker(BaseReranker):
         Returns:
             相关性分数列表。
         """
-        model, _ = await self._load_model()
+        return await self._run_blocking(self._compute_scores_sync, pairs)
+
+    def _compute_scores_sync(self, pairs: list[tuple[str, str]]) -> list[float]:
+        """在线程池工作线程中执行交叉编码器推理。"""
+        model, _ = self._load_model_sync()
         with torch.no_grad():
             scores = model.predict(pairs, batch_size=1)
         _logger.debug("【_compute_scores】计算完成，返回 %d 个分数", len(scores))

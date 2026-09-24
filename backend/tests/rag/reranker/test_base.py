@@ -33,7 +33,7 @@ class TestRerankerConfig:
     def test_from_env_uses_defaults(self, monkeypatch):
         # Clear any env vars that might be set
         for key in ["RERANKER_MODEL_NAME", "RERANKER_MODEL_PATH", "MODEL_CACHE_DIR",
-                    "RERANKER_MAX_LENGTH", "RERANKER_INSTRUCTION"]:
+                    "RERANKER_MAX_LENGTH", "RERANKER_INSTRUCTION", "RERANKER_MAX_CONCURRENCY"]:
             monkeypatch.delenv(key, raising=False)
         cfg = RerankerConfig.from_env()
         assert cfg.model_name == "Qwen/Qwen3-Reranker-0.6B"
@@ -41,6 +41,7 @@ class TestRerankerConfig:
         assert cfg.cache_dir == "./data/models"
         assert cfg.max_length == 512
         assert cfg.instruction is None
+        assert cfg.max_concurrency == 1
 
     def test_from_env_reads_overrides(self, monkeypatch):
         monkeypatch.setenv("RERANKER_MODEL_NAME", "custom-model")
@@ -48,12 +49,14 @@ class TestRerankerConfig:
         monkeypatch.setenv("MODEL_CACHE_DIR", "/custom/cache")
         monkeypatch.setenv("RERANKER_MAX_LENGTH", "256")
         monkeypatch.setenv("RERANKER_INSTRUCTION", "my instruction")
+        monkeypatch.setenv("RERANKER_MAX_CONCURRENCY", "3")
         cfg = RerankerConfig.from_env()
         assert cfg.model_name == "custom-model"
         assert cfg.local_path == "/custom/path"
         assert cfg.cache_dir == "/custom/cache"
         assert cfg.max_length == 256
         assert cfg.instruction == "my instruction"
+        assert cfg.max_concurrency == 3
 
 
 # ---------------------------------------------------------------------------

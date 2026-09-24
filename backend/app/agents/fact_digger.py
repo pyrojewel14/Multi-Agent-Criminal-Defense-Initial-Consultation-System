@@ -10,6 +10,13 @@ from app.schemas.law_schemas import (
     LawDataSource,
     LawSourceSchema,
 )
+from app.schemas.llm_artifacts import (
+    ArtifactSource,
+    FactArtifact,
+    record_artifact_result,
+    validate_artifact,
+)
+from app.errors.exceptions import LLMServiceException, LLMTimeoutException
 from app.security.disclaimer import disclaimer
 from app.security.sensitive_filter import detect_high_risk, mask_pii, sanitize_input
 from app.tools.fact_tools import extract_case_facts
@@ -447,8 +454,13 @@ async def _generate_follow_up_questions(missing_elements: List[str], facts_struc
             json_str = response[start_idx:end_idx]
             data = json.loads(json_str)
             return data.get("questions", [])
+    except (LLMServiceException, LLMTimeoutException):
+        raise
     except Exception as e:
-        _logger.error("【_generate_follow_up_questions】生成追问失败: %s", e)
+        _logger.error(
+            "【_generate_follow_up_questions】生成追问失败: error_type=%s",
+            type(e).__name__,
+        )
 
     return []
 
@@ -482,22 +494,30 @@ async def _generate_fact_summary(facts_structured: Dict[str, Any], facts_raw: Li
     try:
         summary = await llm_gateway.generate(system_prompt=system_prompt, user_message=user_message, temperature=0.1)
         return summary
+    except (LLMServiceException, LLMTimeoutException):
+        raise
     except Exception as e:
-        _logger.error("【_generate_fact_summary】生成事实摘要失败: %s", e)
+        _logger.error(
+            "【_generate_fact_summary】生成事实摘要失败: error_type=%s",
+            type(e).__name__,
+        )
         return ""
 
 
-async def _extract_structured_facts(facts_raw: List[str]) -> Dict[str, Any]:
+async def _extract_structured_facts(
+    facts_raw: List[str],
+) -> tuple[Dict[str, Any], ArtifactSource]:
     """使用 LLM Function Calling 提取结构化事实。
 
     Args:
         facts_raw: 原始用户输入列表
 
     Returns:
-        结构化事实字典
+        结构化事实字典及其真实解析通道
     """
     combined_facts = "\n".join([f"- {fact}" for fact in facts_raw])
     user_message = f"请从以下描述中提取案件事实要素：\n\n{combined_facts}"
+    source = ArtifactSource.CONTENT_JSON
 
     try:
         # 使用 LLMGateway 的 generate_with_tools 方法
@@ -511,6 +531,7 @@ async def _extract_structured_facts(facts_raw: List[str]) -> Dict[str, Any]:
 
         # 优先使用 tool_calls 返回
         if result.get("has_tool_call"):
+            source = ArtifactSource.TOOL_CALL
             for tool_call in result["tool_calls"]:
                 if tool_call.get("name") == "extract_case_facts":
                     extracted_args = tool_call.get("args", {})
@@ -518,8 +539,7 @@ async def _extract_structured_facts(facts_raw: List[str]) -> Dict[str, Any]:
                         "【_extract_structured_facts】extract_case_facts 调用成功，返回字段数: %d",
                         len(extracted_args),
                     )
-                    _logger.debug("【_extract_structured_facts】提取结果: %s", extracted_args)
-                    return extracted_args
+                    return extracted_args, source
 
             _logger.warning("【_extract_structured_facts】存在 tool_calls 但未找到 extract_case_facts")
 
@@ -531,13 +551,18 @@ async def _extract_structured_facts(facts_raw: List[str]) -> Dict[str, Any]:
             json_match = re.search(r"\{[\s\S]*\}", content)
             if json_match:
                 _logger.info("【_extract_structured_facts】从 content 回退解析 JSON 成功")
-                return json.loads(json_match.group())
+                return json.loads(json_match.group()), ArtifactSource.CONTENT_JSON
 
         _logger.warning("【_extract_structured_facts】tool_calls 和 content 均无有效结果")
-        return {}
+        return {}, source
+    except (LLMServiceException, LLMTimeoutException):
+        raise
     except Exception as e:
-        _logger.error("【_extract_structured_facts】Function Calling 提取失败: %s", e)
-        return {}
+        _logger.error(
+            "【_extract_structured_facts】Function Calling 提取失败: error_type=%s",
+            type(e).__name__,
+        )
+        return {}, source
 
 
 def _handle_first_interaction(state: "ConsultationState") -> "ConsultationState":
@@ -792,9 +817,15 @@ async def fact_intake_node(state: "ConsultationState") -> "ConsultationState":
         facts_raw.append(sanitized_input)
         _logger.debug("【fact_intake_node】追加用户输入到 facts_raw，当前共 %d 条", len(facts_raw))
 
-    extracted_facts = await _extract_structured_facts(facts_raw)
-    if extracted_facts:
-        facts_structured = extracted_facts
+    extracted_facts, artifact_source = await _extract_structured_facts(facts_raw)
+    fact_artifact, artifact_result = validate_artifact(
+        FactArtifact,
+        extracted_facts,
+        source=artifact_source,
+    )
+    record_artifact_result(state, "fact", artifact_result)
+    if fact_artifact is not None:
+        facts_structured = fact_artifact.model_dump(mode="json")
         _logger.debug("【fact_intake_node】提取结构化事实完成")
     elif facts_structured:
         _logger.warning("【fact_intake_node】本轮未提取到结构化事实，保留上一轮有效结果")

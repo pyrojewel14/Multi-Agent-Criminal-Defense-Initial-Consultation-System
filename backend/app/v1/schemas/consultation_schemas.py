@@ -73,6 +73,7 @@ class AssignLawyerRequest(BaseModel):
 
 class UpdateStatusRequest(BaseModel):
     status: str = Field(..., description="状态: pending, in_progress, completed, cancelled")
+    idempotency_key: Optional[str] = Field(None, min_length=1, max_length=128, description="客户端幂等键")
 
 
 class CreateSessionRequest(BaseModel):
@@ -104,6 +105,7 @@ class SendMessageRequest(BaseModel):
     content: str = Field(..., min_length=1, description="消息内容")
     message_type: Literal["text", "action", "system"] = Field(default="text", description="消息类型")
     metadata: Optional[dict[str, Any]] = Field(None, description="附加元数据")
+    idempotency_key: Optional[str] = Field(None, min_length=1, max_length=128, description="客户端幂等键")
 
 
 class SendMessageResponse(BaseModel):
@@ -159,7 +161,7 @@ class SessionStateResponse(BaseModel):
     risk_assessment: Optional[dict] = Field(None, description="风险评估")
     final_output: Optional[str] = Field(None, description="最终输出")
     lawyer_id: Optional[str] = Field(None, description="律师ID")
-    status: str = Field(default="active", description="会话状态")
+    status: str = Field(default="active", description="会话状态: active, completed, cancelled, repair_required")
 
 
 class ReportDraftResponse(BaseModel):
@@ -180,6 +182,7 @@ class LawyerReviewRequest(BaseModel):
     )
     feedback: Optional[str] = Field(None, description="律师反馈意见")
     final_output: Optional[str] = Field(None, description="律师确认的最终报告内容(仅当decision=approved时)")
+    idempotency_key: Optional[str] = Field(None, min_length=1, max_length=128, description="客户端幂等键")
 
 
 class LawyerReviewResponse(BaseModel):
@@ -196,6 +199,7 @@ class SessionCloseRequest(BaseModel):
     """关闭会话请求模型"""
 
     reason: Optional[str] = Field(None, description="关闭原因")
+    idempotency_key: Optional[str] = Field(None, min_length=1, max_length=128, description="客户端幂等键")
 
 
 class SessionCloseResponse(BaseModel):

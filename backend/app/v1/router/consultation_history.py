@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -301,10 +300,33 @@ async def update_consultation_status(
         raise HTTPException(status_code=400, detail="无效的状态值")
 
     old_status = consultation.status.value if consultation.status else None
-    consultation.status = new_status
 
-    if new_status == ConsultationStatus.COMPLETED:
-        consultation.completed_at = datetime.utcnow()
+    # completed/cancelled 属于生命周期转换，旧接口只作为统一应用命令的适配层。
+    if new_status in {ConsultationStatus.COMPLETED, ConsultationStatus.CANCELLED}:
+        workflow_session_id = getattr(consultation, "workflow_session_id", None)
+        if not workflow_session_id:
+            raise HTTPException(status_code=409, detail="咨询记录缺少可恢复的 workflow_session_id")
+        try:
+            await consultation_service.execute_lifecycle_command(
+                workflow_session_id,
+                action="approve" if new_status == ConsultationStatus.COMPLETED else "close",
+                db=db,
+                actor_id=current_user["user_id"],
+                final_output=getattr(consultation, "final_output", None),
+                idempotency_key=request.idempotency_key,
+            )
+        except consultation_service.LifecycleCommandConflictError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=consultation_service.LIFECYCLE_REVIEW_CONFLICT_DETAIL,
+            ) from exc
+        except consultation_service.LifecycleConsistencyError as exc:
+            raise HTTPException(status_code=503, detail=consultation_service.LIFECYCLE_REPAIR_DETAIL) from exc
+        except consultation_service.IdempotencyConflictError as exc:
+            raise HTTPException(status_code=409, detail="幂等键已用于不同请求") from exc
+        return success_response(message=f"咨询状态已更新为 {request.status}")
+
+    consultation.status = new_status
 
     await db.commit()
 

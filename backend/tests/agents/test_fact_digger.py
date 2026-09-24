@@ -1,6 +1,8 @@
 """Integration tests for the FactDigger Agent node."""
 
 import json
+import logging
+from io import StringIO
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,6 +24,8 @@ from app.agents.fact_digger import (
     _load_summary_prompt,
     fact_digger_node,
 )
+from app.errors.exceptions import LLMServiceException, LLMTimeoutException
+from app.schemas.llm_artifacts import ArtifactSource
 from tests.factories import make_applied_law, make_consultation_state
 
 
@@ -64,8 +68,14 @@ async def test_extract_structured_facts_with_consent():
     extracted = {
         "incident_time": "2024-01-01",
         "incident_location": "北京市朝阳区",
+        "parties": [],
         "consequence": "轻伤",
         "behavior_sequence": [{"actor": "张某", "action": "殴打"}],
+        "evidence_mentioned": [],
+        "arrest_status": None,
+        "surrender": None,
+        "victim_forgiveness": None,
+        "prior_record": None,
     }
 
     state = make_consultation_state(
@@ -612,7 +622,10 @@ async def test_node_appends_current_input_once_and_only_after_pii_masking():
     with patch(
         "app.agents.fact_digger._extract_structured_facts",
         new_callable=AsyncMock,
-        return_value={"behavior_sequence": ["咨询"]},
+        return_value=(
+            {"behavior_sequence": ["咨询"]},
+            ArtifactSource.TOOL_CALL,
+        ),
     ):
         result = await fact_digger_node(state)
 
@@ -761,6 +774,30 @@ async def test_generate_follow_up_questions_exception():
     assert result == []
 
 
+@pytest.mark.parametrize("exception_type", [LLMTimeoutException, LLMServiceException])
+@pytest.mark.asyncio
+async def test_generate_follow_up_questions_propagates_typed_gateway_error_without_detail_log(
+    exception_type,
+):
+    """Gateway 502/504 must reach the upper layer without logging exception detail."""
+    secret = "sensitive-upstream-detail"
+    error = exception_type(detail="operation=generate,error_type=RuntimeError")
+    error.__cause__ = RuntimeError(secret)
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    fact_digger._logger.addHandler(handler)
+    try:
+        with patch("app.agents.fact_digger.llm_gateway") as mock_llm:
+            mock_llm.generate = AsyncMock(side_effect=error)
+            with pytest.raises(exception_type) as exc_info:
+                await _generate_follow_up_questions(["地点"], {"consequence": "轻伤"})
+    finally:
+        fact_digger._logger.removeHandler(handler)
+
+    assert exc_info.value is error
+    assert secret not in stream.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # _generate_fact_summary
 # ---------------------------------------------------------------------------
@@ -799,6 +836,30 @@ async def test_generate_fact_summary_exception_returns_empty():
             {"consequence": "轻伤"}, ["张某打人"]
         )
     assert result == ""
+
+
+@pytest.mark.parametrize("exception_type", [LLMTimeoutException, LLMServiceException])
+@pytest.mark.asyncio
+async def test_generate_fact_summary_propagates_typed_gateway_error_without_detail_log(
+    exception_type,
+):
+    """Summary generation must not turn typed gateway failures into an empty success."""
+    secret = "sensitive-upstream-detail"
+    error = exception_type(detail="operation=generate,error_type=RuntimeError")
+    error.__cause__ = RuntimeError(secret)
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    fact_digger._logger.addHandler(handler)
+    try:
+        with patch("app.agents.fact_digger.llm_gateway") as mock_llm:
+            mock_llm.generate = AsyncMock(side_effect=error)
+            with pytest.raises(exception_type) as exc_info:
+                await _generate_fact_summary({"consequence": "轻伤"}, ["已脱敏事实"])
+    finally:
+        fact_digger._logger.removeHandler(handler)
+
+    assert exc_info.value is error
+    assert secret not in stream.getvalue()
 
 
 # ---------------------------------------------------------------------------
@@ -938,7 +999,18 @@ async def test_extract_structured_facts_fallback_to_content_json():
         applied_laws=[],
     )
 
-    extracted = {"incident_time": "2024-01-01", "consequence": "轻伤"}
+    extracted = {
+        "incident_time": "2024-01-01",
+        "incident_location": None,
+        "parties": [],
+        "behavior_sequence": [],
+        "consequence": "轻伤",
+        "evidence_mentioned": [],
+        "arrest_status": None,
+        "surrender": None,
+        "victim_forgiveness": None,
+        "prior_record": None,
+    }
     with patch("app.agents.fact_digger.llm_gateway") as mock_llm:
         mock_llm.generate_with_tools = AsyncMock(
             return_value={
@@ -1056,7 +1128,13 @@ async def test_failed_fact_intake_retry_appends_current_input_once():
     with patch(
         "app.agents.fact_digger._extract_structured_facts",
         new_callable=AsyncMock,
-        side_effect=[RuntimeError("提取阶段中断"), {"behavior_sequence": ["本轮补充事实"]}],
+        side_effect=[
+            RuntimeError("提取阶段中断"),
+            (
+                {"behavior_sequence": ["本轮补充事实"]},
+                ArtifactSource.TOOL_CALL,
+            ),
+        ],
     ):
         with pytest.raises(RuntimeError, match="提取阶段中断"):
             await fact_digger_node(state)

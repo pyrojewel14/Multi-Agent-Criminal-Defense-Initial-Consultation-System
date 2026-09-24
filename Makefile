@@ -38,6 +38,7 @@ test-backend:
 		tests/security/test_jwt.py \
 		tests/db/test_db_config.py \
 		tests/db/test_redis_config.py \
+		tests/test_main_startup.py \
 		tests/v1/router/test_phase6_api_contract.py
 
 test-frontend:

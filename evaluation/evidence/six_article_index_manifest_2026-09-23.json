@@ -1,0 +1,16 @@
+{
+  "snapshot_path": "backend/data/law_knowledge/criminal_law_chapters.json",
+  "snapshot_sha256": "sha256:2199fd9e883c09794d0db5271aa45b71efb0daab6eb6e5b860fc44cd9ee83c06",
+  "snapshot_git_tracked": false,
+  "snapshot_version": "2026-09-21.1",
+  "official_text_source": "criminal-law-consolidated-amendment-12",
+  "annotation_source": "project-maintained-v1",
+  "document_count": 6,
+  "collection": "rag_collection",
+  "embedding_model": "qwen3-embedding:0.6b",
+  "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+  "embedding_dimension": 1024,
+  "documents_sha256": "sha256:c5be8a50c413fa4a59d6053a8c613f87f88939950b3cc768748ddb19104cbe01",
+  "embeddings_sha256": "sha256:57edb72a16561a3c89df55deead1b83c07c346b9806ace4168f251480ef4bd4d",
+  "build_command": "PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/build_live_index.py --index-dir <isolated-path>"
+}

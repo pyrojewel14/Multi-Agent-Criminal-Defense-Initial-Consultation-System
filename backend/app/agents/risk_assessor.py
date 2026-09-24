@@ -1,6 +1,14 @@
 import json
 from typing import TYPE_CHECKING, Any, Dict, List
 
+from app.schemas.llm_artifacts import (
+    ArtifactSource,
+    ArtifactStatus,
+    RiskArtifact,
+    record_artifact_result,
+    parse_json_object,
+    validate_artifact,
+)
 from app.security.disclaimer import disclaimer
 from app.security.sensitive_filter import mask_pii
 from app.utils.llm_gateway import llm_gateway
@@ -65,9 +73,28 @@ async def risk_assessor_node(state: "ConsultationState") -> "ConsultationState":
     facts_structured = state.get("facts_structured", {})
     applied_laws = state.get("applied_laws", [])
 
-    risk_assessment = await _generate_risk_assessment(facts_structured, applied_laws)
+    candidate = await _generate_risk_assessment(facts_structured, applied_laws)
+    risk_artifact, artifact_result = validate_artifact(
+        RiskArtifact,
+        candidate,
+        source=ArtifactSource.CONTENT_JSON,
+        failure_status=ArtifactStatus.HUMAN_REVIEW,
+    )
+    record_artifact_result(state, "risk", artifact_result)
+    if risk_artifact is None:
+        state["risk_assessment"] = None
+        state["workflow_status"] = "degraded"
+        state["lawyer_review_needed"] = True
+        state["current_agent"] = "HumanReview"
+        _logger.warning(
+            "【risk_assessor_node】风险产物校验失败，转人工: error_count=%d",
+            len(artifact_result.validation_errors),
+        )
+        return state
 
+    risk_assessment = risk_artifact.model_dump(mode="json")
     state["risk_assessment"] = risk_assessment
+    state["workflow_status"] = None
     state["current_agent"] = "ServicePlanner"
 
     _add_to_conversation_history(state=state, agent="RiskAssessor", assessment=risk_assessment)
@@ -108,16 +135,10 @@ async def _generate_risk_assessment(facts_structured: Dict[str, Any], applied_la
 
     _logger.debug("【_generate_risk_assessment】LLM生成风险评估完成")
 
-    try:
-        assessment = json.loads(response)
-    except (json.JSONDecodeError, TypeError):
-        _logger.warning("【_generate_risk_assessment】JSON解析失败，使用默认格式")
-        assessment = _parse_fallback_assessment(response)
-
-    if not isinstance(assessment, dict):
-        _logger.warning("【_generate_risk_assessment】响应顶层不是对象，使用默认格式")
-        assessment = _parse_fallback_assessment(response)
-
+    assessment = parse_json_object(response)
+    if assessment is None:
+        _logger.warning("【_generate_risk_assessment】JSON 对象解析失败")
+        return {}
     return assessment
 
 

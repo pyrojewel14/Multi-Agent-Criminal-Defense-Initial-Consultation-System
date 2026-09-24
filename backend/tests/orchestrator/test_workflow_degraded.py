@@ -14,12 +14,16 @@ from app.orchestrator.workflow import (
     human_review_node,
     lawyer_decision,
 )
+from app.schemas.llm_artifacts import ArtifactSource
 from app.state.consultation_state import ConsultationState
 from tests.factories import make_applied_law, make_consultation_state
 
 
-async def _fixed_facts(_: list[str]) -> dict:
-    return {"behavior_sequence": ["发生争执"], "consequence": "有人受伤"}
+async def _fixed_facts(_: list[str]) -> tuple[dict, ArtifactSource]:
+    return (
+        {"behavior_sequence": ["发生争执"], "consequence": "有人受伤"},
+        ArtifactSource.CONTENT_JSON,
+    )
 
 
 @pytest.mark.asyncio
@@ -134,7 +138,7 @@ async def test_missing_facts_uses_fact_prompt_and_records_outcome():
         patch(
             "app.agents.fact_digger._extract_structured_facts",
             new_callable=AsyncMock,
-            return_value={"incident_time": "昨晚"},
+            return_value=({"incident_time": "昨晚"}, ArtifactSource.CONTENT_JSON),
         ),
         patch(
             "app.agents.fact_digger._generate_follow_up_questions",
@@ -232,7 +236,7 @@ async def test_lawyer_retry_clears_degraded_window_without_erasing_attempt_histo
         patch(
             "app.agents.fact_digger._extract_structured_facts",
             new_callable=AsyncMock,
-            return_value={"incident_time": "昨晚"},
+            return_value=({"incident_time": "昨晚"}, ArtifactSource.CONTENT_JSON),
         ),
         patch(
             "app.agents.fact_digger._generate_fact_summary",

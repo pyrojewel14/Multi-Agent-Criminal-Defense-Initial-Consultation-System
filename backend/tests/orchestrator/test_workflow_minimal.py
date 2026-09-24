@@ -8,6 +8,7 @@ import pytest
 
 from app.errors.exceptions import LLMServiceException
 from app.orchestrator.workflow import ConsultationOrchestrator, _fact_intake_workflow_node
+from app.schemas.llm_artifacts import ArtifactSource
 from app.state.consultation_state import ConsultationState
 from tests.factories import make_consultation_state
 
@@ -132,6 +133,67 @@ async def test_missing_facts_pause_then_resume_through_law_ref():
 
 
 @pytest.mark.asyncio
+async def test_invalid_risk_artifact_routes_directly_to_human_without_service_call():
+    """风险产物降级时真实编译图不得继续调用 ServicePlanner。"""
+    session_id = "risk-artifact-human-review"
+    service_calls = 0
+
+    async def receptionist(state: ConsultationState) -> ConsultationState:
+        state["current_agent"] = "Receptionist"
+        return state
+
+    async def fact_intake(state: ConsultationState) -> ConsultationState:
+        state["current_agent"] = "FactDigger"
+        state["alert_triggered"] = False
+        return state
+
+    async def law_ref(state: ConsultationState) -> ConsultationState:
+        state["current_agent"] = "LawRef"
+        return state
+
+    async def fact_coverage(state: ConsultationState) -> ConsultationState:
+        state["current_agent"] = "FactDigger"
+        state["facts_coverage_rate"] = 1.0
+        return state
+
+    async def risk_assessor(state: ConsultationState) -> ConsultationState:
+        state["current_agent"] = "HumanReview"
+        state["workflow_status"] = "degraded"
+        state["artifact_results"] = {
+            "risk": {
+                "status": "human_review",
+                "source": "content_json",
+                "degraded_reason": "schema_validation_failed",
+                "validation_errors": [{"loc": ["procedure_risks"], "type": "missing"}],
+                "retryable": False,
+            }
+        }
+        return state
+
+    async def service_planner(state: ConsultationState) -> ConsultationState:
+        nonlocal service_calls
+        service_calls += 1
+        return state
+
+    initial = _initial_state(session_id)
+    with (
+        patch("app.orchestrator.workflow.receptionist_node", receptionist),
+        patch("app.orchestrator.workflow.fact_intake_node", fact_intake),
+        patch("app.orchestrator.workflow.law_ref_node", law_ref),
+        patch("app.orchestrator.workflow.fact_coverage_node", fact_coverage),
+        patch("app.orchestrator.workflow.risk_assessor_node", risk_assessor),
+        patch("app.orchestrator.workflow.service_planner_node", service_planner),
+    ):
+        orchestrator = ConsultationOrchestrator()
+        await orchestrator.start_workflow(initial)
+        result = await orchestrator.resume_workflow(session_id, {"consent_given": True})
+
+    assert result["current_agent"] == "HumanReview"
+    assert service_calls == 0
+    assert await orchestrator.get_next_node(session_id) == "human_review"
+
+
+@pytest.mark.asyncio
 async def test_resumed_fact_refreshes_law_query_and_risk_laws():
     """本轮决定性事实必须先进入真实编译图的检索与风险输入。"""
     session_id = "p0-current-fact-before-law"
@@ -145,9 +207,9 @@ async def test_resumed_fact_refreshes_law_query_and_risk_laws():
         async def initialize_retriever(self, query: str) -> None:
             rag_queries.append(query)
 
-        async def get_documents_and_summary(self, query: str) -> dict:
+        async def retrieve_documents(self, query: str) -> list[str]:
             article = "第二百六十三条" if "持刀" in query else "第二百九十三条"
-            return {"documents": [f"中华人民共和国刑法{article}"]}
+            return [f"中华人民共和国刑法{article}"]
 
     law_data = {
         "chapters": [
@@ -186,13 +248,44 @@ async def test_resumed_fact_refreshes_law_query_and_risk_laws():
         state["current_agent"] = "Receptionist"
         return state
 
-    async def extract_facts(facts_raw: list[str]) -> dict:
+    async def extract_facts(facts_raw: list[str]) -> tuple[dict, ArtifactSource]:
+        complete = {
+            "incident_time": None,
+            "incident_location": None,
+            "parties": [],
+            "evidence_mentioned": [],
+            "arrest_status": None,
+            "surrender": None,
+            "victim_forgiveness": None,
+            "prior_record": None,
+        }
         if any("持刀" in fact for fact in facts_raw):
-            return {
-                "behavior_sequence": ["持刀威胁并抢走手机"],
+            payload = complete | {
+                "behavior_sequence": [
+                    {
+                        "time": "案发时",
+                        "actor": "当事人",
+                        "action": "持刀威胁并抢走手机",
+                        "method": "持刀威胁",
+                        "target": "手机",
+                    }
+                ],
                 "consequence": "手机被夺",
             }
-        return {"behavior_sequence": ["徒手推搡"], "consequence": "轻微伤"}
+            return payload, ArtifactSource.TOOL_CALL
+        payload = complete | {
+            "behavior_sequence": [
+                {
+                    "time": "案发时",
+                    "actor": "当事人",
+                    "action": "徒手推搡",
+                    "method": "徒手",
+                    "target": "他人",
+                }
+            ],
+            "consequence": "轻微伤",
+        }
+        return payload, ArtifactSource.TOOL_CALL
 
     async def analyze_coverage(facts: dict, _: list[dict]) -> dict:
         changed_charge = "持刀" in str(facts.get("behavior_sequence", []))
@@ -283,8 +376,8 @@ async def test_compiled_workflow_retry_does_not_append_consumed_input_twice():
         state["current_agent"] = "Receptionist"
         return state
 
-    async def extract_facts(facts_raw: list[str]) -> dict:
-        return {"behavior_sequence": list(facts_raw)}
+    async def extract_facts(facts_raw: list[str]) -> tuple[dict, ArtifactSource]:
+        return {"behavior_sequence": list(facts_raw)}, ArtifactSource.TOOL_CALL
 
     async def law_ref(state: ConsultationState) -> ConsultationState:
         nonlocal law_calls
@@ -403,7 +496,10 @@ async def test_revise_facts_does_not_append_stale_current_input_again():
     with patch(
         "app.agents.fact_digger._extract_structured_facts",
         new_callable=AsyncMock,
-        return_value={"behavior_sequence": ["补充事实"]},
+        return_value=(
+            {"behavior_sequence": ["补充事实"]},
+            ArtifactSource.TOOL_CALL,
+        ),
     ) as extract_facts:
         result = await _fact_intake_workflow_node(state)
 

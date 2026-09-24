@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional, TypedDict
 
 from pydantic import TypeAdapter, ValidationError
@@ -33,6 +34,9 @@ class ConsultationState(TypedDict, total=False):
     fact_law_last_failure: Optional[str]  # 当前重试窗口内最近一次非事实失败类型
     law_search_status: Optional[str]  # 法条检索状态（success/missing_facts/no_law_match/dependency_failure）
     workflow_status: Optional[str]  # 工作流运行状态，依赖失败终止时为 degraded
+    repair_required: bool  # 生命周期命令跨存储失败后，是否必须先执行修复
+    consistency_error: Optional[dict]  # 非敏感的一致性失败阶段和操作标记
+    command_processed_at: datetime  # application command 首次成功时间，仅用于稳定重放响应
     element_to_law_mapping: Optional[dict]  # 构成要件到法条的映射，LawRef 生成后供 FactDigger 计算覆盖度
     identity_info: Optional[dict]  # 用户身份详细信息（姓名脱敏、联系方式等），Receptionist 阶段收集
     user_role: Optional[str]  # 用户在系统中的角色（client/lawyer/admin），用于 RBAC 权限判断
@@ -40,6 +44,10 @@ class ConsultationState(TypedDict, total=False):
     lawyer_decision: Optional[str]  # 律师审核决定（approved/revise_facts/revise_risk），外部 API 写入
     lawyer_feedback: Optional[str]  # 律师审核反馈意见，退回时附带的修改建议
     rag_only: bool  # 是否仅命中未经 JSON 知识库验证的 RAG 结果
+    artifact_results: dict  # 按 fact/law/risk/service 保存结构化产物状态
+    degraded_reason: Optional[str]  # 最近一次产物降级原因
+    source: Optional[str]  # 最近一次产物来源
+    validation_errors: List[dict]  # 最近一次 schema 错误（不含原始输入）
 
 
 _STATE_ADAPTER: TypeAdapter[ConsultationState] = TypeAdapter(ConsultationState)

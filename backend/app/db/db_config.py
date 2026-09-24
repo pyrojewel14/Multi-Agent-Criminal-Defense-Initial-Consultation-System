@@ -22,9 +22,21 @@ AsyncSessionLocal = async_sessionmaker(bind=async_engine, class_=AsyncSession, e
 
 
 async def init_db():
-    """初始化数据库，创建所有表结构。"""
+    """初始化 SQLite 表，并对既有库执行最小增量迁移。"""
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # 当前项目固定使用 SQLite 且尚未引入 Alembic；PRAGMA 迁移不得外推到其他数据库。
+        columns = await conn.execute(text("PRAGMA table_info(consultations)"))
+        rows = columns.fetchall()
+        if not any(row[1] == "workflow_session_id" for row in rows):
+            await conn.execute(text("ALTER TABLE consultations ADD COLUMN workflow_session_id VARCHAR(36)"))
+        await conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "ix_consultations_workflow_session_id "
+                "ON consultations (workflow_session_id)"
+            )
+        )
 
 
 async def get_db():

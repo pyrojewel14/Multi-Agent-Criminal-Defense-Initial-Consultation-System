@@ -1,5 +1,6 @@
 import asyncio
 import json
+import uuid
 from datetime import datetime, timezone
 from typing import Dict, List
 
@@ -159,6 +160,23 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
             if message_type == "message":
                 content = message_data.get("content", "")
+                supplied_request_id = message_data.get("request_id")
+                try:
+                    request_id = str(uuid.UUID(supplied_request_id)) if supplied_request_id else str(uuid.uuid4())
+                except (ValueError, AttributeError):
+                    request_id = str(uuid.uuid4())
+                idempotency_key = message_data.get("idempotency_key") or message_data.get("message_id")
+                if idempotency_key is not None and (
+                    not isinstance(idempotency_key, str)
+                    or not idempotency_key
+                    or len(idempotency_key) > 128
+                ):
+                    await websocket.send_json({
+                        "type": "error",
+                        "content": "无效的幂等键",
+                        "session_id": session_id,
+                    })
+                    continue
 
                 # 每轮重新获取最新状态，避免使用过期的局部变量
                 state = await consultation_service.get_session_state(session_id)
@@ -186,7 +204,24 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
                 # 通过 resume_workflow 恢复，LangGraph 条件边自动路由
                 try:
-                    result = await consultation_service.process_message(session_id, content, state, current_agent)
+                    result = await consultation_service.process_message(
+                        session_id,
+                        content,
+                        state,
+                        current_agent,
+                        idempotency_key=idempotency_key,
+                        sender_id=current_user["user_id"],
+                        request_id=request_id,
+                        transport="websocket",
+                    )
+                except consultation_service.IdempotencyConflictError:
+                    await websocket.send_json({
+                        "type": "error",
+                        "content": "幂等键已用于不同请求",
+                        "error_code": "IDEMPOTENCY_CONFLICT",
+                        "session_id": session_id,
+                    })
+                    continue
                 except AppException as exc:
                     _logger.error(
                         "【websocket_endpoint】消息处理异常: session_id=%s, error=%s",
@@ -199,12 +234,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             "content": exc.message,
                             "error_code": exc.code.value,
                             "session_id": session_id,
+                            "request_id": request_id,
                         }
                     )
                     continue
 
                 if result.error:
-                    _logger.error("【websocket_endpoint】消息处理异常: %s", result.error)
+                    _logger.error("【websocket_endpoint】消息处理失败: session_id=%s", session_id)
                     await websocket.send_json(
                         {
                             "type": "error",
@@ -218,17 +254,20 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         {
                             "type": "alert",
                             "content": HIGH_RISK_ALERT_MESSAGE,
-                            "agent_name": current_agent,
+                            "agent_name": result.agent_name or current_agent,
                             "session_id": session_id,
+                            "request_id": request_id,
                         }
                     )
                 else:
                     await websocket.send_json(
                         {
                             "type": "message",
-                            "agent_name": current_agent,
+                            "agent_name": result.agent_name or current_agent,
                             "content": result.response_content,
                             "session_id": session_id,
+                            "message_id": result.message_id,
+                            "idempotency_key": idempotency_key,
                         }
                     )
 
@@ -236,14 +275,19 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         {
                             "type": "ack",
                             "content": "消息已处理",
-                            "agent_name": current_agent,
+                            "agent_name": result.agent_name or current_agent,
+                            "request_id": request_id,
                         }
                     )
 
     except WebSocketDisconnect:
         _logger.info("【websocket_endpoint】客户端断开连接: session_id=%s", session_id)
     except Exception as e:
-        _logger.error("【websocket_endpoint】WebSocket异常: session_id=%s, error=%s", session_id, str(e))
+        _logger.error(
+            "【websocket_endpoint】WebSocket异常: session_id=%s, error_type=%s",
+            session_id,
+            type(e).__name__,
+        )
     finally:
         if heartbeat_task:
             heartbeat_task.cancel()

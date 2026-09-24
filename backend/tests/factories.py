@@ -44,6 +44,10 @@ def make_consultation_state(**overrides: Any) -> ConsultationState:
         "lawyer_decision": None,
         "lawyer_feedback": None,
         "rag_only": False,
+        "artifact_results": {},
+        "degraded_reason": None,
+        "source": None,
+        "validation_errors": [],
     }
     return validate_consultation_state({**defaults, **overrides})
 

@@ -5,16 +5,16 @@ from langchain_core.tools import tool
 
 @tool
 def extract_case_facts(
-    incident_time: Optional[str] = None,
-    incident_location: Optional[str] = None,
-    parties: Optional[List[Dict[str, Any]]] = None,
-    behavior_sequence: Optional[List[Dict[str, Any]]] = None,
-    consequence: Optional[str] = None,
-    evidence_mentioned: Optional[List[Dict[str, Any]]] = None,
-    arrest_status: Optional[str] = None,
-    surrender: Optional[bool] = None,
-    victim_forgiveness: Optional[bool] = None,
-    prior_record: Optional[bool] = None,
+    incident_time: Optional[str],
+    incident_location: Optional[str],
+    parties: Optional[List[Dict[str, Any]]],
+    behavior_sequence: Optional[List[Dict[str, Any]]],
+    consequence: Optional[str],
+    evidence_mentioned: Optional[List[Dict[str, Any]]],
+    arrest_status: Optional[str],
+    surrender: Optional[bool],
+    victim_forgiveness: Optional[bool],
+    prior_record: Optional[bool],
 ) -> Dict[str, Any]:
     """从咨询者描述中提取刑事案件关键事实要素。
 

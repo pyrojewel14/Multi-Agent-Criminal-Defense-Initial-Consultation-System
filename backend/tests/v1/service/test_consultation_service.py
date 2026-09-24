@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.errors.exceptions import LLMTimeoutException
+from app.observability.tracing import SessionBudgetExceeded
 from app.state.consultation_state import validate_consultation_state
 from app.v1.service import consultation_service
 from app.v1.service.consultation_service import (
@@ -71,17 +72,14 @@ def empty_snapshot():
 class TestGetSessionState:
     @pytest.mark.asyncio
     async def test_returns_snapshot_values_when_available(self, snapshot_with_values, sample_state):
-        """If checkpointer has a snapshot, that wins over Redis and memory."""
-        with patch.object(consultation_service.orchestrator, "get_snapshot", new_callable=AsyncMock) as mock_get_snap, \
-             patch("app.v1.service.consultation_service.get_redis_cache_json", new_callable=AsyncMock) as mock_redis:
+        """Only the checkpoint is a valid execution state source."""
+        with patch.object(consultation_service.orchestrator, "get_snapshot", new_callable=AsyncMock) as mock_get_snap:
             mock_get_snap.return_value = snapshot_with_values
-            mock_redis.return_value = None
 
             result = await get_session_state("sess-001")
 
         assert result == sample_state
         assert result is not sample_state
-        mock_redis.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_rejects_snapshot_with_invalid_state_types(self):
@@ -98,66 +96,40 @@ class TestGetSessionState:
                 await get_session_state("sess-001")
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_redis_dict(self, sample_state):
-        """When the snapshot is empty, the dict from Redis is wrapped in ConsultationState."""
+    async def test_does_not_fall_back_to_redis_dict(self, sample_state):
+        """A Redis projection cannot reconstruct the pending graph node."""
         empty = MagicMock()
         empty.values = None
-        with patch.object(consultation_service.orchestrator, "get_snapshot", new_callable=AsyncMock) as mock_get_snap, \
-             patch("app.v1.service.consultation_service.get_redis_cache_json", new_callable=AsyncMock) as mock_redis, \
-             patch.object(consultation_service.orchestrator, "get_session_context", return_value=None) as mock_ctx:
+        with patch.object(consultation_service.orchestrator, "get_snapshot", new_callable=AsyncMock) as mock_get_snap:
             mock_get_snap.return_value = empty
-            mock_redis.return_value = dict(sample_state)
-            mock_ctx.return_value = None
-
-            result = await get_session_state("sess-001")
-
-        assert result is not None
-        assert result.get("session_id") == "sess-001"
+            assert await get_session_state("sess-001") is None
 
     @pytest.mark.asyncio
-    async def test_rejects_non_dict_redis_value(self):
-        """Redis 中的非字典值不是有效的咨询状态。"""
+    async def test_ignores_non_checkpoint_projection(self):
+        """Non-checkpoint projections are ignored rather than validated as execution state."""
         empty = MagicMock()
         empty.values = None
-        # Wrap in a non-dict container to exercise the ``else`` branch.
-        non_dict_state = object()
-        with patch.object(consultation_service.orchestrator, "get_snapshot", new_callable=AsyncMock) as mock_get_snap, \
-             patch("app.v1.service.consultation_service.get_redis_cache_json", new_callable=AsyncMock) as mock_redis, \
-             patch.object(consultation_service.orchestrator, "get_session_context", return_value=None) as mock_ctx:
+        with patch.object(consultation_service.orchestrator, "get_snapshot", new_callable=AsyncMock) as mock_get_snap:
             mock_get_snap.return_value = empty
-            mock_redis.return_value = non_dict_state
-            mock_ctx.return_value = None
-
-            with pytest.raises(ValueError, match="咨询状态无效"):
-                await get_session_state("sess-001")
+            assert await get_session_state("sess-001") is None
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_memory_cache(self):
-        """When both snapshot and Redis are empty, the in-memory cache is used."""
+    async def test_does_not_fall_back_to_memory_cache(self):
+        """The process cache is not an execution authority."""
         empty = MagicMock()
         empty.values = None
-        in_memory = {"session_id": "sess-001", "current_agent": "FactDigger"}
         with patch.object(consultation_service.orchestrator, "get_snapshot", new_callable=AsyncMock) as mock_get_snap, \
-             patch("app.v1.service.consultation_service.get_redis_cache_json", new_callable=AsyncMock) as mock_redis, \
-             patch.object(consultation_service.orchestrator, "get_session_context", return_value=in_memory) as mock_ctx:
+             patch.object(consultation_service.orchestrator, "get_session_context", return_value={"session_id": "sess-001"}) as mock_ctx:
             mock_get_snap.return_value = empty
-            mock_redis.return_value = None
-            mock_ctx.return_value = in_memory
-
-            result = await get_session_state("sess-001")
-
-        assert result is in_memory
+            assert await get_session_state("sess-001") is None
+        mock_ctx.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_returns_none_when_nothing_found(self):
         empty = MagicMock()
         empty.values = None
-        with patch.object(consultation_service.orchestrator, "get_snapshot", new_callable=AsyncMock) as mock_get_snap, \
-             patch("app.v1.service.consultation_service.get_redis_cache_json", new_callable=AsyncMock) as mock_redis, \
-             patch.object(consultation_service.orchestrator, "get_session_context", return_value=None) as mock_ctx:
+        with patch.object(consultation_service.orchestrator, "get_snapshot", new_callable=AsyncMock) as mock_get_snap:
             mock_get_snap.return_value = empty
-            mock_redis.return_value = None
-            mock_ctx.return_value = None
 
             result = await get_session_state("missing")
 
@@ -168,12 +140,8 @@ class TestGetSessionState:
         """An empty dict in ``values`` should be considered absent."""
         snapshot = MagicMock()
         snapshot.values = {}
-        with patch.object(consultation_service.orchestrator, "get_snapshot", new_callable=AsyncMock) as mock_get_snap, \
-             patch("app.v1.service.consultation_service.get_redis_cache_json", new_callable=AsyncMock) as mock_redis, \
-             patch.object(consultation_service.orchestrator, "get_session_context", return_value=None) as mock_ctx:
+        with patch.object(consultation_service.orchestrator, "get_snapshot", new_callable=AsyncMock) as mock_get_snap:
             mock_get_snap.return_value = snapshot
-            mock_redis.return_value = None
-            mock_ctx.return_value = None
 
             result = await get_session_state("missing")
 
@@ -187,18 +155,14 @@ class TestGetSessionState:
 
 class TestPersistState:
     @pytest.mark.asyncio
-    async def test_updates_memory_and_redis(self, sample_state):
-        """persist_state writes to in-memory cache and to Redis with TTL."""
-        with patch.object(consultation_service.orchestrator, "update_session_context", return_value=True) as mock_upd, \
-             patch("app.v1.service.consultation_service.set_redis_cache", new_callable=AsyncMock) as mock_set:
+    async def test_full_state_only_updates_compatibility_memory(self, sample_state):
+        """LangGraph 已写入的完整状态不得再次生成 checkpoint。"""
+        with patch.object(consultation_service.orchestrator, "update_workflow_state", new_callable=AsyncMock, return_value=sample_state) as checkpoint, \
+             patch.object(consultation_service.orchestrator, "update_session_context", return_value=True) as mock_upd:
             await persist_state("sess-001", sample_state)
 
+        checkpoint.assert_not_awaited()
         mock_upd.assert_called_once_with("sess-001", sample_state)
-        mock_set.assert_awaited_once()
-        key, value, kwargs = mock_set.call_args.args[0], mock_set.call_args.args[1], mock_set.call_args.kwargs
-        assert key == "session:sess-001"
-        # 4th positional arg is the expire keyword
-        assert mock_set.call_args.kwargs.get("expire") == 7200 or mock_set.call_args.args[3] == 7200
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +183,11 @@ class TestHandleHighRiskAlert:
         assert entry["agent"] == "FactDigger"
         assert entry["action"] == "high_risk_alert"
         assert "为保护您的权益" in entry["content"]
-        mock_persist.assert_awaited_once_with("sess-001", result_state)
+        mock_persist.assert_awaited_once_with(
+            "sess-001",
+            result_state,
+            projection_updates={"conversation_history": conversation_history},
+        )
 
     @pytest.mark.asyncio
     async def test_creates_history_when_missing(self):
@@ -371,6 +339,19 @@ class TestStartSession:
 
 
 class TestProcessMessage:
+    @pytest.fixture(autouse=True)
+    def authoritative_snapshot(self, sample_state):
+        """消息测试必须提供锁内重新读取的 checkpoint 权威状态。"""
+        snapshot = MagicMock()
+        snapshot.values = sample_state
+        with patch.object(
+            consultation_service.orchestrator,
+            "get_snapshot",
+            new_callable=AsyncMock,
+            return_value=snapshot,
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_success_appends_history(self, sample_state):
         sample_state["facts_raw"] = []
@@ -449,6 +430,28 @@ class TestProcessMessage:
         ):
             with pytest.raises(LLMTimeoutException):
                 await process_message("sess-001", "msg", sample_state, "Receptionist")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("workflow_status", ["degraded", "repair_required"])
+    async def test_budget_failure_preserves_existing_failure_state(
+        self, sample_state, workflow_status
+    ):
+        sample_state["workflow_status"] = workflow_status
+        if workflow_status == "repair_required":
+            sample_state["repair_required"] = True
+        with patch.object(
+            consultation_service.orchestrator,
+            "resume_workflow",
+            new_callable=AsyncMock,
+            side_effect=SessionBudgetExceeded(session_id="sess-001", dimension="calls"),
+        ):
+            with pytest.raises(SessionBudgetExceeded):
+                await process_message("sess-001", "msg", sample_state, "Receptionist")
+
+        assert sample_state["workflow_status"] == workflow_status
+        assert sample_state.get("repair_required", False) is (
+            workflow_status == "repair_required"
+        )
 
     @pytest.mark.asyncio
     async def test_creates_conversation_history_if_missing(self, sample_state):

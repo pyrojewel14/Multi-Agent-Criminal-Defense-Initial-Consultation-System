@@ -2,6 +2,14 @@ import json
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from app.schemas.llm_artifacts import (
+    ArtifactSource,
+    ArtifactStatus,
+    ServiceArtifact,
+    parse_json_object,
+    record_artifact_result,
+    validate_artifact,
+)
 from app.security.disclaimer import disclaimer
 from app.utils.llm_gateway import llm_gateway
 from app.utils.logger import get_logger
@@ -40,7 +48,7 @@ DEFAULT_SERVICE_PLANNER_PROMPT = """
 - 分阶段报价
 
 ### 5. 《初期咨询报告》生成
-生成 Markdown 格式的完整报告草案，包含所有分析内容。
+在 JSON 的 report_draft 字段中生成 Markdown 格式的完整报告草案。
 
 ## 输出要求
 1. 所有输出必须包含明确的免责声明前缀："本内容为智能辅助生成，仅供参考，待律师确认后生效。"
@@ -49,7 +57,7 @@ DEFAULT_SERVICE_PLANNER_PROMPT = """
 4. 服务内容必须清晰、具体、可操作
 
 ## 报告格式
-生成完整的《刑事辩护初期咨询报告》Markdown 文档，包含：
+只能输出一个 JSON 对象，完整包含 service_plan 和非空 report_draft。service_plan 必须包含 urgent_actions、defense_strategies、service_phases、fee_structure；report_draft 中的 Markdown 包含：
 - 案件基本信息
 - 事实摘要
 - 法律分析
@@ -101,15 +109,30 @@ async def service_planner_node(state: "ConsultationState") -> "ConsultationState
             system_prompt=system_prompt, user_message=user_message, temperature=0.1, is_legal=False
         )
 
-        # 注入免责声明
-        response_content = disclaimer.inject(response_content)
-
-        # 解析 LLM 响应，提取各部分内容
+        # 解析并校验 LLM 的 JSON 产物
         parsed_response = _parse_llm_response(response_content)
+        service_artifact, artifact_result = validate_artifact(
+            ServiceArtifact,
+            parsed_response,
+            source=ArtifactSource.CONTENT_JSON,
+            failure_status=ArtifactStatus.HUMAN_REVIEW,
+        )
+        record_artifact_result(state, "service", artifact_result)
+        if service_artifact is None:
+            state["service_plan"] = None
+            state["report_draft"] = None
+            state["workflow_status"] = "degraded"
+            state["lawyer_review_needed"] = True
+            state["current_agent"] = "HumanReview"
+            _logger.warning(
+                "【service_planner_node】服务产物校验失败，转人工: error_count=%d",
+                len(artifact_result.validation_errors),
+            )
+            return state
 
         # 更新状态
-        state["service_plan"] = parsed_response.get("service_plan", {})
-        state["report_draft"] = parsed_response.get("report_draft", response_content)
+        state["service_plan"] = service_artifact.service_plan.model_dump(mode="json")
+        state["report_draft"] = disclaimer.inject(service_artifact.report_draft)
         state["lawyer_review_needed"] = True
         state["current_agent"] = "HumanReview"
 
@@ -127,7 +150,10 @@ async def service_planner_node(state: "ConsultationState") -> "ConsultationState
         _logger.info("【service_planner_node】服务方案生成完成，等待律师审核")
 
     except Exception as e:
-        _logger.error("【service_planner_node】生成服务方案时发生错误: %s", str(e))
+        _logger.error(
+            "【service_planner_node】生成服务方案时发生错误: error_type=%s",
+            type(e).__name__,
+        )
         raise
 
     return state
@@ -192,7 +218,7 @@ def _load_service_planner_prompt() -> str:
         提示词文本
     """
     try:
-        return prompt_loader.load("service_planner")
+        return prompt_loader.load("service_planner_prompt")
     except KeyError:
         _logger.warning("【_load_service_planner_prompt】未找到 service_planner 提示词，使用默认提示词")
         return _get_default_service_planner_prompt()
@@ -208,7 +234,7 @@ def _get_default_service_planner_prompt() -> str:
 
 
 def _parse_llm_response(response_content: str) -> Dict[str, Any]:
-    """解析 LLM 响应内容
+    """解析 LLM JSON 对象，不把任意 Markdown 当作成功产物。
 
     Args:
         response_content: LLM 返回的原始内容
@@ -216,33 +242,7 @@ def _parse_llm_response(response_content: str) -> Dict[str, Any]:
     Returns:
         解析后的结构化数据
     """
-    result = {"service_plan": {}, "report_draft": response_content}
-
-    try:
-        # 尝试从响应中提取服务计划
-        service_plan_start = response_content.find("【服务方案")
-        report_start = response_content.find("# 刑事辩护初期咨询报告")
-
-        if service_plan_start != -1 and report_start != -1:
-            # 分离服务方案和报告
-            service_plan_content = response_content[service_plan_start:report_start]
-            report_content = response_content[report_start:]
-
-            # 解析服务计划结构
-            result["service_plan"] = _extract_service_plan_structure(service_plan_content)
-            result["report_draft"] = report_content
-        elif report_start != -1:
-            # 只有报告内容
-            result["report_draft"] = response_content[report_start:]
-        else:
-            # 整个内容作为报告
-            result["report_draft"] = response_content
-
-    except Exception as e:
-        _logger.warning("【_parse_llm_response】解析响应时发生错误: %s", str(e))
-        result["report_draft"] = response_content
-
-    return result
+    return parse_json_object(response_content) or {}
 
 
 def _extract_service_plan_structure(service_plan_content: str) -> Dict[str, Any]:
@@ -372,7 +372,10 @@ def _extract_service_plan_structure(service_plan_content: str) -> Dict[str, Any]
                 service_plan["fee_structure"]["total_fee_range"] = range_match.group(1)
 
     except Exception as e:
-        _logger.warning("【_extract_service_plan_structure】提取服务计划结构时发生错误: %s", str(e))
+        _logger.warning(
+            "【_extract_service_plan_structure】提取服务计划结构失败: error_type=%s",
+            type(e).__name__,
+        )
 
     return service_plan
 

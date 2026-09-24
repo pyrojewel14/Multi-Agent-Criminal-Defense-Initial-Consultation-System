@@ -90,6 +90,41 @@ class TestCreateSession:
                 assert data["current_agent"] == "Receptionist"
 
     @pytest.mark.asyncio
+    async def test_create_session_welcome_matches_state_without_chat_llm(
+        self, test_app, client_auth_headers, mock_db_session
+    ):
+        from app.agents.receptionist import receptionist_node
+
+        started_states = []
+
+        async def start_with_receptionist(state):
+            result = await receptionist_node(state)
+            started_states.append(result)
+            return result
+
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+            with patch("app.v1.service.consultation_service.create_consultation_record", new_callable=AsyncMock) as mock_create, \
+                 patch("app.v1.service.consultation_service.start_session", new_callable=AsyncMock) as mock_start, \
+                 patch("app.v1.service.consultation_service.generate_welcome_message", new_callable=AsyncMock) as mock_welcome, \
+                 patch("app.agents.receptionist.llm_gateway") as mock_llm:
+                mock_create.return_value = "consult-001"
+                mock_start.side_effect = start_with_receptionist
+                mock_welcome.side_effect = AssertionError("state 已有欢迎语时不应重复生成")
+                mock_llm.generate = AsyncMock(side_effect=AssertionError("创建会话不应调用 chat LLM"))
+
+                response = await client.post(
+                    f"{SESSIONS_PREFIX}",
+                    json={"client_id": "test-user-001", "user_type": "suspect"},
+                    headers=client_auth_headers,
+                )
+
+        assert response.status_code == 200
+        assert len(started_states) == 1
+        assert response.json()["welcome_message"] == started_states[0]["final_output"]
+        mock_welcome.assert_not_awaited()
+        mock_llm.generate.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_create_session_unauthenticated(self, test_app, mock_db_session):
         async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
             response = await client.post(
@@ -309,8 +344,9 @@ class TestCloseSession:
     @pytest.mark.asyncio
     async def test_close_session_success(self, test_app, client_auth_headers, sample_session_state):
         with patch("app.v1.service.consultation_service.get_session_state", new_callable=AsyncMock) as mock_get_state, \
-             patch("app.v1.service.consultation_service.persist_state", new_callable=AsyncMock):
+             patch("app.v1.service.consultation_service.execute_lifecycle_command", new_callable=AsyncMock) as mock_command:
             mock_get_state.return_value = sample_session_state
+            mock_command.return_value = sample_session_state
 
             async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
                 response = await client.post(
@@ -322,6 +358,7 @@ class TestCloseSession:
                 assert response.status_code == 200
                 data = response.json()
                 assert data["success"] is True
+                mock_command.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_close_session_not_found(self, test_app, client_auth_headers):
@@ -357,8 +394,9 @@ class TestCloseSession:
     @pytest.mark.asyncio
     async def test_close_session_lawyer_can_close(self, test_app, lawyer_auth_headers, sample_session_state):
         with patch("app.v1.service.consultation_service.get_session_state", new_callable=AsyncMock) as mock_get_state, \
-             patch("app.v1.service.consultation_service.persist_state", new_callable=AsyncMock):
+             patch("app.v1.service.consultation_service.execute_lifecycle_command", new_callable=AsyncMock) as mock_command:
             mock_get_state.return_value = sample_session_state
+            mock_command.return_value = sample_session_state
 
             async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
                 response = await client.post(
@@ -368,6 +406,7 @@ class TestCloseSession:
                 )
 
                 assert response.status_code == 200
+                mock_command.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_close_session_unauthenticated(self, test_app, mock_db_session):

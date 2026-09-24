@@ -23,30 +23,51 @@ class CausalLMReranker(BaseReranker):
         Returns:
             模型和分词器元组。
         """
-        if self._model is None:
-            actual_path = self._resolve_model_path()
-            _logger.info("【_load_model】加载模型: %s", actual_path)
+        return await self._run_blocking(self._load_model_sync)
 
-            self._tokenizer = AutoTokenizer.from_pretrained(actual_path, padding_side="left")
-            self._model = AutoModelForCausalLM.from_pretrained(
-                actual_path,
-                torch_dtype=torch.float16 if self.config.device == "cuda" else torch.float32,
-                device_map="auto" if self.config.device == "cuda" else None,
-            )
-            self._model.eval()
+    def _load_model_sync(self):
+        """在线程池工作线程中加载模型和分词器。"""
+        with self._model_load_lock:
+            if self._model is not None:
+                self._set_load_status("ready")
+                return self._model, self._tokenizer
 
-            self._positive_id = self._tokenizer.convert_tokens_to_ids(self.config.positive_token)
-            self._negative_id = self._tokenizer.convert_tokens_to_ids(self.config.negative_token)
+            self._set_load_status("loading")
+            try:
+                actual_path = self._resolve_model_path()
+                _logger.info("【_load_model】加载模型: %s", actual_path)
 
-            if self._positive_id is None or self._negative_id is None:
-                _logger.error(
-                    "【_load_model】分词器缺少必需的 token: positive=%s, negative=%s",
-                    self.config.positive_token,
-                    self.config.negative_token,
+                tokenizer = AutoTokenizer.from_pretrained(actual_path, padding_side="left")
+                model = AutoModelForCausalLM.from_pretrained(
+                    actual_path,
+                    torch_dtype=torch.float16 if self.config.device == "cuda" else torch.float32,
+                    device_map="auto" if self.config.device == "cuda" else None,
                 )
-                raise ValueError(
-                    f"Tokenizer does not have '{self.config.positive_token}' or '{self.config.negative_token}' tokens"
-                )
+                model.eval()
+
+                positive_id = tokenizer.convert_tokens_to_ids(self.config.positive_token)
+                negative_id = tokenizer.convert_tokens_to_ids(self.config.negative_token)
+
+                if positive_id is None or negative_id is None:
+                    _logger.error(
+                        "【_load_model】分词器缺少必需的 token: positive=%s, negative=%s",
+                        self.config.positive_token,
+                        self.config.negative_token,
+                    )
+                    raise ValueError(
+                        f"Tokenizer does not have '{self.config.positive_token}' or "
+                        f"'{self.config.negative_token}' tokens"
+                    )
+
+                self._tokenizer = tokenizer
+                self._model = model
+                self._positive_id = positive_id
+                self._negative_id = negative_id
+                self._set_load_status("ready")
+            except Exception as exc:
+                self._set_load_status("error", f"{type(exc).__name__}: {exc}")
+                _logger.exception("【_load_model】模型加载失败")
+                raise
 
             _logger.info(
                 "【_load_model】模型加载成功, device: %s, positive_id: %d, negative_id: %d",
@@ -55,7 +76,7 @@ class CausalLMReranker(BaseReranker):
                 self._negative_id,
             )
 
-        return self._model, self._tokenizer
+            return self._model, self._tokenizer
 
     def _resolve_model_path(self) -> str:
         """解析模型路径，查找包含 config.json 的目录。
@@ -85,7 +106,11 @@ class CausalLMReranker(BaseReranker):
         Returns:
             格式化后的输入字符串列表。
         """
-        model, tokenizer = await self._load_model()
+        return await self._run_blocking(self._format_pairs_sync, query, documents)
+
+    def _format_pairs_sync(self, query: str, documents: list[str]) -> list[str]:
+        """在线程池工作线程中格式化模型输入。"""
+        _, tokenizer = self._load_model_sync()
         instruction = self.config.instruction or DEFAULT_INSTRUCTION
 
         prefix = self.config.prefix_template
@@ -121,7 +146,11 @@ class CausalLMReranker(BaseReranker):
         Returns:
             相关性分数列表。
         """
-        model, tokenizer = await self._load_model()
+        return await self._run_blocking(self._compute_scores_sync, pairs)
+
+    def _compute_scores_sync(self, pairs: list[str]) -> list[float]:
+        """在线程池工作线程中执行模型推理。"""
+        model, tokenizer = self._load_model_sync()
 
         inputs = tokenizer(
             pairs,

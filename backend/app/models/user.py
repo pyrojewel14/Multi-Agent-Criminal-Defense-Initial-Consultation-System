@@ -103,6 +103,7 @@ class Consultation(Base):
     __tablename__ = "consultations"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workflow_session_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, unique=True, index=True)
     client_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     assigned_lawyer_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True, index=True

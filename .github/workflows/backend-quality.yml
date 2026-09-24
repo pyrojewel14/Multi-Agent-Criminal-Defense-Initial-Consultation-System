@@ -63,6 +63,7 @@ jobs:
           tests/agents/test_law_ref_pure.py
           tests/agents/test_risk_assessor.py
           tests/agents/test_risk_assessor_pure.py
+          tests/test_main_startup.py
           tests/security/test_sensitive_filter.py
       - name: Workflow, errors, and LLM contracts
         shell: bash -el {0}
@@ -75,11 +76,16 @@ jobs:
           tests/errors/test_errors.py
           tests/errors/test_exception_integration.py
           tests/utils/test_llm_gateway.py
+          tests/schemas/test_llm_artifacts.py
+          tests/agents/test_llm_artifact_integration.py
+          tests/agents/test_service_planner.py
+          tests/orchestrator/test_workflow_degraded.py
       - name: HTTP, WebSocket, and service contracts
         shell: bash -el {0}
         working-directory: backend
         run: >-
           python -m pytest -q
           tests/v1/service/test_consultation_service.py
+          tests/v1/service/test_p1_004_idempotency.py
           tests/v1/router/consultation/test_routes.py
           tests/v1/router/consultation/test_websocket.py

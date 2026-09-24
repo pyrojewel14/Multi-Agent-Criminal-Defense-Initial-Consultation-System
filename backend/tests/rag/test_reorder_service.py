@@ -156,3 +156,25 @@ class TestReorderServiceInit:
             svc = ReorderService(reranker_type="cross_encoder", config=cfg)
         assert svc.config is cfg
         assert svc.reranker_type == "cross_encoder"
+
+    def test_readiness_forwards_reranker_state_without_loading(self):
+        cfg = RerankerConfig(model_name="custom")
+        reranker = MagicMock()
+        reranker.readiness.return_value = {
+            "status": "not_loaded",
+            "available": False,
+            "model": "custom",
+            "error": None,
+        }
+        with patch("app.rag.reranker.factory.RerankerFactory.create", return_value=reranker):
+            svc = ReorderService(reranker_type="cross_encoder", config=cfg)
+
+        readiness = getattr(svc, "readiness", lambda: {"status": "missing"})()
+
+        assert readiness == {
+            "status": "not_loaded",
+            "available": False,
+            "model": "custom",
+            "error": None,
+            "type": "cross_encoder",
+        }

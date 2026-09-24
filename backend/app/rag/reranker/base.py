@@ -1,5 +1,9 @@
+import asyncio
+import threading
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from functools import partial
 from typing import Any, Dict, List, Optional
 
 from app.utils.logger import get_logger
@@ -23,6 +27,7 @@ class RerankerConfig:
         prefix_template: 输入前缀模板。
         suffix_template: 输入后缀模板。
         input_template: 输入格式化模板。
+        max_concurrency: 单进程内允许的最大并发推理数。
     """
 
     model_name: str = "Qwen/Qwen3-Reranker-0.6B"
@@ -36,6 +41,7 @@ class RerankerConfig:
     prefix_template: str = "<|im_start|>user\n"
     suffix_template: str = "<|im_end|>\n<|im_start|>assistant\n"
     input_template: str = "<Instruct>: {instruction}\n<Query>: {query}\n<Document>: {document}"
+    max_concurrency: int = 1
 
     @classmethod
     def from_env(cls) -> "RerankerConfig":
@@ -52,6 +58,7 @@ class RerankerConfig:
             cache_dir=os.getenv("MODEL_CACHE_DIR", "./data/models"),
             max_length=int(os.getenv("RERANKER_MAX_LENGTH", "512")),
             instruction=os.getenv("RERANKER_INSTRUCTION", None),
+            max_concurrency=max(1, int(os.getenv("RERANKER_MAX_CONCURRENCY", "1"))),
         )
 
 
@@ -67,6 +74,42 @@ class BaseReranker(ABC):
         self.config = config
         self._model = None
         self._tokenizer = None
+        self._executor = ThreadPoolExecutor(
+            max_workers=max(1, config.max_concurrency),
+            thread_name_prefix="reranker",
+        )
+        self._inference_semaphore = asyncio.Semaphore(max(1, config.max_concurrency))
+        self._model_load_lock = threading.Lock()
+        self._status_lock = threading.Lock()
+        self._load_status = "not_loaded"
+        self._load_error: Optional[str] = None
+
+    async def _run_blocking(self, func, *args, **kwargs):
+        """在重排序器专用线程池中执行同步模型操作。"""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, partial(func, *args, **kwargs))
+
+    def close(self) -> None:
+        """关闭重排序器持有的专用线程池。"""
+        self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def _set_load_status(self, status: str, error: Optional[str] = None) -> None:
+        """原子更新模型加载状态。"""
+        with self._status_lock:
+            self._load_status = status
+            self._load_error = error
+
+    def readiness(self) -> Dict[str, Any]:
+        """返回不会触发模型加载的重排序器可用状态。"""
+        with self._status_lock:
+            status = self._load_status
+            error = self._load_error
+        return {
+            "status": status,
+            "available": status == "ready",
+            "model": self.config.model_name,
+            "error": error,
+        }
 
     @abstractmethod
     async def _load_model(self):
@@ -119,11 +162,12 @@ class BaseReranker(ABC):
                 }
             )
 
-        _logger.debug("【rerank】开始格式化 %d 个文档", len(documents))
-        pairs = await self._format_pairs(query, documents)
+        async with self._inference_semaphore:
+            _logger.debug("【rerank】开始格式化 %d 个文档", len(documents))
+            pairs = await self._format_pairs(query, documents)
 
-        _logger.debug("【rerank】开始计算 %d 个文档的分数", len(pairs))
-        scores = await self._compute_scores(pairs)
+            _logger.debug("【rerank】开始计算 %d 个文档的分数", len(pairs))
+            scores = await self._compute_scores(pairs)
 
         scored_documents = [{"document": doc, "similarity": float(score)} for doc, score in zip(documents, scores)]
 

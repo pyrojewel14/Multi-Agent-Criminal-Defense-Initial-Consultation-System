@@ -1,150 +1,59 @@
-# 多 Agent 刑事辩护初期咨询系统
+# 刑事辩护初期咨询：受控 Agentic Workflow
 
-这是一个以 LangGraph 编排的刑事咨询工程原型，用于收集事实、检索法条候选、生成风险与服务草案，并在关键节点等待用户或律师操作。系统输出仅供辅助整理和人工复核，不能替代执业律师意见，也不保证法律适用、量刑或案件结果。
+一个以 LangGraph 编排的刑事咨询工程原型：收集案件事实、检索法条候选、整理风险与服务草案，并在关键节点等待用户补充或律师复核。它是 **Workflow with LLM Nodes**，不是由多个自主 Agent 独立决策的法律服务。
 
-## 当前能力
+> 这是工程展示与辅助整理工具，不提供法律意见；法律适用、量刑和案件结果必须由执业律师结合完整材料判断。
 
-| 能力 | 当前实现 | 代码入口 |
-| --- | --- | --- |
-| 多 Agent 编排 | 8 个工作流角色、9 个 LangGraph 执行节点、4 个中断点 | [`workflow.py`](backend/app/orchestrator/workflow.py) |
-| 两阶段事实处理 | `fact_intake` 单次消费本轮输入，`fact_digger` 在法条检索后计算覆盖度 | [`fact_digger.py`](backend/app/agents/fact_digger.py) |
-| 法条候选与覆盖 | RAG/关键词召回、来源枚举、权威 `required_elements` 覆盖契约 | [`law_ref.py`](backend/app/agents/law_ref.py) · [`law_schemas.py`](backend/app/schemas/law_schemas.py) |
-| 有限失败恢复 | 连续 3 次 `no_law_match` 或 `dependency_failure` 后进入 `degraded` 并转 `HumanReview` | [`workflow.py`](backend/app/orchestrator/workflow.py) |
-| 人工介入 | 知情同意、用户补充、律师审核、高风险短路 | [`workflow.py`](backend/app/orchestrator/workflow.py) |
-| API 与前端 | FastAPI、JWT/RBAC、React + TypeScript + Vite | [`backend/main.py`](backend/main.py) · [`frontend/src`](frontend/src) |
+## 项目亮点
 
-## 工作流概览
+- **人机协作的可控流程**：事实摄取、法条检索、覆盖判断、风险与服务草案由显式条件边编排；知情同意、信息补充、高风险提示和律师审核设有人工控制点。
+- **有来源边界的法律检索**：将法条候选与构成要件覆盖关联；仓库仅提供六条经版本与来源核对的最小验证快照，不将项目标注冒充官方法律解释。
+- **可解释的失败处理**：模型产物经过结构化校验；超时、依赖失败和连续无法匹配会进入受控降级或人工复核路径，而不是默默生成成功结果。
+- **工程化接口与观测**：FastAPI、JWT/RBAC、React 前端，以及会话命令的串行/幂等边界、调用树和预算记录。默认 checkpoint、锁、幂等缓存及观测数据仍是单进程范围。
+- **分层验证**：测试、确定性离线 baseline 和独立的真实模型链路试跑各有入口；它们的结果与限制分别记录，不混作法律质量指标。
+
+## 系统概览
 
 ```mermaid
-flowchart TD
-    Start([START]) --> Receptionist[receptionist]
-    Receptionist --> Consent{check_consent}
-    Consent -->|未同意| End([END])
-    Consent -->|已同意| FactIntake[fact_intake\nFactDigger 摄取]
-
-    FactIntake --> IntakeRoute{check_fact_intake}
-    IntakeRoute -->|高风险| HumanAlert[human_alert]
-    IntakeRoute -->|继续| LawRef[law_ref]
-    LawRef --> FactDigger[fact_digger\nFactDigger 覆盖/追问]
-
-    FactDigger --> Facts{check_facts_sufficient}
-    Facts -->|覆盖充分| RiskAssessor[risk_assessor]
-    Facts -->|需补充| WaitForUser[wait_for_user]
-    WaitForUser -->|新输入| FactIntake
-    Facts -->|连续非事实失败耗尽| HumanReview[human_review]
-    Facts -->|高风险| HumanAlert
-
-    RiskAssessor --> ServicePlanner[service_planner]
-    ServicePlanner --> HumanReview
-    HumanReview --> Review{lawyer_decision}
-    Review -->|approved| End
-    Review -->|revise_facts| FactIntake
-    Review -->|revise_risk| RiskAssessor
-    Review -->|无有效决定| HumanReview
-    HumanAlert --> End
+flowchart LR
+    User[用户 / 律师] --> Web[React 前端]
+    Web --> API[FastAPI + 权限控制]
+    API --> Graph[LangGraph 受控工作流]
+    Graph --> Facts[事实摄取与覆盖判断]
+    Graph --> Laws[法条候选检索]
+    Graph --> Draft[风险与服务草案]
+    Graph --> Human[补充信息 / 高风险提示 / 律师审核]
+    Laws --> Sources[最小法条快照 / 可选 Chroma 索引]
 ```
 
-`fact_intake` 与 `fact_digger` 是同一 FactDigger 角色的两个执行阶段。新消息先在 `fact_intake` 中完成高风险检测、脱敏和结构化事实刷新，随后 `law_ref` 基于新事实检索，最后 `fact_digger` 使用法条的权威要件计算覆盖度。`current_input` 成功摄取后立即清空；流程越过摄取节点后，恢复调用不会重新注入该一次性字段。
-
-完整控制流见 [工作流说明](docs/workflow.md) 和 [架构说明](docs/architecture.md)。
-
-## Clean-clone 数据边界
-
-仓库刻意不发布以下运行时和私有内容：
-
-- 新增的 SQLite、Chroma、MD5 记录、模型权重和上传资料；
-- 真实 `.env`、密钥、日志、上传文件和运行时缓存；
-- `.private/`、`.scratch/` 与本地 `AGENTS.md`；
-- 带运行 UUID、账号或案件式可识别信息的截图。
-
-当前提交树不再包含旧 DOCX 和 3 个派生 JSON：它们不是代码实际读取的运行时验证库，缺少来源/转换 manifest，且内容版本已经落后。代码期待 `backend/data/law_knowledge/criminal_law_chapters.json` 作为法条编号验证与关键词补召回数据，但 clean clone 不包含该文件，Docker 构建也明确排除整个 `backend/data/`。
-
-缺少验证库时，RAG 候选不能升级为受信来源，JSON 关键词补召回也不可用；连续 3 次非事实失败后工作流会进入 `degraded` 并等待人工审核。旧文件仍可能存在于既有 Git 或远端历史；普通删除只清理当前提交树，不等于历史清除。任何历史改写都需要另行做 provenance 审计并取得明确授权，不得自动 force-push。详见 [RAG 边界](docs/rag.md)。
+主流程、状态权威和失败路由见 [工作流说明](docs/workflow.md) 与 [架构说明](docs/architecture.md)。
 
 ## 快速开始
 
-前置条件：Python 3.10+、[`uv`](https://docs.astral.sh/uv/)、Node.js 20+、npm 和 Redis 7+。真实模型链还需要可访问的 Ollama 或兼容的云端接口。
+需要 Python 3.10+、`uv`、Node.js 20+、npm 和 Redis 7+。真实模型路径还需自行配置可访问的 Ollama 或兼容接口；详细环境、模型准备和 Docker Compose 步骤见 [安装与启动](docs/setup.md)。
 
 ```bash
 make install
 cp backend/.env.example backend/.env
 ```
 
-编辑 `backend/.env`，至少替换 `JWT_SECRET_KEY`。不要把真实密钥提交到 Git，也不要把密码直接写入文档或 shell 命令。
+配置 `backend/.env` 中的 `JWT_SECRET_KEY`，启动 Redis，然后分别运行 `make run-backend` 和 `make run-frontend`。默认前端位于 `http://127.0.0.1:5173`，API 文档位于 `http://127.0.0.1:8000/docs`。不要提交真实密钥、上传资料或运行数据。
 
-启动 Redis 后，在两个终端运行：
+## 验证与边界
 
-```bash
-make run-backend
-make run-frontend
-```
+公开的最小法条快照只覆盖《刑法》第 232、234、263、264、266、293 条；不包含完整法条库、预建 Chroma 索引、模型权重或真实案件材料。离线 30 例 baseline 不调用真实 LLM；现有三例真实链路回归到达 `wait_for_user`，但未完成咨询闭环，不能据此声称法律准确率或生产可用性。详见 [RAG 与数据来源](docs/rag.md)、[评估说明](docs/evaluation.md) 和 [测试说明](docs/testing.md)。
 
-默认地址：
+## 文档导航
 
-- 前端：`http://127.0.0.1:5173`
-- 后端：`http://127.0.0.1:8000`
-- OpenAPI：`http://127.0.0.1:8000/docs`
+| 主题 | 文档 |
+| --- | --- |
+| 安装、本地运行与 Docker Compose | [安装与启动](docs/setup.md) |
+| 系统组成、状态与工作流 | [架构](docs/architecture.md) · [工作流](docs/workflow.md) |
+| API、检索与数据边界 | [API](docs/api.md) · [RAG](docs/rag.md) |
+| Demo、测试与评估 | [Demo](docs/demo.md) · [测试](docs/testing.md) · [评估](docs/evaluation.md) |
+| 已知失败场景和限制 | [限制](docs/limitations.md) |
 
-详细配置见 [安装与启动](docs/setup.md)。
-
-## 验证
-
-项目采用风险拆分的定向验证；历史上完整 pytest 收集曾被系统以 `Killed: 9` 终止，因此不要把某个定向分组外推为全量测试结论。
-
-```bash
-make test
-npm --prefix frontend run typecheck
-npm --prefix frontend run build
-make eval
-```
-
-工作流 P0 契约可用以下公开环境中立命令验证：
-
-```bash
-cd backend
-.venv/bin/python -m pytest -q \
-  tests/agents/test_fact_digger.py \
-  tests/agents/test_law_ref.py \
-  tests/orchestrator/test_workflow.py \
-  tests/orchestrator/test_workflow_degraded.py \
-  tests/orchestrator/test_workflow_example.py \
-  tests/orchestrator/test_workflow_minimal.py \
-  tests/integration/test_data_flow.py
-```
-
-验证范围和历史数字的解释边界见 [测试说明](docs/testing.md) 与 [离线评估](docs/evaluation.md)。
-
-## Docker Compose
-
-Compose 仅包含 backend 与 Redis；Docker build context 排除了 `backend/data/`，因此镜像不包含法条来源文件、运行时验证库、Chroma 内容或模型权重：
-
-```bash
-make compose-config
-make compose-up
-curl http://127.0.0.1:8000/health
-make compose-down
-```
-
-镜像可构建不代表真实 RAG 已可用；运行时验证库、模型和索引仍需单独准备并核验。
-
-## 文档
-
-- [安装与启动](docs/setup.md)
-- [系统架构](docs/architecture.md)
-- [LangGraph 工作流](docs/workflow.md)
-- [API 与权限边界](docs/api.md)
-- [RAG 与法条来源边界](docs/rag.md)
-- [确定性 Demo](docs/demo.md)
-- [测试说明](docs/testing.md)
-- [离线评估](docs/evaluation.md)
-- [失败场景与限制](docs/limitations.md)
-
-## 安全与法律声明
-
-- 系统不得用于规避侦查、毁灭证据、串供或其他违法活动。
-- 高风险检测只是有限规则，不是紧急服务、自动报案或外部律师工单。
-- 新增或替换法条数据前必须完成来源、许可、版本和转换 manifest 核验。
-- 报告草案必须经过有权限的律师复核后才可作为后续工作的参考。
+系统不得用于规避侦查、毁灭证据、串供或其他违法活动；高风险提示不是紧急服务或自动报案。报告草案须经有权限的律师复核后，方可作为后续工作的参考。
 
 ## License
 

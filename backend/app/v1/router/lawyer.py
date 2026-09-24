@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,6 +10,7 @@ from app.db.db_config import get_db
 from app.models.user import Consultation, ConsultationMessage, ConsultationStatus, User
 from app.security.rbac import require_lawyer
 from app.utils.logger import get_logger
+from app.v1.service import consultation_service
 from app.v1.schemas.lawyer_schemas import (
     ApproveReportRequest,
     ApproveReportResponse,
@@ -26,6 +27,59 @@ from app.v1.schemas.lawyer_schemas import (
 _logger = get_logger("Router.Lawyer")
 
 lawyer_session_router = APIRouter(prefix="/lawyer", tags=["lawyer"])
+
+
+async def _workflow_session_id(session_id: str, db: AsyncSession) -> str:
+    """把旧接口的咨询记录 ID 解析为 LangGraph 工作流 ID。"""
+    result = await db.execute(select(Consultation).where(Consultation.id == session_id))
+    consultation = result.scalar_one_or_none()
+    if consultation is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return getattr(consultation, "workflow_session_id", None) or session_id
+
+
+async def _approve_report_command(
+    session_id: str,
+    *,
+    final_output: str,
+    feedback: str | None,
+    actor_id: str,
+    db: AsyncSession,
+    idempotency_key: str | None = None,
+):
+    """兼容旧接口：所有批准写入统一委托应用命令。"""
+    workflow_session_id = await _workflow_session_id(session_id, db)
+    return await consultation_service.execute_lifecycle_command(
+        workflow_session_id,
+        action="approve",
+        db=db,
+        actor_id=actor_id,
+        final_output=final_output,
+        feedback=feedback,
+        idempotency_key=idempotency_key,
+    )
+
+
+async def _reject_session_command(
+    session_id: str,
+    *,
+    target_node: str,
+    feedback: str | None,
+    actor_id: str,
+    db: AsyncSession,
+    idempotency_key: str | None = None,
+):
+    """兼容旧接口：所有退回写入统一委托应用命令。"""
+    workflow_session_id = await _workflow_session_id(session_id, db)
+    return await consultation_service.execute_lifecycle_command(
+        workflow_session_id,
+        action="reject",
+        db=db,
+        actor_id=actor_id,
+        target_node=target_node,
+        feedback=feedback,
+        idempotency_key=idempotency_key,
+    )
 
 
 @lawyer_session_router.get("/sessions", response_model=LawyerSessionListResponse)
@@ -301,19 +355,25 @@ async def approve_report(
         _logger.warning("【approve_report】无权操作: session_id=%s, lawyer_id=%s", session_id, lawyer_id)
         raise HTTPException(status_code=403, detail="无权操作此会话")
 
-    if consultation.status == ConsultationStatus.COMPLETED:
+    if consultation.status == ConsultationStatus.COMPLETED and not request.idempotency_key:
         _logger.warning("【approve_report】会话已完成: session_id=%s", session_id)
         raise HTTPException(status_code=400, detail="会话已完成，无法重复审核")
 
-    consultation.final_output = request.final_output
-    consultation.status = ConsultationStatus.COMPLETED
-    consultation.completed_at = datetime.utcnow()
-    consultation.lawyer_review_needed = False
-
-    if request.feedback:
-        _logger.info("【approve_report】律师反馈: %s", request.feedback)
-
-    await db.commit()
+    try:
+        command_result = await _approve_report_command(
+            session_id,
+            final_output=request.final_output,
+            feedback=request.feedback,
+            actor_id=lawyer_id,
+            db=db,
+            idempotency_key=request.idempotency_key,
+        )
+    except consultation_service.LifecycleCommandConflictError as exc:
+        raise HTTPException(status_code=409, detail=consultation_service.LIFECYCLE_REVIEW_CONFLICT_DETAIL) from exc
+    except consultation_service.LifecycleConsistencyError as exc:
+        raise HTTPException(status_code=503, detail=consultation_service.LIFECYCLE_REPAIR_DETAIL) from exc
+    except consultation_service.IdempotencyConflictError as exc:
+        raise HTTPException(status_code=409, detail="幂等键已用于不同请求") from exc
 
     _logger.info("【approve_report】报告审核成功: session_id=%s", session_id)
 
@@ -322,7 +382,7 @@ async def approve_report(
             success=True,
             message="报告已审核通过",
             session_id=session_id,
-            approved_at=datetime.utcnow(),
+            approved_at=consultation_service.get_command_processed_at(command_result),
         )
     )
 
@@ -355,11 +415,11 @@ async def reject_session(
     """
     lawyer_id = current_user["user_id"]
     _logger.info(
-        "【reject_session】律师退回会话: session_id=%s, lawyer_id=%s, target_node=%s, reason=%s",
+        "【reject_session】律师退回会话: session_id=%s, lawyer_id=%s, target_node=%s, has_reason=%s",
         session_id,
         lawyer_id,
         request.target_node,
-        request.reason,
+        request.reason is not None,
     )
 
     valid_nodes = ["fact_digger", "risk_assessor"]
@@ -378,17 +438,28 @@ async def reject_session(
         _logger.warning("【reject_session】无权操作: session_id=%s, lawyer_id=%s", session_id, lawyer_id)
         raise HTTPException(status_code=403, detail="无权操作此会话")
 
-    consultation.status = ConsultationStatus.IN_PROGRESS
-    consultation.lawyer_review_needed = False
-
     _logger.info(
-        "【reject_session】会话已退回: session_id=%s, target_node=%s, feedback=%s",
+        "【reject_session】会话已退回: session_id=%s, target_node=%s, has_feedback=%s",
         session_id,
         request.target_node,
-        request.feedback,
+        request.feedback is not None,
     )
 
-    await db.commit()
+    try:
+        command_result = await _reject_session_command(
+            session_id,
+            target_node=request.target_node,
+            feedback=request.feedback or request.reason,
+            actor_id=lawyer_id,
+            db=db,
+            idempotency_key=request.idempotency_key,
+        )
+    except consultation_service.LifecycleCommandConflictError as exc:
+        raise HTTPException(status_code=409, detail=consultation_service.LIFECYCLE_REVIEW_CONFLICT_DETAIL) from exc
+    except consultation_service.LifecycleConsistencyError as exc:
+        raise HTTPException(status_code=503, detail=consultation_service.LIFECYCLE_REPAIR_DETAIL) from exc
+    except consultation_service.IdempotencyConflictError as exc:
+        raise HTTPException(status_code=409, detail="幂等键已用于不同请求") from exc
 
     return success_response(
         data=RejectSessionResponse(
@@ -396,7 +467,7 @@ async def reject_session(
             message=f"会话已退回至 {request.target_node} 重新处理",
             session_id=session_id,
             target_node=request.target_node,
-            rejected_at=datetime.utcnow(),
+            rejected_at=consultation_service.get_command_processed_at(command_result),
         )
     )
 
@@ -458,7 +529,7 @@ async def intervene_session(
             success=True,
             message="已成功接管会话",
             session_id=session_id,
-            intervened_at=datetime.utcnow(),
+            intervened_at=datetime.now(timezone.utc),
             current_agent="Lawyer",
         )
     )

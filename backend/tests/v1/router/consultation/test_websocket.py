@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.errors.exceptions import LLMTimeoutException
 from app.security.jwt import create_access_token
 from app.v1.router.consultation.websocket import websocket_endpoint
+from app.v1.service.consultation_service import ProcessMessageResult
 from tests.factories import make_consultation_state
 
 
@@ -28,7 +29,8 @@ def test_app_registers_websocket_under_public_api_prefix(test_app):
 
 
 @pytest.mark.asyncio
-async def test_websocket_returns_typed_llm_error_before_continuing():
+async def test_websocket_forwards_idempotency_key_to_shared_message_command():
+    request_id = "11111111-1111-4111-8111-111111111111"
     websocket = MagicMock()
     websocket.accept = AsyncMock()
     websocket.close = AsyncMock()
@@ -39,7 +41,100 @@ async def test_websocket_returns_typed_llm_error_before_continuing():
     websocket.headers = {}
     websocket.receive_text = AsyncMock(
         side_effect=[
-            json.dumps({"type": "message", "content": "继续咨询"}, ensure_ascii=False),
+            json.dumps(
+                {
+                    "type": "message",
+                    "content": "继续咨询",
+                    "idempotency_key": "ws-message-key",
+                    "request_id": request_id,
+                },
+                ensure_ascii=False,
+            ),
+            WebSocketDisconnect(),
+        ]
+    )
+    heartbeat_task = MagicMock()
+    state = make_consultation_state(
+        session_id="ws-idempotent",
+        user_id="ws-owner",
+        consent_given=True,
+        current_agent="RiskAssessor",
+    )
+    command_result = ProcessMessageResult(
+        response_content="只执行一次",
+        next_agent="RiskAssessor",
+        alert_triggered=False,
+        result_state=state,
+        message_id="stable-ws-message-id",
+    )
+    command_result.agent_name = "FactDigger"
+
+    def consume_heartbeat(coroutine):
+        coroutine.close()
+        return heartbeat_task
+
+    with (
+        patch(
+            "app.v1.router.consultation.websocket.consultation_service.get_session_state",
+            new_callable=AsyncMock,
+            return_value=state,
+        ),
+        patch(
+            "app.v1.router.consultation.websocket.consultation_service.process_message",
+            new_callable=AsyncMock,
+            return_value=command_result,
+        ) as process_command,
+        patch(
+            "app.v1.router.consultation.websocket.asyncio.create_task",
+            side_effect=consume_heartbeat,
+        ),
+    ):
+        await websocket_endpoint(websocket, "ws-idempotent")
+
+    process_command.assert_awaited_once_with(
+        "ws-idempotent",
+        "继续咨询",
+        state,
+        "RiskAssessor",
+        idempotency_key="ws-message-key",
+        sender_id="ws-owner",
+        request_id=request_id,
+        transport="websocket",
+    )
+    sent_messages = [call.args[0] for call in websocket.send_json.await_args_list]
+    assert {
+        "type": "message",
+        "agent_name": "FactDigger",
+        "content": "只执行一次",
+        "session_id": "ws-idempotent",
+        "message_id": "stable-ws-message-id",
+        "idempotency_key": "ws-message-key",
+    } in sent_messages
+    assert {
+        "type": "ack",
+        "content": "消息已处理",
+        "agent_name": "FactDigger",
+        "request_id": request_id,
+    } in sent_messages
+
+
+@pytest.mark.asyncio
+async def test_websocket_returns_typed_llm_error_before_continuing():
+    request_id = "33333333-3333-4333-8333-333333333333"
+    websocket = MagicMock()
+    websocket.accept = AsyncMock()
+    websocket.close = AsyncMock()
+    websocket.send_json = AsyncMock()
+    websocket.query_params = {
+        "token": create_access_token("ws-owner", "client")
+    }
+    websocket.headers = {}
+    websocket.receive_text = AsyncMock(
+        side_effect=[
+            json.dumps(
+                {"type": "message", "content": "继续咨询", "request_id": request_id},
+                ensure_ascii=False,
+            ),
             WebSocketDisconnect(),
         ]
     )
@@ -72,6 +167,7 @@ async def test_websocket_returns_typed_llm_error_before_continuing():
         "content": "AI 服务响应超时，请稍后重试",
         "error_code": "LLM_TIMEOUT",
         "session_id": "ws-phase5",
+        "request_id": request_id,
     } in sent_messages
     heartbeat_task.cancel.assert_called_once()
 

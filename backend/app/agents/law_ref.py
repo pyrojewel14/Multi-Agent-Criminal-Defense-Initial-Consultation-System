@@ -3,10 +3,19 @@ import re
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List
+from urllib.parse import urlparse
 
 from pydantic import ValidationError
 
+from app.errors.exceptions import LLMServiceException, LLMTimeoutException
 from app.schemas.law_schemas import LawDataSource, LawSourceSchema
+from app.schemas.llm_artifacts import (
+    ArtifactSource,
+    LawArtifact,
+    record_artifact_result,
+    parse_json_object,
+    validate_artifact,
+)
 from app.security.sensitive_filter import mask_pii
 from app.utils.llm_gateway import llm_gateway
 from app.utils.logger import get_logger
@@ -18,6 +27,10 @@ if TYPE_CHECKING:
 _logger = get_logger("Agent.LawRef")
 
 LAW_KNOWLEDGE_PATH = Path(__file__).parent.parent.parent / "data" / "law_knowledge" / "criminal_law_chapters.json"
+
+
+class LawKnowledgeDataError(RuntimeError):
+    """表示 tracked 法条验证快照缺失、损坏或不符合审计契约。"""
 
 
 class LawSearchResults(list):
@@ -71,51 +84,152 @@ def _load_law_extract_prompt() -> str:
 
 @lru_cache(maxsize=1)
 def load_criminal_law_data() -> Dict[str, Any]:
-    """加载刑事法律条文数据（带缓存）。
+    """加载并校验版本化的刑事法律验证快照（带缓存）。
 
     Returns:
-        包含章节和条文数据的字典。如果文件不存在，返回空结构。
-        注意：JSON 文件结构为数组，每个元素包含 chapter 和 article 信息。
+        包含来源元数据、章节和条文数据的字典。
+
+    Raises:
+        LawKnowledgeDataError: 文件缺失、JSON 损坏或审计字段不完整。
     """
+    if not LAW_KNOWLEDGE_PATH.is_file():
+        raise LawKnowledgeDataError(f"法条验证数据文件不存在: {LAW_KNOWLEDGE_PATH}")
+
     try:
-        if LAW_KNOWLEDGE_PATH.exists():
-            with open(LAW_KNOWLEDGE_PATH, "r", encoding="utf-8") as f:
-                raw_data = json.load(f)
+        with LAW_KNOWLEDGE_PATH.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+    except json.JSONDecodeError as exc:
+        raise LawKnowledgeDataError(f"法条验证数据不是有效 JSON: {LAW_KNOWLEDGE_PATH}: {exc}") from exc
+    except OSError as exc:
+        raise LawKnowledgeDataError(f"无法读取法条验证数据: {LAW_KNOWLEDGE_PATH}: {exc}") from exc
 
-            if isinstance(raw_data, list):
-                chapters_dict: Dict[str, List[Dict]] = {}
-                for article in raw_data:
-                    chapter_name = article.get("chapter", "未分类")
-                    if chapter_name not in chapters_dict:
-                        chapters_dict[chapter_name] = []
-                    chapters_dict[chapter_name].append(
-                        {
-                            "article_number": article.get("article_number", ""),
-                            "title": article.get("title", ""),
-                            "content": article.get("content", ""),
-                            "elements": article.get("elements", []),
-                            "base_sentence": article.get("base_sentence", ""),
-                            "charge_tags": article.get("charge_tags", []),
-                            "common_keywords": article.get("common_keywords", []),
-                        }
-                    )
+    _validate_law_knowledge_data(data)
+    _logger.info("【load_criminal_law_data】成功加载法条验证快照，共 %d 章", len(data["chapters"]))
+    return data
 
-                chapters_list = [
-                    {"chapter": chapter_name, "articles": articles} for chapter_name, articles in chapters_dict.items()
-                ]
 
-                data = {"chapters": chapters_list}
-            else:
-                data = raw_data
+def _require_non_empty_string(container: Dict[str, Any], field: str, location: str) -> str:
+    """读取必填非空字符串，并在错误中保留字段位置。"""
+    value = container.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise LawKnowledgeDataError(f"法条验证数据字段缺失或为空: {location}.{field}")
+    return value
 
-            _logger.info("【load_criminal_law_data】成功加载法条数据，共 %d 章", len(data.get("chapters", [])))
-            return data
-        else:
-            _logger.warning("【load_criminal_law_data】法条数据文件不存在: %s", LAW_KNOWLEDGE_PATH)
-            return {"chapters": []}
-    except Exception as e:
-        _logger.error("【load_criminal_law_data】加载法条数据失败: %s", str(e))
-        return {"chapters": []}
+
+def _require_government_https_url(container: Dict[str, Any], field: str, location: str) -> str:
+    """要求来源证据指向 HTTPS 的中国政府域名。"""
+    value = _require_non_empty_string(container, field, location)
+    parsed = urlparse(value)
+    hostname = parsed.hostname or ""
+    if parsed.scheme != "https" or not (hostname == "gov.cn" or hostname.endswith(".gov.cn")):
+        raise LawKnowledgeDataError(f"{location}.{field} 必须是政府 HTTPS URL")
+    return value
+
+
+def _validate_law_knowledge_data(data: Any) -> None:
+    """校验官方文本来源与项目维护标注相互分离的数据契约。"""
+    if not isinstance(data, dict):
+        raise LawKnowledgeDataError("法条验证数据顶层必须是包含 metadata 和 chapters 的对象")
+
+    metadata = data.get("metadata")
+    if not isinstance(metadata, dict):
+        raise LawKnowledgeDataError("法条验证数据缺少 metadata 对象")
+    for field in ("dataset_id", "dataset_version", "verified_at", "limitations"):
+        _require_non_empty_string(metadata, field, "metadata")
+
+    official_text = metadata.get("official_text")
+    if not isinstance(official_text, dict):
+        raise LawKnowledgeDataError("法条验证数据缺少 metadata.official_text 对象")
+    for field in ("source_id", "title", "publisher", "consolidated_through", "version_effective_from"):
+        _require_non_empty_string(official_text, field, "metadata.official_text")
+    _require_government_https_url(official_text, "url", "metadata.official_text")
+
+    redistribution_basis = metadata.get("redistribution_basis")
+    if not isinstance(redistribution_basis, dict):
+        raise LawKnowledgeDataError("法条验证数据缺少 metadata.redistribution_basis 对象")
+    _require_non_empty_string(redistribution_basis, "title", "metadata.redistribution_basis")
+    _require_government_https_url(redistribution_basis, "url", "metadata.redistribution_basis")
+
+    annotation_provenance = metadata.get("annotation_provenance")
+    if not isinstance(annotation_provenance, dict) or annotation_provenance.get("official") is not False:
+        raise LawKnowledgeDataError("metadata.annotation_provenance.official 必须明确为 false")
+    for field in ("annotation_id", "maintainer", "purpose"):
+        _require_non_empty_string(annotation_provenance, field, "metadata.annotation_provenance")
+
+    if metadata.get("official_text_fields") != ["article_number", "content"]:
+        raise LawKnowledgeDataError("metadata.official_text_fields 必须只声明 article_number 和 content")
+    if metadata.get("project_annotation_fields") != [
+        "title",
+        "elements",
+        "base_sentence",
+        "charge_tags",
+        "common_keywords",
+    ]:
+        raise LawKnowledgeDataError("metadata.project_annotation_fields 与运行时项目标注字段不一致")
+
+    chapters = data.get("chapters")
+    if not isinstance(chapters, list) or not chapters:
+        raise LawKnowledgeDataError("法条验证数据 chapters 必须是非空数组")
+
+    seen_numbers: set[str] = set()
+    actual_numbers: List[str] = []
+    for chapter_index, chapter in enumerate(chapters):
+        location = f"chapters[{chapter_index}]"
+        if not isinstance(chapter, dict):
+            raise LawKnowledgeDataError(f"法条验证数据 {location} 必须是对象")
+        _require_non_empty_string(chapter, "chapter", location)
+        articles = chapter.get("articles")
+        if not isinstance(articles, list) or not articles:
+            raise LawKnowledgeDataError(f"法条验证数据 {location}.articles 必须是非空数组")
+
+        for article_index, article in enumerate(articles):
+            article_location = f"{location}.articles[{article_index}]"
+            if not isinstance(article, dict):
+                raise LawKnowledgeDataError(f"法条验证数据 {article_location} 必须是对象")
+            for field in (
+                "article_number",
+                "title",
+                "content",
+                "base_sentence",
+                "official_text_source",
+                "annotation_source",
+            ):
+                _require_non_empty_string(article, field, article_location)
+            for field in ("elements", "charge_tags", "common_keywords"):
+                value = article.get(field)
+                if not isinstance(value, list) or not value:
+                    raise LawKnowledgeDataError(f"法条验证数据字段缺失或为空: {article_location}.{field}")
+
+            if article["official_text_source"] != official_text["source_id"]:
+                raise LawKnowledgeDataError(
+                    f"{article_location}.official_text_source 与顶层来源不一致"
+                )
+            if article["annotation_source"] != annotation_provenance["annotation_id"]:
+                raise LawKnowledgeDataError(
+                    f"{article_location}.annotation_source 与顶层来源不一致"
+                )
+
+            article_number = article["article_number"]
+            normalized_number = _normalize_article_number(article_number)
+            if normalized_number in seen_numbers:
+                raise LawKnowledgeDataError(f"法条验证数据存在重复法条编号: {normalized_number}")
+            seen_numbers.add(normalized_number)
+            actual_numbers.append(article_number)
+
+    coverage = metadata.get("coverage")
+    if not isinstance(coverage, list) or coverage != actual_numbers:
+        raise LawKnowledgeDataError("metadata.coverage 必须按快照顺序完整列出全部法条编号")
+
+
+def preflight_law_knowledge() -> Dict[str, Any]:
+    """显式执行法条验证快照预检，供应用启动阶段 fail-fast。"""
+    data = load_criminal_law_data()
+    _logger.info(
+        "【preflight_law_knowledge】法条验证快照通过: %s@%s",
+        data["metadata"]["dataset_id"],
+        data["metadata"]["dataset_version"],
+    )
+    return data
 
 
 # 中文数字到阿拉伯数字的映射
@@ -359,8 +473,9 @@ def _build_element_to_law_mapping(laws: List[Dict[str, Any]], elements_key: str 
         charge_name = law.get("charge_name", law.get("title", ""))
         elements = law.get(elements_key, [])
         for element in elements:
-            if element not in mapping:
-                mapping[element] = {
+            element_name = _element_name(element)
+            if element_name and element_name not in mapping:
+                mapping[element_name] = {
                     "charge_name": charge_name,
                     "article_number": law.get("article_number", ""),
                     "base_sentence": law.get("base_sentence", ""),
@@ -488,8 +603,7 @@ async def search_laws_by_rag(facts_structured: Dict[str, Any], user_id: str | No
         rag_service = RagService(user_id=user_id, include_public=True)
         await rag_service.initialize_retriever(query)
 
-        result = await rag_service.get_documents_and_summary(query)
-        documents = result.get("documents", [])
+        documents = await rag_service.retrieve_documents(query)
 
         matched_laws = []
         for doc in documents:
@@ -523,7 +637,10 @@ async def search_laws_by_rag(facts_structured: Dict[str, Any], user_id: str | No
         return LawSearchResults(matched_laws)
 
     except Exception as e:
-        _logger.error("【search_laws_by_rag】RAG 检索失败: %s", str(e))
+        _logger.error(
+            "【search_laws_by_rag】RAG 检索失败: error_type=%s",
+            type(e).__name__,
+        )
         return LawSearchResults(dependency_failed=True)
 
 
@@ -580,18 +697,27 @@ async def extract_structured_laws(
 
     try:
         response = await llm_gateway.generate(system_prompt, user_message, is_legal=True)
-
-        json_match = re.search(r"\{[\s\S]*\}", response)
-        if json_match:
-            structured_result = json.loads(json_match.group())
+        payload = parse_json_object(response)
+        artifact, result = validate_artifact(
+            LawArtifact,
+            payload,
+            source=ArtifactSource.CONTENT_JSON,
+        )
+        if artifact is not None:
             _logger.info("【extract_structured_laws】LLM 结构化提取成功")
-            return structured_result.get("charges", [])
-        else:
-            _logger.warning("【extract_structured_laws】LLM 响应中未找到 JSON")
-            return []
-
+            return [charge.model_dump(mode="json") for charge in artifact.charges]
+        _logger.warning(
+            "【extract_structured_laws】LLM 结构化提取失败: error_count=%d",
+            len(result.validation_errors),
+        )
+        return []
+    except (LLMServiceException, LLMTimeoutException):
+        raise
     except Exception as e:
-        _logger.error("【extract_structured_laws】LLM 调用失败: %s", str(e))
+        _logger.error(
+            "【extract_structured_laws】LLM 调用失败: error_type=%s",
+            type(e).__name__,
+        )
         return []
 
 
@@ -763,13 +889,25 @@ async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
 
     # 阶段3：LLM 结构化信息提取
     structured_laws = await extract_structured_laws(matched_laws, facts_structured)
+    law_artifact, artifact_result = validate_artifact(
+        LawArtifact,
+        {"charges": structured_laws, "procedural_notes": []},
+        source=ArtifactSource.CONTENT_JSON,
+    )
 
-    if structured_laws:
-        element_to_law_mapping = _build_element_to_law_mapping(structured_laws, "elements_matched")
-        applied_laws = _build_applied_laws_from_structured(structured_laws, matched_laws)
+    if law_artifact is not None:
+        validated_laws = [charge.model_dump(mode="json") for charge in law_artifact.charges]
+        element_to_law_mapping = _build_element_to_law_mapping(validated_laws, "elements_matched")
+        applied_laws = _build_applied_laws_from_structured(validated_laws, matched_laws)
     else:
         element_to_law_mapping = _build_element_to_law_mapping(matched_laws[:5], "elements")
         applied_laws = _build_applied_laws_from_matched(matched_laws[:5])
+        _, artifact_result = validate_artifact(
+            LawArtifact,
+            {"charges": structured_laws, "procedural_notes": []},
+            source=ArtifactSource.DETERMINISTIC_FALLBACK,
+        )
+    record_artifact_result(state, "law", artifact_result)
 
     # 统计各来源数量
     rag_verified = sum(1 for law in matched_laws if law.get("data_source") == "rag_verified")

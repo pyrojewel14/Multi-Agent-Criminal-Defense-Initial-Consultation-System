@@ -24,24 +24,43 @@ from app.state.consultation_state import validate_consultation_state
 from tests.factories import make_applied_law, make_consultation_state, make_risk_assessment
 
 
+def _valid_service_response(report: str = "# 刑事辩护初期咨询报告\n\n测试报告") -> str:
+    """构造与生产 ServiceArtifact 完全一致的 LLM JSON。"""
+    return json.dumps(
+        {
+            "service_plan": {
+                "urgent_actions": {
+                    "immediate": ["会见当事人"],
+                    "short_term": ["收集证据"],
+                    "follow_up": ["制定辩护策略"],
+                },
+                "defense_strategies": {
+                    "primary": "待律师制定",
+                    "alternatives": [],
+                },
+                "service_phases": [
+                    {"phase": "侦查阶段", "description": "会见并了解案情"}
+                ],
+                "fee_structure": {
+                    "recommended_plan": "面议",
+                    "total_fee_range": "以委托合同为准",
+                    "breakdown": {},
+                },
+            },
+            "report_draft": report,
+        },
+        ensure_ascii=False,
+    )
+
+
 # ---------------------------------------------------------------------------
 # _parse_llm_response
 # ---------------------------------------------------------------------------
 
 
 def test_parse_llm_response_with_service_plan_and_report():
-    """When response contains both service plan and report markers, both should be extracted."""
-    response = """一些前言内容
-
-【服务方案建议】
-1. 立即行动：申请取保候审
-2. 短期行动：收集证据
-
-# 刑事辩护初期咨询报告
-
-## 案件基本信息
-这是一个测试报告。
-"""
+    """完整 JSON 中的服务方案与报告应同时解析。"""
+    response = _valid_service_response()
     result = _parse_llm_response(response)
     assert "service_plan" in result
     assert "report_draft" in result
@@ -49,22 +68,21 @@ def test_parse_llm_response_with_service_plan_and_report():
 
 
 def test_parse_llm_response_report_only():
-    """When response only contains report marker, report_draft should be set."""
+    """只有 Markdown 报告不满足结构化服务产物契约。"""
     response = """# 刑事辩护初期咨询报告
 
 ## 案件基本信息
 这是一个测试报告。
 """
     result = _parse_llm_response(response)
-    assert result["report_draft"] == response
+    assert result == {}
 
 
 def test_parse_llm_response_no_markers():
-    """When response has no markers, entire content becomes report_draft."""
+    """任意非 JSON 文本不能成为报告产物。"""
     response = "这是一段普通的文本回复"
     result = _parse_llm_response(response)
-    assert result["report_draft"] == response
-    assert result["service_plan"] == {}
+    assert result == {}
 
 
 # ---------------------------------------------------------------------------
@@ -113,15 +131,7 @@ def test_extract_service_plan_structure_with_actions():
 @pytest.mark.asyncio
 async def test_service_planner_node_valid_response():
     """With a valid LLM response, service_plan and report_draft should be populated."""
-    llm_response = """# 刑事辩护初期咨询报告
-
-## 案件基本信息
-测试案件
-
-## 紧急行动建议
-- 立即会见当事人
-- 申请取保候审
-"""
+    llm_response = _valid_service_response()
 
     state = make_consultation_state(
         facts_structured={"consequence": "轻伤"},
@@ -150,7 +160,7 @@ async def test_service_planner_node_normalizes_missing_risk_assessment():
         "app.agents.service_planner._build_service_request_message",
         return_value="request",
     ) as mock_build, patch("app.agents.service_planner.llm_gateway") as mock_llm:
-        mock_llm.generate = AsyncMock(return_value="# 刑事辩护初期咨询报告")
+        mock_llm.generate = AsyncMock(return_value=_valid_service_response())
         await service_planner_node(state)
 
     assert mock_build.call_args.kwargs["risk_assessment"] == {}
@@ -164,7 +174,7 @@ async def test_service_planner_node_normalizes_missing_risk_assessment():
 @pytest.mark.asyncio
 async def test_service_planner_node_state_updates():
     """service_planner_node should set lawyer_review_needed=True and current_agent=HumanReview."""
-    llm_response = "# 刑事辩护初期咨询报告\n\n测试报告内容"
+    llm_response = _valid_service_response()
 
     state = make_consultation_state(
         facts_structured={"consequence": "轻伤"},
@@ -189,7 +199,7 @@ async def test_service_planner_node_state_updates():
 @pytest.mark.asyncio
 async def test_service_planner_node_report_contains_markdown():
     """report_draft should contain markdown content from the LLM response."""
-    llm_response = """# 刑事辩护初期咨询报告
+    report = """# 刑事辩护初期咨询报告
 
 ## 案件基本信息
 - 当事人：张某
@@ -198,6 +208,7 @@ async def test_service_planner_node_report_contains_markdown():
 ## 风险评估
 量刑预测：三年以下有期徒刑
 """
+    llm_response = _valid_service_response(report)
 
     state = make_consultation_state(
         facts_structured={"consequence": "轻伤"},
@@ -227,7 +238,7 @@ async def test_service_planner_node_report_contains_markdown():
 @pytest.mark.asyncio
 async def test_service_planner_node_conversation_history():
     """service_planner_node should append a ServicePlanner entry to conversation_history."""
-    llm_response = "# 刑事辩护初期咨询报告\n\n测试"
+    llm_response = _valid_service_response()
 
     state = make_consultation_state(
         facts_structured={"consequence": "轻伤"},
@@ -412,16 +423,16 @@ def test_extract_service_plan_structure_fee_range_in_text():
 
 
 def test_parse_llm_response_handles_unusual_inputs():
-    """_parse_llm_response should never raise even with weird inputs."""
+    """异常标记文本应安全拒绝且不抛异常。"""
     # String with both markers, but weird positioning
     response = "【服务方案\n# 刑事辩护初期咨询报告"
     result = _parse_llm_response(response)
-    assert "report_draft" in result
+    assert result == {}
 
 
 def test_parse_llm_response_full_text_extraction():
-    """When only the report marker is present, report_draft is the slice from the marker."""
-    response = "前置内容 # 刑事辩护初期咨询报告 后置内容"
+    """带前后说明的响应仍提取首个完整 JSON 对象。"""
+    response = "前置内容 " + _valid_service_response() + " 后置内容"
     result = _parse_llm_response(response)
     assert "刑事辩护初期咨询报告" in result["report_draft"]
 

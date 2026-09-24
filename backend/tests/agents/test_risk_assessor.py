@@ -90,8 +90,8 @@ async def test_risk_assessor_node_valid_json():
 
 
 @pytest.mark.asyncio
-async def test_risk_assessor_node_non_json_fallback():
-    """When LLM returns non-JSON, fallback assessment should be used."""
+async def test_risk_assessor_node_non_json_routes_to_human_review():
+    """非 JSON 风险输出不得伪造成默认成功评估。"""
     state = make_consultation_state(
         facts_structured={"consequence": "轻伤"},
         applied_laws=[make_applied_law()],
@@ -101,17 +101,14 @@ async def test_risk_assessor_node_non_json_fallback():
         mock_llm.generate = AsyncMock(return_value="This is not JSON at all")
         result = await risk_assessor_node(state)
 
-    # Should use fallback structure
-    risk_assessment = result.get("risk_assessment")
-    assert risk_assessment is not None
-    assert risk_assessment["predicted_sentence_range"] == "待评估"
-    assert isinstance(risk_assessment["compulsory_measure_risk"], dict)
-    assert risk_assessment["compulsory_measure_risk"]["detention_status"] == "待确认"
+    assert result.get("risk_assessment") is None
+    assert result["current_agent"] == "HumanReview"
+    assert result["artifact_results"]["risk"]["status"] == "human_review"
 
 
 @pytest.mark.parametrize("response", ["null", "[]", '"text"'])
 @pytest.mark.asyncio
-async def test_risk_assessor_node_non_object_json_uses_fallback(response: str):
+async def test_risk_assessor_node_non_object_json_routes_to_human(response: str):
     state = make_consultation_state(
         facts_structured={"consequence": "轻伤"},
         applied_laws=[make_applied_law()],
@@ -121,8 +118,9 @@ async def test_risk_assessor_node_non_object_json_uses_fallback(response: str):
         mock_llm.generate = AsyncMock(return_value=response)
         result = await risk_assessor_node(state)
 
-    assert result["risk_assessment"]["predicted_sentence_range"] == "待评估"
-    assert result["current_agent"] == "ServicePlanner"
+    assert result["risk_assessment"] is None
+    assert result["current_agent"] == "HumanReview"
+    assert result["validation_errors"]
 
 
 @pytest.mark.asyncio

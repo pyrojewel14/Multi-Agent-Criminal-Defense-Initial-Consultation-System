@@ -81,6 +81,25 @@ async def test_no_consent_returns_welcome():
     assert result.get("final_output") != ""
 
 
+@pytest.mark.asyncio
+async def test_no_consent_reuses_deterministic_welcome_without_chat_llm():
+    """初始欢迎语应复用确定性来源，不能触发未消费的 chat LLM。"""
+    state = make_consultation_state(
+        consent_given=False,
+        facts_raw=[],
+        current_input=None,
+    )
+
+    with patch("app.agents.receptionist.llm_gateway") as mock_llm:
+        mock_llm.generate = AsyncMock(side_effect=AssertionError("初始欢迎语不应调用 chat LLM"))
+        result = await receptionist_node(state)
+
+    mock_llm.generate.assert_not_awaited()
+    assert result["final_output"].startswith("本内容为智能辅助生成，仅供参考，待律师确认后生效。")
+    assert "您好，欢迎使用刑事辩护初期咨询系统。" in result["final_output"]
+    assert '请回复"同意"或"确认"表示您已阅读并理解上述告知内容。' in result["final_output"]
+
+
 # ---------------------------------------------------------------------------
 # receptionist_node – consent keywords
 # ---------------------------------------------------------------------------

@@ -72,19 +72,25 @@ curl http://127.0.0.1:8000/health
 
 默认前端地址是 `http://127.0.0.1:5173`。Vite 开发代理默认指向后端 8000 端口。
 
-## 5. Clean-clone 数据限制
+## 5. Clean-clone 数据与启动预检
 
-`backend/data/` 被 Git 与 Docker build context 共同排除。clean clone 和镜像不包含：
+clean clone 和镜像都包含 tracked 的 `backend/data/law_knowledge/criminal_law_chapters.json`，无需联网下载即可加载。该最小快照只覆盖第 232、234、263、264、266、293 条；版本、官方来源、核验日期和非官方标注边界记录在文件的 `metadata` 中。
 
-- `backend/data/law_knowledge/criminal_law_chapters.json`；
+应用 lifespan 会在数据库和 Redis 初始化前执行离线 preflight。文件缺失、JSON 损坏、元数据或条文字段不完整、重复条号、覆盖清单漂移时，启动会以明确错误终止。可单独验证：
+
+```bash
+cd backend
+.venv/bin/python -c "from app.agents.law_ref import preflight_law_knowledge; preflight_law_knowledge()"
+```
+
+Git 与 Docker build context 对 `backend/data/` 采用精确 allowlist；除该快照外仍不包含：
+
 - SQLite 数据库；
 - Chroma collection 与 MD5 store；
 - reranker 或其他模型权重；
 - 本地上传资料和派生文件。
 
-应用可能完成基础启动，但真实法条验证与关键词补召回在缺少结构化法条库时不可用。连续 3 次非事实失败后，工作流会进入 degraded 人工审核路径。不要把基础健康检查解释为真实 RAG 已准备完成。
-
-新增运行时代码实际读取的验证库前，需要审计来源、许可、版本、完整性与转换 manifest。旧文件可能仍存在于 Git/远端历史；当前树删除不等于历史清除，任何历史改写都需要单独授权。
+preflight 成功只证明六条快照满足结构和来源字段契约，不证明项目具备完整法条库、真实 Chroma 召回、法律准确性或生产 readiness。
 
 ## 6. Docker Compose
 
@@ -95,7 +101,7 @@ curl http://127.0.0.1:8000/health
 make compose-down
 ```
 
-Compose 只包含 backend 与 Redis。前端、Ollama、法条数据、Chroma 内容和模型权重不在镜像内。SQLite、Chroma、MD5 store 与模型缓存使用 `backend-runtime` 命名卷；Redis 使用 `redis-data`。
+Compose 只包含 backend 与 Redis。六条 tracked 法条快照会进入 backend 镜像；前端、Ollama、完整法条语料、Chroma 内容和模型权重不在镜像内。SQLite、Chroma、MD5 store 与模型缓存使用 `backend-runtime` 命名卷；Redis 使用 `redis-data`。
 
 `make compose-config` 只验证配置解析。只有实际完成镜像 build、容器启动、健康检查和所需外部依赖调用后，才能分别声明这些步骤通过。
 

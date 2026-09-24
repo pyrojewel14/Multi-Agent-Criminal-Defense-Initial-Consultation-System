@@ -14,7 +14,7 @@ import json
 from datetime import datetime
 from enum import Enum as PyEnum
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -414,19 +414,28 @@ class TestApproveReport:
         _setup_db(mock_db_session, scalar_one_or_none=[c])
         mock_db_session.commit = AsyncMock()
 
-        async with AsyncClient(transport=ASGITransport(app=lawyer_app), base_url="http://test") as client_http:
-            response = await client_http.put(
-                f"{LAWYER_PREFIX}/sessions/consult-001/report",
-                json={"final_output": "最终报告内容", "feedback": "已审核"},
-            )
+        with patch(
+            "app.v1.router.lawyer._approve_report_command",
+            new_callable=AsyncMock,
+            return_value={"command_processed_at": datetime(2026, 9, 21)},
+        ) as command:
+            async with AsyncClient(transport=ASGITransport(app=lawyer_app), base_url="http://test") as client_http:
+                response = await client_http.put(
+                    f"{LAWYER_PREFIX}/sessions/consult-001/report",
+                    json={
+                        "final_output": "最终报告内容",
+                        "feedback": "已审核",
+                        "idempotency_key": "legacy-approve-key",
+                    },
+                )
 
             assert response.status_code == 200
             data = response.json()["data"]
             assert data["success"] is True
             assert data["session_id"] == "consult-001"
-            assert c.final_output == "最终报告内容"
-            assert c.lawyer_review_needed is False
-            mock_db_session.commit.assert_awaited()
+            assert data["approved_at"] == "2026-09-21T00:00:00"
+            command.assert_awaited_once()
+            assert command.await_args.kwargs["idempotency_key"] == "legacy-approve-key"
 
     @pytest.mark.asyncio
     async def test_approve_report_not_found(self, lawyer_app, mock_db_session):
@@ -464,6 +473,28 @@ class TestApproveReport:
             assert response.status_code == 400
             assert "已完成" in response.json()["error"]["message"]
 
+    @pytest.mark.asyncio
+    async def test_approve_report_maps_non_review_checkpoint_to_409(self, lawyer_app, mock_db_session):
+        c = _make_consultation()
+        _setup_db(mock_db_session, scalar_one_or_none=[c])
+
+        from app.v1.service.consultation_service import LifecycleCommandConflictError
+
+        with patch(
+            "app.v1.router.lawyer._approve_report_command",
+            new_callable=AsyncMock,
+            side_effect=LifecycleCommandConflictError(action="approve"),
+        ):
+            async with AsyncClient(transport=ASGITransport(app=lawyer_app), base_url="http://test") as client_http:
+                response = await client_http.put(
+                    f"{LAWYER_PREFIX}/sessions/consult-001/report",
+                    json={"final_output": "报告"},
+                )
+
+        assert response.status_code == 409
+        assert "律师审核断点" in response.json()["error"]["message"]
+        mock_db_session.commit.assert_not_awaited()
+
 
 # ---------------------------------------------------------------------------
 # POST /lawyer/sessions/{id}/reject
@@ -477,22 +508,29 @@ class TestRejectSession:
         _setup_db(mock_db_session, scalar_one_or_none=[c])
         mock_db_session.commit = AsyncMock()
 
-        async with AsyncClient(transport=ASGITransport(app=lawyer_app), base_url="http://test") as client_http:
-            response = await client_http.post(
-                f"{LAWYER_PREFIX}/sessions/consult-001/reject",
-                json={
-                    "target_node": "fact_digger",
-                    "reason": "事实需要补充",
-                    "feedback": "请补充细节",
-                },
-            )
+        with patch(
+            "app.v1.router.lawyer._reject_session_command",
+            new_callable=AsyncMock,
+            return_value={"command_processed_at": datetime(2026, 9, 21)},
+        ) as command:
+            async with AsyncClient(transport=ASGITransport(app=lawyer_app), base_url="http://test") as client_http:
+                response = await client_http.post(
+                    f"{LAWYER_PREFIX}/sessions/consult-001/reject",
+                    json={
+                        "target_node": "fact_digger",
+                        "reason": "事实需要补充",
+                        "feedback": "请补充细节",
+                        "idempotency_key": "legacy-reject-key",
+                    },
+                )
 
             assert response.status_code == 200
             data = response.json()["data"]
             assert data["success"] is True
             assert data["target_node"] == "fact_digger"
-            assert c.lawyer_review_needed is False
-            mock_db_session.commit.assert_awaited()
+            assert data["rejected_at"] == "2026-09-21T00:00:00"
+            command.assert_awaited_once()
+            assert command.await_args.kwargs["idempotency_key"] == "legacy-reject-key"
 
     @pytest.mark.asyncio
     async def test_reject_session_invalid_target_node(self, lawyer_app, mock_db_session):
@@ -532,13 +570,15 @@ class TestRejectSession:
         _setup_db(mock_db_session, scalar_one_or_none=[c])
         mock_db_session.commit = AsyncMock()
 
-        async with AsyncClient(transport=ASGITransport(app=lawyer_app), base_url="http://test") as client_http:
-            response = await client_http.post(
-                f"{LAWYER_PREFIX}/sessions/consult-001/reject",
-                json={"target_node": "risk_assessor"},
-            )
+        with patch("app.v1.router.lawyer._reject_session_command", new_callable=AsyncMock) as command:
+            async with AsyncClient(transport=ASGITransport(app=lawyer_app), base_url="http://test") as client_http:
+                response = await client_http.post(
+                    f"{LAWYER_PREFIX}/sessions/consult-001/reject",
+                    json={"target_node": "risk_assessor"},
+                )
             assert response.status_code == 200
             assert response.json()["data"]["target_node"] == "risk_assessor"
+            command.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

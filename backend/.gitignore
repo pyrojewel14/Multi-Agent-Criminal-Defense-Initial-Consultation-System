@@ -5,7 +5,10 @@
 !.env.example
 .venv/
 
-data/
+data/*
+!data/law_knowledge/
+data/law_knowledge/*
+!data/law_knowledge/criminal_law_chapters.json
 logs/
 *.log
 *.db

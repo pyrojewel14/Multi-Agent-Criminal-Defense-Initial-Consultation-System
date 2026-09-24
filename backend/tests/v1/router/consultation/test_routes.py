@@ -11,7 +11,7 @@ All external dependencies (consultation_service, orchestrator, DB session) are
 mocked so the suite runs without Redis, the LLM, or a real database.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,6 +19,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.security.jwt import create_access_token
 from app.errors.exceptions import LLMTimeoutException
+from app.observability.tracing import SessionBudgetExceeded
 from app.v1.service.consultation_service import ProcessMessageResult
 from tests.factories import make_consultation_state
 
@@ -86,6 +87,93 @@ async def lawyer_app(test_app, monkeypatch):
 
 
 class TestSendMessage:
+    @pytest.mark.asyncio
+    async def test_send_message_forwards_idempotency_key_to_shared_service_boundary(
+        self, test_app, client_auth_headers, sample_session_state, mock_db_session
+    ):
+        sample_session_state["current_agent"] = "RiskAssessor"
+        created_at = datetime(2026, 9, 21, tzinfo=timezone.utc)
+        result = ProcessMessageResult(
+            response_content="这是回复",
+            next_agent="RiskAssessor",
+            alert_triggered=False,
+            result_state=sample_session_state,
+            message_id="stable-message-id",
+            created_at=created_at,
+        )
+        result.agent_name = "FactDigger"
+        with (
+            patch(
+                "app.v1.service.consultation_service.get_session_state",
+                new_callable=AsyncMock,
+                return_value=sample_session_state,
+            ),
+            patch(
+                "app.v1.service.consultation_service.process_message",
+                new_callable=AsyncMock,
+                return_value=result,
+            ) as process_command,
+            patch(
+                "app.v1.service.consultation_service.save_message_to_db",
+                new_callable=AsyncMock,
+            ) as legacy_save,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=test_app), base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    f"{SESSIONS_PREFIX}/sess-001/message",
+                    json={
+                        "session_id": "sess-001",
+                        "content": "用户消息",
+                        "idempotency_key": "http-message-key",
+                    },
+                    headers={
+                        **client_auth_headers,
+                        "X-Request-ID": "22222222-2222-4222-8222-222222222222",
+                    },
+                )
+
+        assert response.status_code == 200
+        assert response.json()["message_id"] == "stable-message-id"
+        assert response.json()["agent_name"] == "FactDigger"
+        assert response.json()["created_at"] == "2026-09-21T00:00:00Z"
+        assert process_command.await_args.kwargs["idempotency_key"] == "http-message-key"
+        assert process_command.await_args.kwargs["sender_id"] == "user-001"
+        assert process_command.await_args.kwargs["db"] is mock_db_session
+        assert process_command.await_args.kwargs["request_id"] == "22222222-2222-4222-8222-222222222222"
+        assert process_command.await_args.kwargs["transport"] == "http"
+        assert response.headers["X-Request-ID"] == "22222222-2222-4222-8222-222222222222"
+        legacy_save.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_budget_error_keeps_http_request_id(
+        self, test_app, client_auth_headers, sample_session_state, mock_db_session
+    ):
+        request_id = "44444444-4444-4444-8444-444444444444"
+        with patch(
+            "app.v1.service.consultation_service.get_session_state",
+            new_callable=AsyncMock,
+            return_value=sample_session_state,
+        ), patch(
+            "app.v1.service.consultation_service.process_message",
+            new_callable=AsyncMock,
+            side_effect=SessionBudgetExceeded(session_id="sess-001", dimension="calls"),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=test_app, raise_app_exceptions=False),
+                base_url="http://test",
+            ) as client:
+                response = await client.post(
+                    f"{SESSIONS_PREFIX}/sess-001/message",
+                    json={"session_id": "sess-001", "content": "hello"},
+                    headers={**client_auth_headers, "X-Request-ID": request_id},
+                )
+
+        assert response.status_code == 429
+        assert response.headers["X-Request-ID"] == request_id
+        assert response.json()["error"]["code"] == "SESSION_BUDGET_EXCEEDED"
+
     @pytest.mark.asyncio
     async def test_send_message_session_not_found(
         self, test_app, client_auth_headers, mock_db_session
@@ -267,7 +355,7 @@ class TestSendMessage:
         assert "为保护您的权益" in response.json()["error"]["message"]
 
     @pytest.mark.asyncio
-    async def test_send_message_success_persists_user_and_agent_messages(
+    async def test_send_message_delegates_message_persistence_to_service_boundary(
         self, test_app, client_auth_headers, sample_session_state, mock_db_session
     ):
         with patch(
@@ -276,10 +364,7 @@ class TestSendMessage:
         ) as mock_get_state, patch(
             "app.v1.service.consultation_service.process_message",
             new_callable=AsyncMock,
-        ) as mock_proc, patch(
-            "app.v1.service.consultation_service.save_message_to_db",
-            new_callable=AsyncMock,
-        ) as mock_save:
+        ) as mock_proc:
             mock_get_state.return_value = sample_session_state
             mock_proc.return_value = ProcessMessageResult(
                 response_content="这是回复",
@@ -302,32 +387,21 @@ class TestSendMessage:
             assert data["agent_name"] == "FactDigger"
             assert data["is_complete"] is False
 
-        # The DB should have been called twice (user message + agent reply)
-        assert mock_save.await_count == 2
-        # First call is for the user
-        first_call = mock_save.await_args_list[0]
-        assert first_call.kwargs["sender_type"] == "user"
-        assert first_call.kwargs["content"] == "用户消息"
-        # Second call is for the agent
-        second_call = mock_save.await_args_list[1]
-        assert second_call.kwargs["sender_type"] == "agent"
-        assert second_call.kwargs["content"] == "这是回复"
+        assert mock_proc.await_args.kwargs["db"] is mock_db_session
+        assert mock_proc.await_args.kwargs["sender_id"] == "user-001"
 
     @pytest.mark.asyncio
-    async def test_send_message_success_without_agent_response(
+    async def test_send_message_without_agent_response_uses_same_service_boundary(
         self, test_app, client_auth_headers, sample_session_state, mock_db_session
     ):
-        """When the agent returns empty content, only the user message is persisted."""
+        """空 Agent 响应也由同一个 service 命令边界负责持久化。"""
         with patch(
             "app.v1.service.consultation_service.get_session_state",
             new_callable=AsyncMock,
         ) as mock_get_state, patch(
             "app.v1.service.consultation_service.process_message",
             new_callable=AsyncMock,
-        ) as mock_proc, patch(
-            "app.v1.service.consultation_service.save_message_to_db",
-            new_callable=AsyncMock,
-        ) as mock_save:
+        ) as mock_proc:
             mock_get_state.return_value = sample_session_state
             mock_proc.return_value = ProcessMessageResult(
                 response_content="",
@@ -344,8 +418,7 @@ class TestSendMessage:
                 )
 
             assert response.status_code == 200
-        # Only the user message is persisted (no agent reply)
-        assert mock_save.await_count == 1
+        assert mock_proc.await_args.kwargs["db"] is mock_db_session
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +427,63 @@ class TestSendMessage:
 
 
 class TestLawyerReview:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("decision", "expected_action", "expected_target"),
+        [
+            ("approved", "approve", None),
+            ("revise_facts", "reject", "fact_digger"),
+        ],
+    )
+    async def test_lawyer_review_forwards_key_before_changed_review_state_blocks_replay(
+        self,
+        lawyer_app,
+        lawyer_auth_headers,
+        sample_session_state,
+        mock_db_session,
+        decision,
+        expected_action,
+        expected_target,
+    ):
+        sample_session_state["awaiting_lawyer_review"] = False
+        sample_session_state["workflow_status"] = "completed"
+        command_result = {
+            **sample_session_state,
+            "command_processed_at": datetime(2026, 9, 21, tzinfo=timezone.utc),
+        }
+        with (
+            patch(
+                "app.v1.service.consultation_service.get_session_state",
+                new_callable=AsyncMock,
+                return_value=sample_session_state,
+            ),
+            patch(
+                "app.v1.service.consultation_service.execute_lifecycle_command",
+                new_callable=AsyncMock,
+                return_value=command_result,
+            ) as command,
+            patch("app.v1.router.consultation.routes.orchestrator") as mock_orchestrator,
+        ):
+            mock_orchestrator.is_workflow_finished = AsyncMock(return_value=True)
+            async with AsyncClient(
+                transport=ASGITransport(app=lawyer_app), base_url="http://test"
+            ) as client:
+                response = await client.put(
+                    f"{SESSIONS_PREFIX}/sess-001/review",
+                    json={
+                        "decision": decision,
+                        "final_output": "最终报告",
+                        "idempotency_key": f"{expected_action}-key",
+                    },
+                    headers=lawyer_auth_headers,
+                )
+
+        assert response.status_code == 200
+        assert command.await_args.kwargs["action"] == expected_action
+        assert command.await_args.kwargs["target_node"] == expected_target
+        assert command.await_args.kwargs["idempotency_key"] == f"{expected_action}-key"
+        assert response.json()["processed_at"] == "2026-09-21T00:00:00Z"
+
     @pytest.mark.asyncio
     async def test_lawyer_review_session_not_found(
         self, lawyer_app, lawyer_auth_headers, mock_db_session
@@ -424,7 +554,7 @@ class TestLawyerReview:
             "app.v1.service.consultation_service.get_session_state",
             new_callable=AsyncMock,
         ) as mock_get_state, patch(
-            "app.v1.service.consultation_service.process_lawyer_review",
+            "app.v1.service.consultation_service.execute_lifecycle_command",
             new_callable=AsyncMock,
         ) as mock_proc:
             mock_get_state.return_value = sample_session_state
@@ -449,7 +579,7 @@ class TestLawyerReview:
             "app.v1.service.consultation_service.get_session_state",
             new_callable=AsyncMock,
         ) as mock_get_state, patch(
-            "app.v1.service.consultation_service.process_lawyer_review",
+            "app.v1.service.consultation_service.execute_lifecycle_command",
             new_callable=AsyncMock,
         ) as mock_proc, patch(
             "app.v1.router.consultation.routes.orchestrator"
@@ -482,7 +612,7 @@ class TestLawyerReview:
             "app.v1.service.consultation_service.get_session_state",
             new_callable=AsyncMock,
         ) as mock_get_state, patch(
-            "app.v1.service.consultation_service.process_lawyer_review",
+            "app.v1.service.consultation_service.execute_lifecycle_command",
             new_callable=AsyncMock,
         ) as mock_proc, patch(
             "app.v1.router.consultation.routes.orchestrator"
@@ -678,6 +808,34 @@ class TestGetSessionStateExtra:
         assert data["alert_triggered"] is False
         assert data["final_output"] is None
 
+    @pytest.mark.asyncio
+    async def test_get_state_reports_repair_required_instead_of_completed(
+        self, test_app, client_auth_headers, sample_session_state
+    ):
+        repair_state = {
+            **sample_session_state,
+            "lawyer_decision": "approved",
+            "workflow_status": "repair_required",
+            "repair_required": True,
+        }
+        with patch(
+            "app.v1.service.consultation_service.get_session_state",
+            new_callable=AsyncMock,
+            return_value=repair_state,
+        ), patch(
+            "app.orchestrator.workflow.orchestrator.is_workflow_finished",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+                response = await client.get(
+                    f"{SESSIONS_PREFIX}/sess-001/state",
+                    headers=client_auth_headers,
+                )
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "repair_required"
+
 
 # ---------------------------------------------------------------------------
 # /close - additional coverage
@@ -693,10 +851,11 @@ class TestCloseSessionExtra:
             "app.v1.service.consultation_service.get_session_state",
             new_callable=AsyncMock,
         ) as mock_get_state, patch(
-            "app.v1.service.consultation_service.persist_state",
+            "app.v1.service.consultation_service.execute_lifecycle_command",
             new_callable=AsyncMock,
-        ) as mock_persist:
+        ) as mock_command:
             mock_get_state.return_value = sample_session_state
+            mock_command.return_value = sample_session_state
 
             async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
                 response = await client.post(
@@ -709,7 +868,7 @@ class TestCloseSessionExtra:
         assert data["success"] is True
         # When reason is None, the message should not include a reason suffix.
         assert "原因" not in data["message"]
-        mock_persist.assert_awaited_once()
+        mock_command.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_close_session_creates_history_when_missing(
@@ -721,10 +880,11 @@ class TestCloseSessionExtra:
             "app.v1.service.consultation_service.get_session_state",
             new_callable=AsyncMock,
         ) as mock_get_state, patch(
-            "app.v1.service.consultation_service.persist_state",
+            "app.v1.service.consultation_service.execute_lifecycle_command",
             new_callable=AsyncMock,
-        ) as mock_persist:
+        ) as mock_command:
             mock_get_state.return_value = sample_session_state
+            mock_command.return_value = sample_session_state
 
             async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
                 response = await client.post(
@@ -734,12 +894,8 @@ class TestCloseSessionExtra:
                 )
 
         assert response.status_code == 200
-        # The state should now have a conversation_history with the closing entry.
-        assert "conversation_history" in sample_session_state
-        last = sample_session_state["conversation_history"][-1]
-        assert last["action"] == "session_closed"
-        assert last["reason"] == "测试"
-        assert sample_session_state["current_agent"] == "END"
+        mock_command.assert_awaited_once()
+        assert mock_command.call_args.args[1] == "close"
 
 
 # ---------------------------------------------------------------------------

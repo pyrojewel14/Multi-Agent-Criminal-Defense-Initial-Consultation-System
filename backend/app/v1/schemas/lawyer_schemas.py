@@ -72,6 +72,7 @@ class ApproveReportRequest(BaseModel):
 
     final_output: str = Field(..., description="律师确认的最终报告内容")
     feedback: Optional[str] = Field(None, description="律师反馈意见")
+    idempotency_key: Optional[str] = Field(None, min_length=1, max_length=128, description="客户端幂等键")
 
     class Config:
         from_attributes = True
@@ -95,6 +96,7 @@ class RejectSessionRequest(BaseModel):
     target_node: str = Field(..., description="退回目标节点: fact_digger, risk_assessor")
     reason: Optional[str] = Field(None, description="退回原因")
     feedback: Optional[str] = Field(None, description="具体修改要求")
+    idempotency_key: Optional[str] = Field(None, min_length=1, max_length=128, description="客户端幂等键")
 
     class Config:
         from_attributes = True

@@ -22,19 +22,19 @@
 | 刷新 token | `POST /api/v1/auth/refresh` | 公开，需有效 refresh token | SQLite 校验 refresh token |
 | 当前用户 / 登出 | `GET /api/v1/auth/me`、`POST /api/v1/auth/logout` | 已认证 | SQLite；登出只撤销 refresh token |
 | 创建会话 | `POST /api/v1/sessions` | 已认证 | SQLite 创建 `consultations`；LangGraph 启动状态 |
-| 知情同意 | `POST /api/v1/sessions/{session_id}/confirm-consent` | 会话所有者 | workflow/Redis/内存；`consent_given` 同步 SQLite |
+| 知情同意 | `POST /api/v1/sessions/{session_id}/confirm-consent` | 会话所有者 | LangGraph checkpoint；`consent_given` 同步 SQLite |
 | 发送消息 | `POST /api/v1/sessions/{session_id}/message` | 会话所有者 | workflow；HTTP 用户/Agent 消息写入 SQLite |
-| 查询实时状态 | `GET /api/v1/sessions/{session_id}/state` | 所有者、已分配律师、管理员 | MemorySaver → Redis → 进程内缓存 |
+| 查询实时状态 | `GET /api/v1/sessions/{session_id}/state` | 所有者、已分配律师、管理员 | LangGraph checkpoint；不从 Redis/内存猜测 pending node |
 | 获取报告草案 | `GET /api/v1/sessions/{session_id}/report-draft` | 已分配律师、管理员 | 实时 workflow state，不从 SQLite 恢复 |
-| workflow 律师审核 | `PUT /api/v1/sessions/{session_id}/review` | 已分配律师、管理员 | 更新 LangGraph/Redis/内存状态 |
-| 活跃会话列表 / 关闭 | `GET /api/v1/sessions`、`POST /api/v1/sessions/{session_id}/close` | 按角色和资源过滤 | 进程内活跃状态；关闭不等于删除数据库历史 |
+| workflow 律师审核 | `PUT /api/v1/sessions/{session_id}/review` | 已分配律师、管理员 | application command；checkpoint + SQLite 审计 |
+| 活跃会话列表 / 关闭 | `GET /api/v1/sessions`、`POST /api/v1/sessions/{session_id}/close` | 按角色和资源过滤 | application command；checkpoint + SQLite `cancelled` 审计 |
 | 历史记录 | `GET /api/v1/consultations/list`、`GET /api/v1/consultations/{id}`、`GET /api/v1/consultations/{id}/messages` | client 仅本人；lawyer 仅已分配；admin 全部 | SQLite |
 | 分配律师 / 更新状态 | `POST /api/v1/consultations/assign`、`PUT /api/v1/consultations/{id}/status` | admin 分配；lawyer/admin 更新允许范围 | SQLite；分配同步到仍活跃的 workflow checkpoint/cache |
 | 律师工作台 | `/api/v1/lawyer/sessions*`、`/api/v1/lawyer/alerts*` | lawyer/admin 角色门槛；资源仍按 DB 分配校验 | SQLite |
 | 用户 / 律师管理 | `/api/v1/users*`、`/api/v1/lawyers*` | admin | SQLite |
 | 知识库管理 | `/api/v1/knowledge*` | admin | Chroma、MD5 store 与文档处理链；依赖本地模型/解析组件 |
 
-`session_id` 是 LangGraph/Redis 的工作流 ID；`consultation_id` 是 SQLite 主键。创建会话响应同时返回两者。律师工作台和历史接口中的路径 ID 实际使用 `consultation_id`，不能与 workflow `session_id` 混用。
+`session_id` 是 LangGraph 的工作流 ID；`consultation_id` 是 SQLite 主键，二者通过 `consultations.workflow_session_id` 关联。创建会话响应同时返回两者。律师工作台和历史接口中的路径 ID 实际使用 `consultation_id`，不能与 workflow `session_id` 混用。
 
 ## 权限矩阵
 
@@ -121,7 +121,7 @@ curl -s -X POST "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/confirm-con
 curl -s -X POST "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/message" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${SESSION_ID}\",\"content\":\"事情发生在昨天晚上，请继续询问。\"}"
+  -d "{\"session_id\":\"${SESSION_ID}\",\"content\":\"事情发生在昨天晚上，请继续询问。\",\"idempotency_key\":\"client-message-001\"}"
 ```
 
 查询状态：
@@ -145,7 +145,7 @@ curl -s "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/report-draft" \
 curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/review" \
   -H "Authorization: Bearer ${LAWYER_ACCESS_TOKEN}" \
   -H 'Content-Type: application/json' \
-  -d '{"decision":"approved","feedback":"同意该草案","final_output":"律师确认后的报告"}'
+  -d '{"decision":"approved","feedback":"同意该草案","final_output":"律师确认后的报告","idempotency_key":"lawyer-review-001"}'
 ```
 
 公开注册只创建 `client`。项目没有公开的管理员初始化接口；管理员 token 和律师账号必须来自已有受信任初始化数据或管理员接口，不能通过修改注册请求中的 `role` 获得。
@@ -180,11 +180,13 @@ curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/review" \
 ## Redis 与 SQLAlchemy 边界
 
 - 应用 lifespan 依次执行 `init_db()` 和 `init_redis()`。Redis 在启动时是硬依赖，连接失败会阻断应用启动。
-- 启动成功后，单次 Redis cache 读取失败返回 `None`，写入失败返回 `False`。会话读取顺序是 LangGraph `MemorySaver` checkpoint、Redis `session:{session_id}`、进程内活跃缓存。
-- `persist_state()` 先更新进程内缓存，再尝试写 Redis。因此运行期间 Redis 短暂不可用时可继续使用当前进程内状态，但访问可能受到连接超时影响，且进程重启后不能恢复。
-- SQLite 持久化用户、咨询记录和 HTTP 消息，并更新知情同意、律师分配、历史状态和律师工作台操作；定向测试使用内存 SQLite 验证相关落库契约。
+- Redis 仍可作为可选缓存/观测依赖，但不会作为执行状态回退；API 查询和恢复只读取 LangGraph checkpoint。
+- `persist_state()` 对 LangGraph 已写入的完整 state 只刷新进程内兼容投影；只有调用方明确给出新增投影字段时才最小更新 checkpoint，且不能据此推断 pending node。
+- SQLite 持久化用户、咨询记录和 HTTP 消息，并作为 approve/reject/close 的业务审计源；定向测试使用内存 SQLite 验证相关落库契约。
 - 完整 workflow state 不从 SQLite 恢复。`facts_structured`、`applied_laws`、`risk_assessment`、`service_plan`、`report_draft` 等虽在 `Consultation` 模型定义，但当前自然 workflow 尚未统一回写这些列。新增报告草案接口因此明确读取实时 state，而不是宣称数据库已完整持久化。
-- WebSocket 消息仍不写 `consultation_messages`；HTTP 消息会落库。`MemorySaver`、Redis、内存状态和 SQLite 不是强一致的统一存储。
+- HTTP 与 WebSocket 消息都接受 `idempotency_key`；WebSocket 也兼容把 `message_id` 作为该键。HTTP 的 workflow 推进、checkpoint history 与 `consultation_messages` 写入位于同一 service 命令边界；WebSocket 仍不写 `consultation_messages`。生命周期命令先推进 checkpoint，再提交 SQLite；SQLite 失败时保留真实执行位置并标记 `repair_required`，503 会要求使用相同操作和相同 key 重试修复，普通 resume 在修复前被阻断。
+- 幂等键最长 128 字符，作用域为 `(session_id, command_type, idempotency_key)`。同 key 不同载荷返回 409。可安全重放结果只在当前进程缓存一小时且总量最多 2048 条；消息若已推进 workflow、但随后 SQLite 写入失败，同 key 会重放原错误而不再次 resume，也不会自动补写缺失消息。重启或多 worker 不共享，跨进程部署必须增加持久化幂等表和共享并发控制。
+- 首次 approve/reject 仅接受处于 `human_review` 断点的工作流；其他执行位置返回 409，不推进工作流也不写 SQLite。该限制不阻止已标记 `repair_required` 的同 action 审计修复。
 - SQLAlchemy async 连接需要 `greenlet`；依赖已列入 `pyproject.toml` 和 `requirements.txt`。
 
 ## OpenAPI 与运行时已知差异
@@ -192,4 +194,4 @@ curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/review" \
 - 部分历史路由使用 `success_response()` 返回 `{code,message,data}` wrapper，但装饰器的 `response_model` 仍描述裸 data 模型；运行时成功响应以上述 wrapper 为准。
 - FastAPI 自动生成的 422 OpenAPI schema 仍可能显示默认 `detail` 结构；运行时已由全局处理器转换为统一 `error` envelope。
 - ASGI 测试会 mock LLM、RAG、Redis 或路由数据库依赖；它证明路由、鉴权和错误契约，不证明外部模型、Chroma 或真实 Redis 在线。
-- 当前没有 Alembic migration、生产级持久化 checkpointer、access-token 撤销列表或多实例状态一致性。
+- 当前没有 Alembic migration、默认生产级持久化 checkpointer、access-token 撤销列表或多实例状态一致性。

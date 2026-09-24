@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from typing import Any, Dict, Literal, Optional
 
 from langchain_core.runnables import RunnableConfig
@@ -16,6 +18,7 @@ from app.agents.receptionist import receptionist_node
 from app.agents.risk_assessor import risk_assessor_node
 from app.agents.service_planner import service_planner_node
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
+from app.observability.tracing import trace_span, trace_store
 from app.schemas.law_schemas import CoverageCandidateSchema, LawDataSource
 from app.security.disclaimer import disclaimer
 from app.state.consultation_state import ConsultationState, validate_consultation_state
@@ -30,6 +33,40 @@ INTERRUPT_AFTER_NODES = ["receptionist", "wait_for_user", "human_review", "human
 
 WorkflowGraph = StateGraph[ConsultationState, None, ConsultationState, ConsultationState]
 CompiledWorkflowGraph = CompiledStateGraph[ConsultationState, None, ConsultationState, ConsultationState]
+
+
+def _record_route(name: str, state: ConsultationState, reason: str) -> None:
+    """记录条件边的语义原因，不保存状态值。"""
+    with trace_span(
+        trace_store,
+        event_type="route",
+        name=name,
+        session_id=state.get("session_id", "unknown"),
+        node=state.get("current_agent"),
+        route_reason=reason,
+    ):
+        pass
+
+
+def _observed_node(
+    name: str,
+    node: Callable[[ConsultationState], Awaitable[ConsultationState]],
+) -> Callable[[ConsultationState], Awaitable[ConsultationState]]:
+    """为 LangGraph 节点建立统一子 span。"""
+
+    async def observed(state: ConsultationState) -> ConsultationState:
+        with trace_span(
+            trace_store,
+            event_type="node",
+            name=name,
+            session_id=state.get("session_id", "unknown"),
+            node=name,
+        ):
+            return await node(state)
+
+    return observed
+
+
 def _validate_workflow_state(value: object) -> ConsultationState:
     """校验 LangGraph 状态值，同时保留框架使用的元数据键。"""
     try:
@@ -49,8 +86,10 @@ def check_consent(state: ConsultationState) -> Literal["continue", "end"]:
         "end" - 不同意，结束流程
     """
     if state.get("consent_given"):
+        _record_route("check_consent", state, "consent_given")
         _logger.debug("用户已同意，继续流程")
         return "continue"
+    _record_route("check_consent", state, "consent_missing")
     _logger.debug("用户未同意，结束流程")
     return "end"
 
@@ -58,8 +97,10 @@ def check_consent(state: ConsultationState) -> Literal["continue", "end"]:
 def check_fact_intake(state: ConsultationState) -> Literal["continue", "alert"]:
     """条件边：事实摄取后优先分流高风险输入。"""
     if state.get("alert_triggered"):
+        _record_route("check_fact_intake", state, "alert_triggered")
         _logger.info("事实摄取检测到高风险内容，触发人工介入")
         return "alert"
+    _record_route("check_fact_intake", state, "facts_accepted")
     return "continue"
 
 
@@ -79,10 +120,12 @@ def check_facts_sufficient(
         "degraded" - 知识或模型依赖持续失败，转人工审核
     """
     if state.get("alert_triggered"):
+        _record_route("check_facts_sufficient", state, "alert_triggered")
         _logger.info("检测到高风险内容，触发人工介入")
         return "alert"
 
     if state.get("workflow_status") == "degraded":
+        _record_route("check_facts_sufficient", state, "dependency_degraded")
         _logger.warning(
             "【check_facts_sufficient】自动循环已降级，转人工审核: session_id=%s, reason=%s",
             state.get("session_id", "unknown"),
@@ -94,6 +137,7 @@ def check_facts_sufficient(
     loop_count = state.get("fact_law_loop_count", 0)
     max_loops = 10
     if loop_count >= max_loops:
+        _record_route("check_facts_sufficient", state, "max_loop_reached")
         _logger.warning(
             "【check_facts_sufficient】达到最大循环次数 %d，强制进入风险评估",
             max_loops,
@@ -103,11 +147,29 @@ def check_facts_sufficient(
     coverage_rate = state.get("facts_coverage_rate") or 0.0
 
     if coverage_rate >= COVERAGE_THRESHOLD:
+        _record_route("check_facts_sufficient", state, "coverage_sufficient")
         _logger.info("事实覆盖度 %.2f >= %.2f，流程完成", coverage_rate, COVERAGE_THRESHOLD)
         return "complete"
 
+    _record_route("check_facts_sufficient", state, "coverage_insufficient")
     _logger.info("事实覆盖度 %.2f < %.2f，需要继续追问", coverage_rate, COVERAGE_THRESHOLD)
     return "loop"
+
+
+def route_after_risk(
+    state: ConsultationState,
+) -> Literal["continue", "human_review"]:
+    """风险产物校验失败时跳过 ServicePlanner，直接进入人工审核。"""
+    risk_result = (state.get("artifact_results") or {}).get("risk") or {}
+    if risk_result.get("status") in {"degraded", "human_review"}:
+        _record_route("route_after_risk", state, "risk_artifact_degraded")
+        _logger.warning(
+            "风险产物不可自动消费，直接转人工: reason=%s",
+            risk_result.get("degraded_reason", "unknown"),
+        )
+        return "human_review"
+    _record_route("route_after_risk", state, "risk_artifact_valid")
+    return "continue"
 
 
 def lawyer_decision(state: ConsultationState) -> Literal["approved", "revise_facts", "revise_risk", "wait"]:
@@ -125,16 +187,20 @@ def lawyer_decision(state: ConsultationState) -> Literal["approved", "revise_fac
     decision = state.get("lawyer_decision")
 
     if decision == "revise_facts":
+        _record_route("lawyer_decision", state, "lawyer_revise_facts")
         _logger.info("律师决策：需要修改事实，返回 FactDigger")
         return "revise_facts"
     elif decision == "revise_risk":
+        _record_route("lawyer_decision", state, "lawyer_revise_risk")
         _logger.info("律师决策：需要修改风险评估，返回 RiskAssessor")
         return "revise_risk"
 
     if decision == "approved":
+        _record_route("lawyer_decision", state, "lawyer_approved")
         _logger.info("律师决策：报告已批准，流程结束")
         return "approved"
 
+    _record_route("lawyer_decision", state, "lawyer_decision_missing")
     _logger.info("尚未收到有效律师决策，继续等待人工审核")
     return "wait"
 
@@ -390,12 +456,28 @@ class ConsultationOrchestrator:
         resume_workflow() - 恢复会话，从中断点继续执行到下一个中断点
     """
 
-    def __init__(self):
+    def __init__(self, checkpointer: Any | None = None, *, persistent: bool | None = None):
         self._logger = get_logger("Orchestrator")
-        self._checkpointer = MemorySaver()
+        if persistent is True and checkpointer is None:
+            raise ValueError("声明持久化能力时必须显式注入 durable checkpointer")
+        if persistent is True and isinstance(checkpointer, MemorySaver):
+            raise ValueError("MemorySaver 仅限进程内，不能声明为持久化 checkpointer")
+        # MemorySaver 和未知 saver 均按进程内能力处理；只有调用方显式确认时才宣称持久化。
+        self._checkpointer = checkpointer or MemorySaver()
+        self._checkpoint_persistence = "persistent" if persistent is True else "process"
         self._compiled: Optional[CompiledWorkflowGraph] = None
         # 保留 _active_sessions 用于 get_active_sessions 等兼容接口
         self._active_sessions: Dict[str, ConsultationState] = {}
+
+    @property
+    def checkpoint_persistence(self) -> str:
+        """返回当前声明的 checkpoint 持久化边界。"""
+        return self._checkpoint_persistence
+
+    @property
+    def can_resume_after_restart(self) -> bool:
+        """返回当前实例是否明确支持跨进程恢复。"""
+        return self._checkpoint_persistence == "persistent"
 
     def _build_workflow(self) -> WorkflowGraph:
         """构建工作流 DAG，包含所有 Agent 节点和条件边。
@@ -405,15 +487,15 @@ class ConsultationOrchestrator:
         """
         workflow: WorkflowGraph = StateGraph(ConsultationState)
 
-        workflow.add_node("receptionist", receptionist_node)
-        workflow.add_node("fact_intake", _fact_intake_workflow_node)
-        workflow.add_node("fact_digger", _fact_digger_workflow_node)
-        workflow.add_node("law_ref", law_ref_node)
-        workflow.add_node("risk_assessor", _risk_assessor_workflow_node)
-        workflow.add_node("service_planner", service_planner_node)
-        workflow.add_node("human_review", human_review_node)
-        workflow.add_node("human_alert", human_alert_node)
-        workflow.add_node("wait_for_user", wait_for_user_node)
+        workflow.add_node("receptionist", _observed_node("receptionist", receptionist_node))
+        workflow.add_node("fact_intake", _observed_node("fact_intake", _fact_intake_workflow_node))
+        workflow.add_node("fact_digger", _observed_node("fact_digger", _fact_digger_workflow_node))
+        workflow.add_node("law_ref", _observed_node("law_ref", law_ref_node))
+        workflow.add_node("risk_assessor", _observed_node("risk_assessor", _risk_assessor_workflow_node))
+        workflow.add_node("service_planner", _observed_node("service_planner", service_planner_node))
+        workflow.add_node("human_review", _observed_node("human_review", human_review_node))
+        workflow.add_node("human_alert", _observed_node("human_alert", human_alert_node))
+        workflow.add_node("wait_for_user", _observed_node("wait_for_user", wait_for_user_node))
 
         workflow.set_entry_point("receptionist")
 
@@ -444,8 +526,12 @@ class ConsultationOrchestrator:
         workflow.add_edge("wait_for_user", "fact_intake")
         workflow.add_edge("law_ref", "fact_digger")
 
-        # 后半段线性链 + 律师审核条件边
-        workflow.add_edge("risk_assessor", "service_planner")
+        # 风险产物通过 schema 校验后才能进入 ServicePlanner
+        workflow.add_conditional_edges(
+            "risk_assessor",
+            route_after_risk,
+            {"continue": "service_planner", "human_review": "human_review"},
+        )
         workflow.add_edge("service_planner", "human_review")
         workflow.add_conditional_edges(
             "human_review",
@@ -510,7 +596,13 @@ class ConsultationOrchestrator:
         self._active_sessions[session_id] = initial_state.copy()
 
         try:
-            result = _validate_workflow_state(await compiled.ainvoke(initial_state, config))
+            with trace_span(
+                trace_store,
+                event_type="workflow",
+                name="start_workflow",
+                session_id=session_id,
+            ):
+                result = _validate_workflow_state(await compiled.ainvoke(initial_state, config))
             self._active_sessions[session_id] = result
             self._logger.info(
                 "工作流中断: session_id=%s, current_agent=%s",
@@ -558,6 +650,12 @@ class ConsultationOrchestrator:
         if snapshot.values is None or not snapshot.values:
             raise ValueError(f"会话不存在: {session_id}")
 
+        workflow_status = snapshot.values.get("workflow_status")
+        if snapshot.values.get("repair_required") or workflow_status == "repair_required":
+            raise ValueError(f"会话存在一致性错误，必须先重试生命周期命令完成修复: {session_id}")
+        if workflow_status in {"closed", "completed"}:
+            raise ValueError(f"会话已{workflow_status}，不能继续执行: {session_id}")
+
         # current_input 只允许在事实摄取节点前写入；后续节点失败后的重放不再恢复该一次性字段。
         effective_updates = dict(state_updates) if state_updates else {}
         if "current_input" in effective_updates and "fact_intake" not in snapshot.next:
@@ -575,7 +673,13 @@ class ConsultationOrchestrator:
         self._logger.info("恢复工作流: session_id=%s, next=%s", session_id, snapshot.next)
 
         try:
-            result = _validate_workflow_state(await compiled.ainvoke(None, config))
+            with trace_span(
+                trace_store,
+                event_type="workflow",
+                name="resume_workflow",
+                session_id=session_id,
+            ):
+                result = _validate_workflow_state(await compiled.ainvoke(None, config))
             self._active_sessions[session_id] = result
             self._logger.info(
                 "工作流中断: session_id=%s, current_agent=%s",
@@ -627,6 +731,63 @@ class ConsultationOrchestrator:
         updated_state = _validate_workflow_state(updated_snapshot.values)
         self._active_sessions[session_id] = updated_state
         return updated_state
+
+    async def close_workflow(
+        self,
+        session_id: str,
+        reason: Optional[str] = None,
+        actor_id: Optional[str] = None,
+    ) -> ConsultationState:
+        """直接在执行 checkpoint 中关闭会话，不读取 Redis 或兼容缓存。"""
+        snapshot = await self.get_snapshot(session_id)
+        if snapshot is None:
+            raise ValueError(f"会话不存在: {session_id}")
+        history = list(snapshot.values.get("conversation_history", []))
+        history.append(
+            {
+                "agent": "system",
+                "action": "session_closed",
+                "reason": reason,
+                "closed_by": actor_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        updates: Dict[str, Any] = {
+            "workflow_status": "closed",
+            "current_agent": "END",
+            "awaiting_lawyer_review": False,
+            "conversation_history": history,
+        }
+        if reason:
+            updates["lawyer_feedback"] = reason
+        updated = await self.update_workflow_state(session_id, updates)
+        if updated is None:
+            raise ValueError(f"会话不存在: {session_id}")
+        return updated
+
+    async def mark_repair_required(
+        self,
+        session_id: str,
+        *,
+        action: str,
+        failed_stage: str,
+    ) -> ConsultationState:
+        """写入非敏感的一致性故障标记，并保留当前执行位置。"""
+        marked = await self.update_workflow_state(
+            session_id,
+            {
+                "workflow_status": "repair_required",
+                "repair_required": True,
+                "consistency_error": {
+                    "action": action,
+                    "failed_stage": failed_stage,
+                    "error_code": "audit_write_failed",
+                },
+            },
+        )
+        if marked is None:
+            raise ValueError(f"会话不存在: {session_id}")
+        return marked
 
     async def get_next_node(self, session_id: str) -> Optional[str]:
         """获取会话的下一个待执行节点名称。

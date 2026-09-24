@@ -74,6 +74,60 @@ def _make_law_data():
     }
 
 
+def _make_valid_law_dataset(*articles):
+    """Return the versioned tracked-snapshot shape required by preflight."""
+    if not articles:
+        articles = (
+            {
+                "article_number": "第二百三十四条",
+                "title": "故意伤害罪",
+                "content": "故意伤害他人身体的，处三年以下有期徒刑、拘役或者管制。",
+                "elements": ["故意伤害他人身体"],
+                "base_sentence": "处三年以下有期徒刑、拘役或者管制",
+                "charge_tags": ["故意伤害"],
+                "common_keywords": ["伤害"],
+                "official_text_source": "criminal-law-amendment-12",
+                "annotation_source": "project-maintained-v1",
+            },
+        )
+    return {
+        "metadata": {
+            "dataset_id": "criminal-law-core",
+            "dataset_version": "2026-09-21.1",
+            "verified_at": "2026-09-21",
+            "official_text": {
+                "source_id": "criminal-law-amendment-12",
+                "title": "中华人民共和国刑法",
+                "publisher": "上海市发展和改革委员会",
+                "url": "https://fgw.sh.gov.cn/example.pdf",
+                "consolidated_through": "中华人民共和国刑法修正案（十二）",
+                "version_effective_from": "2024-03-01",
+            },
+            "redistribution_basis": {
+                "title": "中华人民共和国著作权法第五条",
+                "url": "https://www.npc.gov.cn/example.html",
+            },
+            "annotation_provenance": {
+                "annotation_id": "project-maintained-v1",
+                "official": False,
+                "maintainer": "project maintainers",
+                "purpose": "deterministic retrieval and coverage tests",
+            },
+            "official_text_fields": ["article_number", "content"],
+            "project_annotation_fields": [
+                "title",
+                "elements",
+                "base_sentence",
+                "charge_tags",
+                "common_keywords",
+            ],
+            "coverage": [article["article_number"] for article in articles],
+            "limitations": "Not a complete criminal-law corpus or legal opinion.",
+        },
+        "chapters": [{"chapter": "第四章", "articles": list(articles)}],
+    }
+
+
 # ---------------------------------------------------------------------------
 # _normalize_article_number
 # ---------------------------------------------------------------------------
@@ -159,10 +213,8 @@ async def test_search_laws_by_rag():
 
     mock_rag_service = MagicMock()
     mock_rag_service.initialize_retriever = AsyncMock()
-    mock_rag_service.get_documents_and_summary = AsyncMock(
-        return_value={
-            "documents": ["第二百六十四条 盗窃公私财物，数额较大的，处三年以下有期徒刑。"],
-        }
+    mock_rag_service.retrieve_documents = AsyncMock(
+        return_value=["第二百六十四条 盗窃公私财物，数额较大的，处三年以下有期徒刑。"]
     )
 
     with patch("app.rag.rag_service.RagService", return_value=mock_rag_service) as rag_service_class:
@@ -172,6 +224,34 @@ async def test_search_laws_by_rag():
     assert results[0]["data_source"] == "rag_unverified"
     assert "第二百六十四条" in results[0].get("article_number", "") or results[0]["content"] != ""
     rag_service_class.assert_called_once_with(user_id="user-001", include_public=True)
+
+
+@pytest.mark.asyncio
+async def test_search_laws_by_rag_uses_retrieval_only_without_summary_calls():
+    """LawRef 只消费 documents 时不得请求文档摘要或汇总。"""
+    facts = {
+        "behavior_sequence": ["盗窃"],
+        "consequence": "财产损失",
+    }
+    documents = [
+        "第二百六十四条 盗窃公私财物。",
+        "第二百六十五条 以牟利为目的盗接通信线路。",
+        "第二百六十六条 诈骗公私财物。",
+    ]
+
+    mock_rag_service = MagicMock()
+    mock_rag_service.initialize_retriever = AsyncMock()
+    mock_rag_service.retrieve_documents = AsyncMock(return_value=documents)
+    mock_rag_service.get_documents_and_summary = AsyncMock(
+        side_effect=AssertionError("LawRef 不应请求摘要")
+    )
+
+    with patch("app.rag.rag_service.RagService", return_value=mock_rag_service):
+        results = await search_laws_by_rag(facts, "user-001")
+
+    assert len(results) == 3
+    mock_rag_service.retrieve_documents.assert_awaited_once_with("盗窃 财产损失")
+    mock_rag_service.get_documents_and_summary.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -185,7 +265,7 @@ async def test_search_laws_by_rag_flattens_structured_behavior_items():
     }
     mock_rag_service = MagicMock()
     mock_rag_service.initialize_retriever = AsyncMock()
-    mock_rag_service.get_documents_and_summary = AsyncMock(return_value={"documents": []})
+    mock_rag_service.retrieve_documents = AsyncMock(return_value=[])
 
     with patch("app.rag.rag_service.RagService", return_value=mock_rag_service):
         results = await search_laws_by_rag(facts, "user-001")
@@ -339,6 +419,24 @@ async def test_law_ref_node_with_matching_facts():
 
 
 @pytest.mark.asyncio
+async def test_law_ref_node_fallback_maps_real_snapshot_element_objects():
+    """The real six-article snapshot must survive invalid LLM extraction fallback."""
+    state = make_consultation_state(
+        facts_structured={"behavior_sequence": ["殴打"], "consequence": "受伤"},
+        applied_laws=[],
+    )
+    rag_result = [{"article_number": "第二百三十四条", "content": "故意伤害他人身体"}]
+    with patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=rag_result), \
+         patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]), \
+         patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
+        result = await law_ref_node(state)
+
+    assert result["current_agent"] == "LawRef"
+    assert result["element_to_law_mapping"]["故意伤害他人身体"]["article_number"] == "第二百三十四条"
+    assert result["applied_laws"][0]["data_source"] == "rag_verified"
+
+
+@pytest.mark.asyncio
 async def test_search_laws_by_keyword_accepts_structured_behavior_items():
     """对象型行为序列不应让关键词补充路径在 lower() 处崩溃。"""
     facts = {
@@ -438,7 +536,7 @@ def test_load_law_extract_prompt_falls_back_to_default():
 
 
 # ---------------------------------------------------------------------------
-# load_criminal_law_data – caching, missing file, list vs dict, error path
+# load_criminal_law_data – caching and fail-fast validation
 # ---------------------------------------------------------------------------
 
 
@@ -447,7 +545,7 @@ def test_load_criminal_law_data_caches_result(tmp_path, monkeypatch):
     # Reset cache so the test doesn't leak state.
     load_criminal_law_data.cache_clear()
 
-    sample = [{"chapter": "第一章", "article_number": "第1条", "title": "测试罪", "content": "测试内容"}]
+    sample = _make_valid_law_dataset()
     law_file = tmp_path / "criminal_law_chapters.json"
     law_file.write_text(json.dumps(sample, ensure_ascii=False), encoding="utf-8")
 
@@ -458,43 +556,131 @@ def test_load_criminal_law_data_caches_result(tmp_path, monkeypatch):
     assert first is second  # lru_cache returns the exact same object
     assert "chapters" in first
     assert len(first["chapters"]) == 1
-    assert first["chapters"][0]["chapter"] == "第一章"
-    assert first["chapters"][0]["articles"][0]["title"] == "测试罪"
+    assert first["chapters"][0]["chapter"] == "第四章"
+    assert first["chapters"][0]["articles"][0]["title"] == "故意伤害罪"
 
     # Cleanup cache
     load_criminal_law_data.cache_clear()
 
 
 def test_load_criminal_law_data_missing_file(monkeypatch):
-    """If file is missing, return empty chapters dict and don't raise."""
+    """Missing tracked data must stop startup instead of silently disabling validation."""
     load_criminal_law_data.cache_clear()
     missing = Path("/nonexistent/path/criminal_law_chapters.json")
     monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", missing)
-    result = load_criminal_law_data()
-    assert result == {"chapters": []}
+    with pytest.raises(RuntimeError, match="法条验证数据文件不存在"):
+        load_criminal_law_data()
     load_criminal_law_data.cache_clear()
 
 
-def test_load_criminal_law_data_dict_format(monkeypatch, tmp_path):
-    """When JSON is a dict (not a list), use it as-is."""
+def test_load_criminal_law_data_rejects_missing_metadata(monkeypatch, tmp_path):
+    """An unversioned dict cannot be treated as an auditable validation snapshot."""
     load_criminal_law_data.cache_clear()
     sample = {"chapters": [{"chapter": "X", "articles": []}]}
     law_file = tmp_path / "criminal_law_chapters.json"
     law_file.write_text(json.dumps(sample), encoding="utf-8")
     monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", law_file)
-    result = load_criminal_law_data()
-    assert result == sample
+    with pytest.raises(RuntimeError, match="metadata"):
+        load_criminal_law_data()
     load_criminal_law_data.cache_clear()
 
 
 def test_load_criminal_law_data_error(monkeypatch, tmp_path):
-    """If the file is corrupt, return empty chapters and don't raise."""
+    """Corrupt JSON must fail with the affected path in the error."""
     load_criminal_law_data.cache_clear()
     bad = tmp_path / "criminal_law_chapters.json"
     bad.write_text("not valid json", encoding="utf-8")
     monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", bad)
-    result = load_criminal_law_data()
-    assert result == {"chapters": []}
+    with pytest.raises(RuntimeError, match="法条验证数据不是有效 JSON"):
+        load_criminal_law_data()
+    load_criminal_law_data.cache_clear()
+
+
+def test_load_criminal_law_data_rejects_incomplete_article(monkeypatch, tmp_path):
+    """A missing provenance field must not enter the trusted JSON allowlist."""
+    load_criminal_law_data.cache_clear()
+    dataset = _make_valid_law_dataset()
+    del dataset["chapters"][0]["articles"][0]["annotation_source"]
+    law_file = tmp_path / "criminal_law_chapters.json"
+    law_file.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", law_file)
+
+    with pytest.raises(RuntimeError, match="annotation_source"):
+        load_criminal_law_data()
+    load_criminal_law_data.cache_clear()
+
+
+def test_load_criminal_law_data_rejects_duplicate_article_numbers(monkeypatch, tmp_path):
+    """Duplicate normalized numbers would make exact RAG verification ambiguous."""
+    load_criminal_law_data.cache_clear()
+    first = _make_valid_law_dataset()["chapters"][0]["articles"][0]
+    duplicate = {**first, "article_number": "第234条", "title": "重复条目"}
+    dataset = _make_valid_law_dataset(first, duplicate)
+    law_file = tmp_path / "criminal_law_chapters.json"
+    law_file.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", law_file)
+
+    with pytest.raises(RuntimeError, match="重复法条编号.*第234条"):
+        load_criminal_law_data()
+    load_criminal_law_data.cache_clear()
+
+
+def test_load_criminal_law_data_rejects_unlinked_source_id(monkeypatch, tmp_path):
+    """Every article must link to the declared official and annotation sources."""
+    load_criminal_law_data.cache_clear()
+    dataset = _make_valid_law_dataset()
+    dataset["chapters"][0]["articles"][0]["official_text_source"] = "unknown-source"
+    law_file = tmp_path / "criminal_law_chapters.json"
+    law_file.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", law_file)
+
+    with pytest.raises(RuntimeError, match="official_text_source.*顶层来源不一致"):
+        load_criminal_law_data()
+    load_criminal_law_data.cache_clear()
+
+
+def test_load_criminal_law_data_rejects_non_government_source_url(monkeypatch, tmp_path):
+    """Official text and redistribution evidence must use auditable government URLs."""
+    load_criminal_law_data.cache_clear()
+    dataset = _make_valid_law_dataset()
+    dataset["metadata"]["official_text"]["url"] = "https://example.com/law.pdf"
+    law_file = tmp_path / "criminal_law_chapters.json"
+    law_file.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", law_file)
+
+    with pytest.raises(RuntimeError, match="政府 HTTPS URL"):
+        load_criminal_law_data()
+    load_criminal_law_data.cache_clear()
+
+
+def test_tracked_law_snapshot_preflight_exposes_source_and_annotation_boundary():
+    """The shipped snapshot must identify official text and non-official annotations."""
+    load_criminal_law_data.cache_clear()
+    data = law_ref.preflight_law_knowledge()
+
+    metadata = data["metadata"]
+    assert metadata["official_text"]["consolidated_through"] == "中华人民共和国刑法修正案（十二）"
+    assert metadata["official_text"]["version_effective_from"] == "2024-03-01"
+    assert metadata["official_text"]["url"].startswith("https://")
+    assert metadata["redistribution_basis"]["url"].startswith("https://www.npc.gov.cn/")
+    assert metadata["annotation_provenance"]["official"] is False
+    assert metadata["official_text_fields"] == ["article_number", "content"]
+    assert metadata["project_annotation_fields"] == [
+        "title",
+        "elements",
+        "base_sentence",
+        "charge_tags",
+        "common_keywords",
+    ]
+    assert metadata["verified_at"] == "2026-09-21"
+    assert set(metadata["coverage"]) == {
+        "第二百三十二条",
+        "第二百三十四条",
+        "第二百六十三条",
+        "第二百六十四条",
+        "第二百六十六条",
+        "第二百九十三条",
+    }
     load_criminal_law_data.cache_clear()
 
 
@@ -638,9 +824,7 @@ async def test_search_laws_by_rag_with_string_documents():
 
     mock_rag_service = MagicMock()
     mock_rag_service.initialize_retriever = AsyncMock()
-    mock_rag_service.get_documents_and_summary = AsyncMock(
-        return_value={"documents": ["第二百六十四条 关于盗窃罪。"]}
-    )
+    mock_rag_service.retrieve_documents = AsyncMock(return_value=["第二百六十四条 关于盗窃罪。"])
 
     with patch("app.rag.rag_service.RagService", return_value=mock_rag_service):
         results = await search_laws_by_rag(facts, "session-001")
@@ -659,7 +843,7 @@ async def test_search_laws_by_rag_with_document_objects():
 
     mock_rag_service = MagicMock()
     mock_rag_service.initialize_retriever = AsyncMock()
-    mock_rag_service.get_documents_and_summary = AsyncMock(return_value={"documents": docs})
+    mock_rag_service.retrieve_documents = AsyncMock(return_value=docs)
 
     with patch("app.rag.rag_service.RagService", return_value=mock_rag_service):
         results = await search_laws_by_rag(facts, "session-001")
@@ -678,7 +862,7 @@ async def test_search_laws_by_rag_skips_unsupported_doc_types():
 
     mock_rag_service = MagicMock()
     mock_rag_service.initialize_retriever = AsyncMock()
-    mock_rag_service.get_documents_and_summary = AsyncMock(return_value={"documents": docs})
+    mock_rag_service.retrieve_documents = AsyncMock(return_value=docs)
 
     with patch("app.rag.rag_service.RagService", return_value=mock_rag_service):
         results = await search_laws_by_rag(facts, "session-001")
@@ -698,9 +882,9 @@ async def test_search_laws_by_rag_empty_query_uses_fallback():
         async def initialize_retriever(self, q):
             captured_queries.append(q)
 
-        async def get_documents_and_summary(self, q):
+        async def retrieve_documents(self, q):
             captured_queries.append(q)
-            return {"documents": []}
+            return []
 
     with patch("app.rag.rag_service.RagService", return_value=_CapturingRag()):
         await search_laws_by_rag(facts, "session-001")
@@ -714,7 +898,7 @@ async def test_search_laws_by_rag_non_list_behavior():
     facts = {"behavior_sequence": "string-behavior", "consequence": ""}
     mock_rag_service = MagicMock()
     mock_rag_service.initialize_retriever = AsyncMock()
-    mock_rag_service.get_documents_and_summary = AsyncMock(return_value={"documents": []})
+    mock_rag_service.retrieve_documents = AsyncMock(return_value=[])
 
     with patch("app.rag.rag_service.RagService", return_value=mock_rag_service):
         results = await search_laws_by_rag(facts, "session-001")

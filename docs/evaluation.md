@@ -1,10 +1,38 @@
-# 小规模离线评估
+# 小规模评估与真实模型证据边界
 
 ## 评估定位
 
-`evaluation/` 是小规模离线评估集，用于检查事实字段、法条关键词、高风险转人工、追问和拒答/免责声明等基础契约。运行模式为 `offline-deterministic-baseline`，不调用 LLM、Ollama、ChromaDB、向量检索或 reranker。
+`evaluation/run_eval.py` 是小规模离线评估，用于检查事实字段、法条关键词、高风险转人工、追问和拒答/免责声明等基础契约。运行模式为 `offline-deterministic-baseline`，不调用 LLM、Ollama、ChromaDB、向量检索或 reranker。独立的 `run_live_eval.py` 有单独样例与结果格式；其 preflight 和组件 ablation 不能冒充完整链评估。
 
 这组结果只说明固定 30 条样例上的离线基线表现，不代表开放域准确率、真实用户效果、线上性能或生产稳定性。
+
+## 2026-09-23 真实模型接待 ablation
+
+在本地测试环境直连 `127.0.0.1:11434` 的 Ollama `qwen3.5:0.8b` 上，对同一身份引导任务比较固定模板与生产 `_confirm_identity()`。模型 digest、全部 prompt hash、固定 case 文件 hash、逐例结果及输出 hash 记录在 [成功复跑证据](../evaluation/evidence/receptionist_ablation_2026-09-23.json)。这是 **component-ablation**，不是完整 live-chain，也没有人工法律质量标注。
+
+| 本次三条合成样例 | 固定模板 | 生产 Receptionist LLM |
+| --- | ---: | ---: |
+| 模型调用尝试 | 0 | 3 |
+| 单例耗时 | 0.004–0.005 ms | 4,040–5,142 ms |
+| 输出长度（含免责声明） | 48 字 | 118–212 字 |
+| 免责声明 | 3/3 | 3/3 |
+
+这组数据证明模板显著减少本次身份引导的生成调用与延迟；它没有证明模板在复杂身份表达上的引导质量相同，因此目前**保留现有生产 LLM 身份引导路径**，不据此删除。进一步决定需要独立的人工 rubric 和更多真实样例。另一次[超时试跑](../evaluation/evidence/receptionist_ablation_timeout_2026-09-23.json)保留了 `missing_facts` 的 `LLMTimeoutException`；公开副本只保留错误码、类型和阶段。它在失败 attempt 汇总修复前生成，聚合 `llm_attempts=3` 漏算该失败例的重试，不能作为可靠总调用数。
+
+早期 [preflight 证据](../evaluation/evidence/live_preflight_2026-09-23.json)报告默认 Chroma collection 为空且工作树默认 reranker 路径缺失。随后只用六条公开法条快照，在被忽略的 `evaluation/live_results/` 下构建隔离 Chroma 索引，只读复用已有的本地 reranker 权重。[索引 manifest](../evaluation/evidence/six_article_index_manifest_2026-09-23.json)记录快照版本/hash、六条文档、生产 Ollama embedding 模型 digest、1024 维、来源及构建命令。该六条快照作为公开最小验证数据纳入版本控制；clean clone 可取得构建输入，但仍需自行准备 embedding 模型、reranker 权重并重新构建 Chroma 索引。索引的公开过滤条件与实际向量查询均通过，隔离路径的 preflight 报 `ready=true`。旧结果中的 `index_sha256` 是整个 Chroma 目录在当时的字节快照，预检读取也会改写 `chroma.sqlite3`，所以该值会漂移，不能单独用作稳定索引版本。[新 preflight 证据](../evaluation/evidence/live_preflight_manifest_scope_2026-09-23.json)以 `index_hash_scope=mutable_chroma_directory_snapshot` 明示其含义，并另记构建时的 manifest、文档与 embedding 指纹；它们标识构建输入，不能证明索引此后从未被修改。
+
+三例生产 LangGraph/Ollama/RAG 试跑均逐例保存结果：[默认 deadline 的首轮](../evaluation/evidence/live_chain_default_timeout_initial_2026-09-23.json)有两例 `LLM_TIMEOUT`，一例 `wait_for_user`；[180/90 秒 deadline 的第二轮](../evaluation/evidence/live_chain_long_timeout_initial_2026-09-23.json)有一例 `LLM_TIMEOUT`，两例 `wait_for_user`。两轮用初版索引，top-k 缺少可观测来源。补充 `source` metadata 并新建索引后，[30/15 秒试跑](../evaluation/evidence/live_chain_with_source_failed_2026-09-23.json)三例均 `LLM_TIMEOUT`；其中一例真实进入 RAG，观察到 5 条返回结果及 5 个来源指纹。[同配置 180/90 秒对照](../evaluation/evidence/live_chain_with_source_long_deadline_failed_2026-09-23.json)有两例 `wait_for_user`，一例在 RAG 后以 `TypeError` 失败。修正该确定性缺陷后的[单次真实链回归](../evaluation/evidence/live_chain_with_source_after_mapping_fix_2026-09-23.json)在同一索引、同一 180/90 秒配置下三例均为 `wait_for_user`、0 例执行错误；第三例 RAG 返回 5 条及 5 个来源指纹，`law_search_status=success`，随后因覆盖度不足等待补充事实。五轮均未完成法律咨询闭环，不能据此报告法律准确率、覆盖率或稳定的 degraded rate；不同 deadline 的耗时和调用数不可直接比较。后三轮结果的 `llm_policy` 明确记录运行配置；前两轮生成于该 metadata 字段加入之前，其 deadline 以本段执行环境记录为准。
+
+第四轮的 `TypeError: unhashable type: 'dict'` 定位于 LawRef 结构化提取失败后的确定性回退：六条快照的 `elements` 是含 `name` 的对象，而 `_build_element_to_law_mapping` 曾直接用对象作字典键。已用 RED/GREEN 回归将映射键规范化为要件名称，并以真实六条快照运行 LawRef 回退分支。修复后同配置真实链回归未再出现该错误，并到达 `wait_for_user`；其后的律师审核、风险评估和服务方案路径仍未触发，不能据此声称端到端完成。
+
+完整链入口将生产 RAG 返回的前 5 条内容按排名记录为稳定指纹，可用时另记来源指纹（不保存正文或文件名），与最终 `applied_laws` 分开。重排失败回退时，这一顺序可能是原检索顺序；如果检索未运行，逐例 `retrieval_top_k_status` 为 `unavailable`。本次 5 条指纹只证明一次有条件的返回顺序，不能推断召回或法律质量。
+
+```bash
+backend/.venv/bin/python evaluation/run_live_eval.py preflight
+backend/.venv/bin/python evaluation/run_live_eval.py run
+```
+
+索引 manifest 中的 `snapshot_git_tracked=false` 记录的是 2026-09-23 构建时状态；此后六条快照纳入版本控制。历史证据不回写，新的 clean clone 可取得快照文件，但不会自动得到当时的模型、权重或可变 Chroma 索引。
 
 ## 评估集设计
 
@@ -46,9 +74,25 @@
 
 `expected_risk_level` 当前不计算准确率。真实 RiskAssessor 依赖 LLM，项目没有稳定的离线风险等级接口；用 gold 或手写等级冒充预测会造成自评，因此该项在 `summary.json` 中标为 `not_evaluated`。
 
+## 当前固定快照结果
+
+2026-09-25 在主工作树运行离线 `run_eval.py` 的 30 条固定样例，退出码为 0。结果只代表当时的代码和六条法条快照，不是模型、真实 RAG 或法律质量评估：
+
+| 指标 | 结果 | 分子/分母 |
+| --- | ---: | ---: |
+| 事实字段抽取覆盖率 | 77.9% | 60/77 |
+| 法条关键词 hit@5 | 22.2% | 8/36 |
+| 高风险触发准确率 | 100.0% | 30/30 |
+| 追问触发准确率 | 86.7% | 26/30 |
+| 拒答触发准确率 | 93.3% | 28/30 |
+| 免责声明触发率 | 100.0% | 30/30 |
+| 拒答/免责声明触发率 | 97.1% | 34/35 |
+
+法条 gold 包含六条快照以外的条文，因而此处 hit@5 不能解释为完整法条检索能力。结果文件在被忽略的 `evaluation/results/`，可用 `make eval` 在目标环境重新生成；不同版本结果不得直接视为同口径提升或回退。
+
 ## 历史结果快照
 
-下表来自 2026-07-14 07:09 UTC 的历史工作树，不是当前分支结果。只有在目标提交重新执行 `make eval` 并保留完整输出后，才能更新为当前结果：
+下表来自 2026-07-14 07:09 UTC 的历史工作树，不是当前分支结果；它与上面的六条快照结果依赖条件不同，不作同比。当前结果可重新运行以下命令核对：
 
 ```bash
 make eval
@@ -66,7 +110,7 @@ make eval
 
 高风险混淆矩阵为 TP=6、TN=24、FP=0、FN=0；false-positive rate 为 0/24。该结果来自 30 条固定小样例，其中高风险正例仅 6 条，不能外推为开放输入的检测准确率。法条 hit@5 较高与样例规模小、罪名词较明确、本地 JSON 关键词直接参与检索有关，也不能外推为真实 RAG 召回率。
 
-机器可读结果写入被忽略的 `evaluation/results/`。活动 runner 的法条关键词步骤读取代码指定的运行时结构化法条库；clean clone 不包含该数据，所以不能直接复现法条 hit@5。这项数据依赖必须单独准备、审计和核验。
+机器可读结果写入被忽略的 `evaluation/results/`。活动 runner 的法条关键词步骤读取仓库跟踪的六条最小验证快照，clean clone 可取得相同输入。30 条 case 还包含第 133、133 条之一、274、275、303、385 条等快照外 gold，法条 hit@5 会受已声明覆盖范围限制。不得把这一结果解释为完整刑法检索评测。
 
 早期 8 条样例 MVP 已停止作为活动 runner；其当时的 Recall/MRR、PII 和高风险结果及 gold structured facts 边界归档在 `evaluation/history/legacy_mvp_report.md`。历史结果不能与当前 30 条 input-only baseline 直接比较。
 

@@ -9,6 +9,8 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db import db_config
 from app.db.db_config import (
@@ -33,6 +35,9 @@ class TestInitDb:
             mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_conn.__aexit__ = AsyncMock(return_value=None)
             mock_conn.run_sync = AsyncMock()
+            result = MagicMock()
+            result.fetchall.return_value = [(0, "workflow_session_id")]
+            mock_conn.execute = AsyncMock(return_value=result)
 
             mock_engine.begin.return_value = mock_conn
 
@@ -40,6 +45,30 @@ class TestInitDb:
 
         mock_engine.begin.assert_called_once()
         mock_conn.run_sync.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_init_db_adds_workflow_identity_to_existing_sqlite_database(self, tmp_path):
+        """既有 SQLite 表会增量获得工作流关联列和唯一索引。"""
+        database_path = tmp_path / "legacy.db"
+        engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("CREATE TABLE consultations (id VARCHAR(36) PRIMARY KEY)"))
+
+            with patch.object(db_config, "async_engine", engine):
+                await init_db()
+
+            async with engine.connect() as conn:
+                columns = (await conn.execute(text("PRAGMA table_info(consultations)"))).fetchall()
+                indexes = (await conn.execute(text("PRAGMA index_list(consultations)"))).fetchall()
+
+            assert "workflow_session_id" in {row[1] for row in columns}
+            workflow_index = next(
+                row for row in indexes if row[1] == "ix_consultations_workflow_session_id"
+            )
+            assert workflow_index[2] == 1
+        finally:
+            await engine.dispose()
 
 
 # ---------------------------------------------------------------------------

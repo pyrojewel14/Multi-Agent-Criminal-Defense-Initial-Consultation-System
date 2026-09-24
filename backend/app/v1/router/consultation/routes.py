@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,8 +76,6 @@ async def create_session(
 
     consultation_id = await consultation_service.create_consultation_record(session_id, user_id, user_type, db)
 
-    welcome_message = await consultation_service.generate_welcome_message(user_type)
-
     initial_state = validate_consultation_state({
         "consultation_id": consultation_id,
         "user_id": user_id,
@@ -97,6 +95,9 @@ async def create_session(
     # 启动工作流，执行到第一个中断点（receptionist 执行后中断，等待同意）
     result = await consultation_service.start_session(initial_state)
     current_agent = result.get("current_agent", "Receptionist")
+    welcome_message = result.get("final_output") or await consultation_service.generate_welcome_message(
+        user_type
+    )
 
     _logger.info("【create_session】会话创建成功: session_id=%s, consultation_id=%s", session_id, consultation_id)
 
@@ -113,6 +114,8 @@ async def create_session(
 async def send_message(
     session_id: str,
     request: SendMessageRequest,
+    http_request: Request,
+    response: Response,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -130,10 +133,9 @@ async def send_message(
         Agent回复响应
     """
     _logger.info(
-        "【send_message】发送消息: session_id=%s, user_id=%s, content=%s",
+        "【send_message】发送消息: session_id=%s, user_id=%s",
         session_id,
         current_user["user_id"],
-        request.content[:50],
     )
 
     state = await consultation_service.get_session_state(session_id)
@@ -156,11 +158,31 @@ async def send_message(
 
     current_agent = state.get("current_agent", "Receptionist")
 
-    # 通过 resume_workflow 恢复，LangGraph 条件边自动路由
-    result = await consultation_service.process_message(session_id, request.content, state, current_agent)
+    # application service 统一负责串行化、幂等重放和消息审计写入。
+    supplied_request_id = http_request.headers.get("X-Request-ID")
+    try:
+        request_id = str(uuid.UUID(supplied_request_id)) if supplied_request_id else str(uuid.uuid4())
+    except (ValueError, AttributeError):
+        request_id = str(uuid.uuid4())
+    http_request.state.request_id = request_id
+    response.headers["X-Request-ID"] = request_id
+    try:
+        result = await consultation_service.process_message(
+            session_id,
+            request.content,
+            state,
+            current_agent,
+            idempotency_key=request.idempotency_key,
+            sender_id=current_user["user_id"],
+            db=db,
+            request_id=request_id,
+            transport="http",
+        )
+    except consultation_service.IdempotencyConflictError as exc:
+        raise HTTPException(status_code=409, detail="幂等键已用于不同请求") from exc
 
     if result.error:
-        _logger.error("【send_message】消息处理异常: session_id=%s, error=%s", session_id, result.error)
+        _logger.error("【send_message】消息处理失败: session_id=%s", session_id)
         raise HTTPException(status_code=500, detail="消息处理失败，请稍后重试")
 
     if result.result_state is None:
@@ -173,26 +195,7 @@ async def send_message(
             detail=HIGH_RISK_ALERT_MESSAGE,
         )
 
-    await consultation_service.save_message_to_db(
-        consultation_id=result.result_state.get("consultation_id", ""),
-        session_id=session_id,
-        content=request.content,
-        sender_type="user",
-        sender_id=current_user["user_id"],
-        db=db,
-    )
-
-    if result.response_content:
-        await consultation_service.save_message_to_db(
-            consultation_id=result.result_state.get("consultation_id", ""),
-            session_id=session_id,
-            content=result.response_content,
-            sender_type="agent",
-            agent_name=current_agent,
-            db=db,
-        )
-
-    message_id = str(uuid.uuid4())
+    message_id = result.message_id or str(uuid.uuid4())
 
     _logger.info(
         "【send_message】消息处理完成: session_id=%s, agent=%s, next_agent=%s",
@@ -204,12 +207,12 @@ async def send_message(
     return SendMessageResponse(
         session_id=session_id,
         message_id=message_id,
-        agent_name=current_agent,
+        agent_name=result.agent_name or current_agent,
         response_content=result.response_content,
         is_complete=result.is_workflow_finished,
         pending_questions=result.result_state.get("pending_questions"),
         alert_triggered=result.alert_triggered,
-        created_at=datetime.now(timezone.utc),
+        created_at=result.created_at or datetime.now(timezone.utc),
     )
 
 
@@ -340,7 +343,13 @@ async def get_session_state(
 
     is_approved = state.get("lawyer_decision") == "approved"
     workflow_finished = await orchestrator.is_workflow_finished(session_id)
-    status = "completed" if is_approved and workflow_finished else "active"
+    workflow_status = state.get("workflow_status")
+    if state.get("repair_required") or workflow_status == "repair_required":
+        status = "repair_required"
+    elif workflow_status == "closed":
+        status = "cancelled"
+    else:
+        status = "completed" if is_approved and workflow_finished else "active"
 
     return SessionStateResponse(
         session_id=session_id,
@@ -392,6 +401,7 @@ async def lawyer_review(
     session_id: str,
     request: LawyerReviewRequest,
     current_user: dict = Depends(require_lawyer),
+    db: AsyncSession = Depends(get_db),
 ):
     """律师审核反馈
 
@@ -422,7 +432,7 @@ async def lawyer_review(
         _logger.warning("【lawyer_review】会话不存在: session_id=%s", session_id)
         raise HTTPException(status_code=404, detail="会话不存在或已过期")
 
-    if not state.get("awaiting_lawyer_review"):
+    if not state.get("awaiting_lawyer_review") and not request.idempotency_key:
         _logger.warning(
             "【lawyer_review】会话未等待审核: session_id=%s, awaiting=%s",
             session_id,
@@ -443,12 +453,21 @@ async def lawyer_review(
         raise HTTPException(status_code=400, detail="无效的审核决定")
 
     try:
-        # 通过 resume_workflow 恢复，lawyer_decision 条件边自动路由
-        result = await consultation_service.process_lawyer_review(
+        # 统一命令负责推进 lawyer_decision 条件边并写入 SQLite 审计。
+        action = "approve" if request.decision == "approved" else "reject"
+        target_node = {
+            "revise_facts": "fact_digger",
+            "revise_risk": "risk_assessor",
+        }.get(request.decision)
+        result = await consultation_service.execute_lifecycle_command(
             session_id=session_id,
-            decision=request.decision,
+            action=action,
+            db=db,
+            actor_id=current_user["user_id"],
             feedback=request.feedback,
             final_output=request.final_output if request.decision == "approved" else None,
+            target_node=target_node,
+            idempotency_key=request.idempotency_key,
         )
 
         is_finished = await orchestrator.is_workflow_finished(session_id)
@@ -466,11 +485,23 @@ async def lawyer_review(
             decision=request.decision,
             feedback=request.feedback,
             next_agent=next_agent,
-            processed_at=datetime.now(timezone.utc),
+            processed_at=consultation_service.get_command_processed_at(result),
         )
 
+    except consultation_service.LifecycleCommandConflictError as e:
+        _logger.warning("【lawyer_review】审核断点冲突: session_id=%s", session_id)
+        raise HTTPException(status_code=409, detail=consultation_service.LIFECYCLE_REVIEW_CONFLICT_DETAIL) from e
+    except consultation_service.LifecycleConsistencyError as e:
+        _logger.error("【lawyer_review】生命周期命令未完成: session_id=%s", session_id)
+        raise HTTPException(status_code=503, detail=consultation_service.LIFECYCLE_REPAIR_DETAIL) from e
+    except consultation_service.IdempotencyConflictError as e:
+        raise HTTPException(status_code=409, detail="幂等键已用于不同请求") from e
     except Exception as e:
-        _logger.error("【lawyer_review】律师审核处理异常: session_id=%s, error=%s", session_id, str(e))
+        _logger.error(
+            "【lawyer_review】律师审核处理异常: session_id=%s, error_type=%s",
+            session_id,
+            type(e).__name__,
+        )
         raise HTTPException(status_code=500, detail="审核处理失败，请稍后重试")
 
 
@@ -540,6 +571,7 @@ async def close_session(
     session_id: str,
     request: SessionCloseRequest | None = None,
     current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """关闭会话
 
@@ -575,29 +607,30 @@ async def close_session(
         raise HTTPException(status_code=403, detail="无权关闭此会话")
 
     reason = request.reason if request else None
-
-    if "conversation_history" not in state:
-        state["conversation_history"] = []
-    state["conversation_history"].append({
-        "agent": "system",
-        "action": "session_closed",
-        "reason": reason,
-        "closed_by": current_user["user_id"],
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
-
-    state["current_agent"] = "END"
-    await consultation_service.persist_state(session_id, state)
+    try:
+        result = await consultation_service.execute_lifecycle_command(
+            session_id,
+            "close",
+            db=db,
+            actor_id=current_user["user_id"],
+            reason=reason,
+            idempotency_key=request.idempotency_key if request else None,
+        )
+    except consultation_service.LifecycleConsistencyError as exc:
+        _logger.error("【close_session】关闭命令未完成: session_id=%s, error=%s", session_id, exc)
+        raise HTTPException(status_code=503, detail=consultation_service.LIFECYCLE_REPAIR_DETAIL) from exc
+    except consultation_service.IdempotencyConflictError as exc:
+        raise HTTPException(status_code=409, detail="幂等键已用于不同请求") from exc
 
     _logger.info(
-        "【close_session】会话关闭成功: session_id=%s, reason=%s",
+        "【close_session】会话关闭成功: session_id=%s, has_reason=%s",
         session_id,
-        reason,
+        reason is not None,
     )
 
     return SessionCloseResponse(
         session_id=session_id,
         success=True,
         message=f"会话已成功关闭{'，原因：' + reason if reason else ''}",
-        closed_at=datetime.now(timezone.utc),
+        closed_at=consultation_service.get_command_processed_at(result),
     )

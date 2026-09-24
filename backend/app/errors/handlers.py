@@ -30,6 +30,8 @@ async def app_exception_handler(
         exc.status_code,
         request.url.path,
     )
+    request_id = getattr(request.state, "request_id", None)
+    headers = {"X-Request-ID": request_id} if isinstance(request_id, str) else None
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -38,6 +40,7 @@ async def app_exception_handler(
                 "message": exc.message,
             }
         },
+        headers=headers,
     )
 
 

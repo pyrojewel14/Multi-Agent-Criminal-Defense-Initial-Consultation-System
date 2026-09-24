@@ -84,14 +84,16 @@ human_review
 
 ## 中断、恢复与持久化边界
 
-`start_workflow()` 和 `resume_workflow()` 都以 `session_id` 作为 LangGraph `thread_id`。当前 checkpointer 是进程内 `MemorySaver`；服务层另有 Redis 缓存与 SQLite 业务记录，但三者不是强一致事务，也不能仅凭 Redis 或 SQLite 重建完整 LangGraph checkpoint。
+`start_workflow()` 和 `resume_workflow()` 都以 `session_id` 作为 LangGraph `thread_id`。执行权威始终是 LangGraph checkpointer；当前默认实现是进程内 `MemorySaver`，因为本仓依赖未提供 durable saver。服务层不再从 Redis 或进程缓存猜测 pending node；SQLite 只保存业务审计状态。
 
 因此：
 
 - 同一进程内的中断恢复有定向测试覆盖；
-- 服务重启、多实例接管和跨进程恢复没有生产级保证；
+- 注入非 `MemorySaver` 的 durable checkpointer 并显式设置 `persistent=True` 后才允许跨进程恢复；缺少 saver 或把 `MemorySaver` 标为 persistent 会在构造时被拒绝；
 - `session_id` 是工作流标识，`consultation_id` 是 SQLite 记录标识，两者不能混用；
 - API 鉴权和律师分配校验不能由 LangGraph 中断机制替代。
+
+approve/reject/close 通过同一个 application command 写路径推进 checkpoint，再更新 SQLite 审计行。首次 approve/reject 只允许在真实 `human_review` 待执行断点调用，否则返回 409 且不推进图、不写数据库；repair retry 即使已到 END 仍可用相同 action 修复审计。SQLite 提交失败后不会伪造 checkpoint 回滚：工作流在当前真实执行位置标记为 `workflow_status="repair_required"`，并记录仅含 `action`、`failed_stage`、`error_code` 的非敏感 `consistency_error`。普通 resume 会被阻断；使用相同 action 重试时只修复 SQLite 审计投影，成功后清除故障标记。Redis 不是恢复源，也不是生命周期命令的写路径。
 
 ## 可复现验证
 

@@ -14,8 +14,11 @@ frontend/node_modules
 frontend/dist
 backend/tests
 backend/logs
-# 本地法条来源、数据库、索引、模型和上传资料均不得进入镜像构建上下文。
-backend/data
+# 只复制经审计的核心法条验证快照；其他运行数据不得进入镜像构建上下文。
+backend/data/*
+!backend/data/law_knowledge
+backend/data/law_knowledge/*
+!backend/data/law_knowledge/criminal_law_chapters.json
 evaluation/results
 docs
 workspace

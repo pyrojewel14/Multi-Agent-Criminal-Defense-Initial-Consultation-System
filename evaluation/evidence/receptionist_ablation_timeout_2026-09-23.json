@@ -1,0 +1,87 @@
+{
+  "mode": "component-ablation",
+  "generated_at": "2026-09-23T02:24:05.154203+00:00",
+  "metadata": {
+    "ready": false,
+    "issues": [
+      "index_missing",
+      "reranker_missing"
+    ],
+    "backend": "OLLAMA",
+    "base_url": "http://127.0.0.1:11434",
+    "model": "qwen3.5:0.8b",
+    "model_digest": "f3817196d142eaf72ce79dfebe53dcb20bd21da87ce13e138a8f8e10a866b3a4",
+    "embedding_model": "qwen3-embedding:0.6b",
+    "embedding_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+    "law_snapshot_sha256": "sha256:2199fd9e883c09794d0db5271aa45b71efb0daab6eb6e5b860fc44cd9ee83c06",
+    "index_sha256": null,
+    "reranker_sha256": null,
+    "prompt_hashes": {
+      "extract_case_facts.txt": "sha256:8725d06a5607a45f182398cc360e7543e698d112d8ee41e0234602eb4cc29218",
+      "fact_digger.txt": "sha256:151f7cd1e6dcdc2cef774f5f14aa6dbf640c29f268cd3385cfdefa9606384c24",
+      "fact_digger_first.txt": "sha256:06a468d04a753501dadb7d7043f5b934179fe6bc6a78c080bf667848f6780c36",
+      "fact_digger_summary.txt": "sha256:1e38ed61a788b6ff90fc3eb667c83dbde25c5037d577ce19e5e5fbb931085c65",
+      "lawref.txt": "sha256:4e27efe2ae1435d7c6a0f5b7c8d355b1fe7b9377ef4f405d89e81d9de327f722",
+      "rag_summary.txt": "sha256:edb86b372f101453730793e007563c4a398da12b85faa9c047ae0ec2c4f8caf3",
+      "receptionist.txt": "sha256:80bf8a827d2410daa368a46c215262391a5afef59d003653171dac5cc9d29e86",
+      "risk_assessor.txt": "sha256:256a6670d2cb886c3eb01f657315275184a3eee4b5ac351036caf0c174655ff9",
+      "service_planner.txt": "sha256:a59acd306f3fa5babeb6a593449b2cc3dd04830b711b41a03b359b649d885308"
+    },
+    "prompt_registry_sha256": "sha256:7c20eaef80efca5bbbc4d62a9c3aa59acde675c6d28010818d62e890586e26df",
+    "cases_sha256": "sha256:e230d2a2e9ebd1f36f31dcd026221229c6aca4fe6cae5fd135cdd1eb84f84618",
+    "case_count": 3,
+    "index_collection": "rag_collection",
+    "checkpoint": "MemorySaver process-local",
+    "ablation": "Receptionist identity prompt: template vs production LLM"
+  },
+  "case_count": 3,
+  "cases": [
+    {
+      "id": "ordinary_theft",
+      "status": "success",
+      "template_latency_ms": 0.004,
+      "llm_latency_ms": 20624.057,
+      "template_chars": 48,
+      "llm_chars": 237,
+      "template_disclaimer": true,
+      "llm_disclaimer": true,
+      "template_llm_attempts": 0,
+      "llm_attempts": 2,
+      "llm_output_sha256": "sha256:d134a1c8f3437267711677f10734cc4ec6e67facaebd0cefe3a3b8eb60e921a3",
+      "duration_ms": 20624.176
+    },
+    {
+      "id": "ordinary_injury",
+      "status": "success",
+      "template_latency_ms": 0.003,
+      "llm_latency_ms": 8941.401,
+      "template_chars": 48,
+      "llm_chars": 244,
+      "template_disclaimer": true,
+      "llm_disclaimer": true,
+      "template_llm_attempts": 0,
+      "llm_attempts": 1,
+      "llm_output_sha256": "sha256:87a76a526ebbc2bfbd7acd6ad8a1baf980b40506242e3e61e1e699074fdfc3f1",
+      "duration_ms": 8941.562
+    },
+    {
+      "id": "missing_facts",
+      "status": "error",
+      "error_type": "LLMTimeoutException",
+      "error_code": "LLM_TIMEOUT",
+      "stage": "receptionist_llm",
+      "duration_ms": 30003.316
+    }
+  ],
+  "aggregate": {
+    "completed": 3,
+    "errors": 1,
+    "degraded": 0,
+    "human_review": 0,
+    "human_alert": 0,
+    "llm_attempts": 3,
+    "rag_calls": 0,
+    "latency_ms_total": 59569.054,
+    "degraded_rate": 0.0
+  }
+}

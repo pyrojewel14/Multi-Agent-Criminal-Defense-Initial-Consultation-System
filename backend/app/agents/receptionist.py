@@ -15,6 +15,27 @@ USER_TYPE_PATTERNS = {
     "family": ["我是家属", "我是家人", "我家人", "我亲属"],
 }
 
+WELCOME_MESSAGE = """您好，欢迎使用刑事辩护初期咨询系统。
+
+我是您的智能法律咨询助手，可以帮助您了解相关法律问题和权利义务。
+
+在开始之前，请您仔细阅读以下重要提示：
+
+【权利义务告知】
+
+1. 本系统提供的仅为初步法律咨询参考，不构成正式法律意见
+2. 律师-当事人关系将在您与律师正式签订委托合同后建立
+3. 为保护您的权益，在咨询过程中请您如实陈述案件情况
+4. 您有权随时终止咨询并寻求当面法律服务
+5. 我们会严格保护您的个人信息和案件隐私
+
+请回复"同意"或"确认"表示您已阅读并理解上述告知内容。"""
+
+
+def get_welcome_message() -> str:
+    """返回带免责声明的确定性初始欢迎语。"""
+    return disclaimer.inject(WELCOME_MESSAGE)
+
 
 def extract_user_type(user_message: str) -> Optional[str]:
     """从用户消息中提取身份类型。
@@ -45,8 +66,8 @@ def check_consent_given(user_message: str) -> bool:
     return any(keyword in user_message for keyword in CONSENT_KEYWORDS)
 
 
-async def _generate_welcome(state: "ConsultationState") -> str:
-    """生成欢迎语和权利义务告知。
+async def _generate_welcome(_state: "ConsultationState") -> str:
+    """返回确定性欢迎语和权利义务告知，不调用 LLM。
 
     Args:
         state: 当前咨询状态。
@@ -54,17 +75,7 @@ async def _generate_welcome(state: "ConsultationState") -> str:
     Returns:
         欢迎语回复文本。
     """
-    prompt = prompt_loader.load("receptionist_prompt")
-    user_message = (state.get("facts_raw") or [""])[-1]
-
-    response = await llm_gateway.generate(
-        system_prompt=prompt,
-        user_message=user_message,
-        temperature=0.1,
-        is_legal=False,
-    )
-
-    return disclaimer.inject(response)
+    return get_welcome_message()
 
 
 async def _process_consent(state: "ConsultationState", user_message: str) -> "ConsultationState":

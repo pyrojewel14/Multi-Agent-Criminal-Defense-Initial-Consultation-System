@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from app.agents.service_planner import (
@@ -7,38 +9,48 @@ from app.agents.service_planner import (
 )
 
 
+def _valid_response() -> str:
+    return json.dumps(
+        {
+            "service_plan": {
+                "urgent_actions": {"immediate": [], "short_term": [], "follow_up": []},
+                "defense_strategies": {"primary": "待律师制定", "alternatives": []},
+                "service_phases": [],
+                "fee_structure": {
+                    "recommended_plan": "面议",
+                    "total_fee_range": "以委托合同为准",
+                    "breakdown": {},
+                },
+            },
+            "report_draft": "# 刑事辩护初期咨询报告\n报告正文",
+        },
+        ensure_ascii=False,
+    )
+
+
 class TestParseLlmResponse:
     """Tests for _parse_llm_response."""
 
-    def test_both_service_plan_and_report_markers(self):
-        content = (
-            "一些前置内容\n"
-            "【服务方案开始】\n"
-            "- 立即行动：申请取保候审\n"
-            "# 刑事辩护初期咨询报告\n"
-            "报告正文内容"
-        )
+    def test_complete_json_artifact(self):
+        content = _valid_response()
         result = _parse_llm_response(content)
         assert "service_plan" in result
         assert "report_draft" in result
         assert result["report_draft"].startswith("# 刑事辩护初期咨询报告")
 
-    def test_only_report_marker(self):
+    def test_only_report_marker_is_rejected(self):
         content = "一些内容\n# 刑事辩护初期咨询报告\n报告正文"
         result = _parse_llm_response(content)
-        assert result["service_plan"] == {}
-        assert result["report_draft"].startswith("# 刑事辩护初期咨询报告")
+        assert result == {}
 
-    def test_no_markers(self):
+    def test_non_json_text_is_rejected(self):
         content = "这是一段没有标记的普通文本"
         result = _parse_llm_response(content)
-        assert result["service_plan"] == {}
-        assert result["report_draft"] == content
+        assert result == {}
 
-    def test_result_always_has_service_plan_and_report_draft_keys(self):
-        result = _parse_llm_response("任意内容")
-        assert "service_plan" in result
-        assert "report_draft" in result
+    def test_json_can_be_extracted_from_explanatory_text(self):
+        result = _parse_llm_response("说明：" + _valid_response() + "结束")
+        assert set(result) == {"service_plan", "report_draft"}
 
 
 class TestExtractServicePlanStructure:

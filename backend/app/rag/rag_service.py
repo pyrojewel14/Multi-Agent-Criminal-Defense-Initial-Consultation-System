@@ -5,6 +5,13 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langsmith import traceable
 
+from app.observability.tracing import (
+    SessionBudgetExceeded,
+    current_trace_context,
+    session_budget,
+    trace_span,
+    trace_store,
+)
 from app.rag.reorder_service import reorder_service
 from app.rag.vector_store import get_vector_store
 from app.utils.factory import get_chat_model
@@ -12,6 +19,11 @@ from app.utils.logger import get_logger
 from app.utils.prompt_loader import prompt_loader
 
 _logger = get_logger("RagService")
+RANKED_TRACE_LIMIT = 5
+_SAFE_RETRIEVAL_ERROR_TYPES = {
+    "RuntimeError", "TimeoutError", "ValueError", "TypeError",
+    "OSError", "ConnectionError", "HTTPStatusError", "RequestError",
+}
 
 
 def _configure_hyde_model(model):
@@ -91,17 +103,51 @@ class RagService:
         Returns:
             假设性文档内容。
         """
-        try:
-            hyde_chain = self.hyde_prompt_template | self.hyde_model | StrOutputParser()
-            hypothetical_doc = await hyde_chain.ainvoke({"query": query})
-            _logger.info("HyDE 生成假设性文档: %s", hypothetical_doc[:100])
-            return hypothetical_doc
-        except Exception as e:
-            _logger.error("HyDE 生成假设性文档失败: %s", e)
-            return query
+        context = current_trace_context()
+        session_id = str(context["session_id"]) if context and context["session_id"] else "unknown"
+        if session_id != "unknown":
+            session_budget.reserve_call(session_id)
+        model_value = getattr(self.hyde_model, "model", None)
+        model_name = model_value if isinstance(model_value, str) else type(self.hyde_model).__name__
+        prompt_text = str(getattr(self.hyde_prompt_template, "template", "hyde"))
+        with trace_span(
+            trace_store,
+            event_type="llm",
+            name="rag_hyde",
+            model=model_name,
+            prompt_version=f"sha256:{hashlib.sha256(prompt_text.encode('utf-8')).hexdigest()}",
+            attempt=1,
+            cache_hit=False,
+        ) as event:
+            try:
+                hyde_chain = self.hyde_prompt_template | self.hyde_model | StrOutputParser()
+                hypothetical_doc = await hyde_chain.ainvoke({"query": query})
+                _logger.info("HyDE 生成假设性文档完成: output_len=%d", len(hypothetical_doc))
+                return hypothetical_doc
+            except SessionBudgetExceeded:
+                raise
+            except Exception as e:
+                event.outcome = "error"
+                _logger.error("HyDE 生成假设性文档失败: error_type=%s", type(e).__name__)
+                return query
 
     @traceable
     async def retrieve_document(self, query: str) -> list:
+        """在统一 RAG span 与 session call budget 下执行检索。"""
+        context = current_trace_context()
+        session_id = str(context["session_id"]) if context and context["session_id"] else "unknown"
+        if self.user_id and session_id != "unknown":
+            session_budget.reserve_call(session_id)
+        with trace_span(
+            trace_store,
+            event_type="rag",
+            name="retrieve_document",
+            cache_hit=False,
+            metadata={"query": query},
+        ) as event:
+            return await self._retrieve_document(query, event)
+
+    async def _retrieve_document(self, query: str, event) -> list:
         """使用 HyDE 技术从向量数据库里检索文档。
 
         Args:
@@ -118,7 +164,7 @@ class RagService:
             if self.retriever is None:
                 await self.initialize_retriever(query)
 
-            _logger.info("HyDE 开始处理查询: %s", query[:50])
+            _logger.info("HyDE 开始处理查询: query_len=%d", len(query))
 
             if self.thinking_callback:
                 await self.thinking_callback(
@@ -152,11 +198,6 @@ class RagService:
             documents = await hyde_retriever.ainvoke(hypothetical_doc)
             documents = _deduplicate_documents(documents)
             _logger.info("HyDE 检索到 %d 个相关文档", len(documents))
-            for i, doc in enumerate(documents, 1):
-                source = doc.metadata.get("original_filename", doc.metadata.get("source", "?"))
-                preview = doc.page_content[:80].replace("\n", " ")
-                _logger.info("  [%d] %s | %s...", i, source, preview)
-
             if self.thinking_callback:
                 doc_previews = []
                 for i, doc in enumerate(documents, 1):
@@ -178,8 +219,11 @@ class RagService:
                 )
 
             return documents
+        except SessionBudgetExceeded:
+            raise
         except Exception as e:
-            _logger.error("HyDE 检索文档失败: %s", e)
+            event.outcome = "error"
+            _logger.error("HyDE 检索文档失败: error_type=%s", type(e).__name__)
             return []
 
     @traceable
@@ -230,6 +274,61 @@ class RagService:
             return documents
 
     @traceable
+    async def retrieve_documents(self, query: str) -> list:
+        """检索并重排序文档，不生成摘要。
+
+        Args:
+            query: 查询语句。
+
+        Returns:
+            按相关性排序的文档内容列表。
+        """
+        if not self.user_id:
+            _logger.warning("user_id 为空，不返回任何文档")
+            return []
+
+        try:
+            documents = await self.retrieve_document(query)
+            document_contents = [doc.page_content for doc in documents]
+            ranked_documents = await self.reorder_documents(query, document_contents)
+            origins: dict[str, str] = {}
+            for doc in documents:
+                metadata = getattr(doc, "metadata", None)
+                if not isinstance(metadata, dict):
+                    continue
+                origin = metadata.get("original_filename") or metadata.get("source")
+                if isinstance(origin, str) and origin:
+                    origins.setdefault(doc.page_content, origin)
+            # 记录 RAG 返回顺序；重排失败时可能保留检索原顺序，metadata 仅存指纹。
+            with trace_span(
+                trace_store,
+                event_type="rag_ranked_result_set",
+                name="retrieve_documents",
+            ):
+                pass
+            for rank, content in enumerate(ranked_documents[:RANKED_TRACE_LIMIT], 1):
+                safe_metadata = {"content": content}
+                if content in origins:
+                    safe_metadata["origin"] = origins[content]
+                with trace_span(
+                    trace_store,
+                    event_type="rag_ranked_result",
+                    name="returned_document",
+                    attempt=rank,
+                    metadata=safe_metadata,
+                ):
+                    pass
+            return ranked_documents
+        except SessionBudgetExceeded:
+            raise
+        except Exception as e:
+            error_type = type(e).__name__
+            if error_type not in _SAFE_RETRIEVAL_ERROR_TYPES:
+                error_type = "OtherError"
+            _logger.error("检索并重排序文档失败: error_type=%s", error_type)
+            return []
+
+    @traceable
     async def get_documents_and_summary(self, query: str) -> dict:
         """获取文档列表和摘要。
 
@@ -244,11 +343,7 @@ class RagService:
             return {"documents": [], "summary": "抱歉，我没有找到相关的信息。"}
 
         try:
-            documents = await self.retrieve_document(query)
-
-            document_contents = [doc.page_content for doc in documents]
-
-            reordered_documents = await self.reorder_documents(query, document_contents)
+            reordered_documents = await self.retrieve_documents(query)
 
             if not reordered_documents:
                 return {"documents": [], "summary": "抱歉，我没有找到相关的信息。"}

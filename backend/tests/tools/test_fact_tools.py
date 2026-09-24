@@ -7,6 +7,24 @@ Covers:
 from app.tools.fact_tools import extract_case_facts
 
 
+def _complete_payload(**overrides):
+    """Build the complete ten-field tool payload required by the LLM contract."""
+    payload = {
+        "incident_time": None,
+        "incident_location": None,
+        "parties": [],
+        "behavior_sequence": [],
+        "consequence": None,
+        "evidence_mentioned": [],
+        "arrest_status": None,
+        "surrender": None,
+        "victim_forgiveness": None,
+        "prior_record": None,
+    }
+    payload.update(overrides)
+    return payload
+
+
 # ---------------------------------------------------------------------------
 # extract_case_facts – defaults and None handling
 # ---------------------------------------------------------------------------
@@ -14,8 +32,8 @@ from app.tools.fact_tools import extract_case_facts
 
 class TestExtractCaseFactsDefaults:
     def test_all_none_returns_empty_or_none_dict(self):
-        """With no arguments, default values should be returned and lists should be empty."""
-        result = extract_case_facts.invoke({})
+        """Explicit unknown values should remain None while lists stay empty."""
+        result = extract_case_facts.invoke(_complete_payload())
         assert result["incident_time"] is None
         assert result["incident_location"] is None
         assert result["parties"] == []
@@ -29,10 +47,12 @@ class TestExtractCaseFactsDefaults:
 
     def test_invoke_via_dict_arguments(self):
         """LangChain tools support .invoke({...})."""
-        out = extract_case_facts.invoke({
-            "incident_time": "2024-01-01",
-            "consequence": "轻伤",
-        })
+        out = extract_case_facts.invoke(
+            _complete_payload(
+                incident_time="2024-01-01",
+                consequence="轻伤",
+            )
+        )
         assert out["incident_time"] == "2024-01-01"
         assert out["consequence"] == "轻伤"
         assert out["parties"] == []
@@ -44,8 +64,8 @@ class TestExtractCaseFactsDefaults:
 
 
 def _invoke(**kwargs):
-    """Helper: call the LangChain tool with the given kwargs."""
-    return extract_case_facts.invoke(kwargs)
+    """Helper: call the LangChain tool with a complete contract payload."""
+    return extract_case_facts.invoke(_complete_payload(**kwargs))
 
 
 class TestExtractCaseFactsPerField:
@@ -153,7 +173,7 @@ class TestExtractCaseFactsFullPayload:
 
     def test_result_dict_keys(self):
         """The returned dict should always contain all 10 expected keys."""
-        out = extract_case_facts.invoke({})
+        out = extract_case_facts.invoke(_complete_payload())
         assert set(out.keys()) == {
             "incident_time",
             "incident_location",
@@ -219,6 +239,8 @@ class TestExtractCaseFactsIsTool:
 
     def test_invoke_returns_dict(self):
         """A basic invoke call should return a dict (not a string or other type)."""
-        out = extract_case_facts.invoke({"incident_time": "2024-06-01"})
+        out = extract_case_facts.invoke(
+            _complete_payload(incident_time="2024-06-01")
+        )
         assert isinstance(out, dict)
         assert out["incident_time"] == "2024-06-01"

@@ -385,6 +385,16 @@ class TestBuildElementToLawMapping:
         assert mapping["故意"]["charge_name"] == "故意伤害罪"
         assert mapping["故意"]["article_number"] == "第234条"
 
+    def test_build_mapping_from_snapshot_element_objects(self):
+        laws = [{
+            "title": "故意伤害罪",
+            "article_number": "第二百三十四条",
+            "elements": [{"key": "intentional_bodily_harm", "name": "故意伤害他人身体"}],
+            "base_sentence": "三年以下有期徒刑",
+        }]
+        mapping = _build_element_to_law_mapping(laws, "elements")
+        assert mapping["故意伤害他人身体"]["article_number"] == "第二百三十四条"
+
     def test_build_mapping_with_elements_matched_key(self):
         laws = [
             {

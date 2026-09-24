@@ -10,6 +10,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.documents import Document
 
+from app.observability.tracing import (
+    BoundedTraceStore,
+    SessionBudget,
+    SessionBudgetExceeded,
+    trace_span,
+)
+from app.rag import rag_service as rag_module
 from app.rag.rag_service import RagService, _configure_hyde_model
 
 
@@ -254,6 +261,141 @@ class TestReorderDocuments:
 
 
 # ---------------------------------------------------------------------------
+# retrieve_documents – retrieval-only path
+# ---------------------------------------------------------------------------
+
+
+class TestRetrieveDocuments:
+    @pytest.mark.asyncio
+    async def test_failed_retrieval_log_keeps_error_type_without_sensitive_message(self, monkeypatch):
+        svc, _, _ = _make_service()
+        secret = "张三的案情提示词13800138000110105199001011234"
+        svc.retrieve_document = AsyncMock(side_effect=RuntimeError(secret))
+        messages = []
+
+        class RecordingLogger:
+            def error(self, template, *args):
+                messages.append(template % args)
+
+        monkeypatch.setattr(rag_module, "_logger", RecordingLogger())
+        result = await svc.retrieve_documents("synthetic query")
+
+        assert result == []
+        assert messages
+        assert all(secret not in message and "张三" not in message for message in messages)
+        assert any("RuntimeError" in message for message in messages)
+
+    @pytest.mark.asyncio
+    async def test_failed_retrieval_log_rejects_untrusted_exception_class_name(self, monkeypatch):
+        svc, _, _ = _make_service()
+        secret = "13800138000"
+        LeakError = type(f"LeakError_{secret}", (Exception,), {})
+        svc.retrieve_document = AsyncMock(side_effect=LeakError("hidden detail"))
+        messages = []
+
+        class RecordingLogger:
+            def error(self, template, *args):
+                messages.append(template % args)
+
+        monkeypatch.setattr(rag_module, "_logger", RecordingLogger())
+        assert await svc.retrieve_documents("synthetic query") == []
+        assert secret not in str(messages)
+        assert "OtherError" in str(messages)
+
+    @pytest.mark.asyncio
+    async def test_ranked_trace_is_bounded_to_top_five(self, monkeypatch):
+        store = BoundedTraceStore(max_events=30)
+        monkeypatch.setattr(rag_module, "trace_store", store)
+        svc, _, _ = _make_service()
+        contents = [f"doc-{index}" for index in range(7)]
+        svc.retrieve_document = AsyncMock(return_value=[_make_doc(content) for content in contents])
+        svc.reorder_documents = AsyncMock(return_value=contents)
+
+        with trace_span(store, event_type="node", name="law_ref", session_id="bounded-ranking"):
+            result = await svc.retrieve_documents("query")
+
+        assert result == contents
+        ranked = [event for event in store.events() if event.event_type == "rag_ranked_result"]
+        assert [event.attempt for event in ranked] == [1, 2, 3, 4, 5]
+
+    @pytest.mark.asyncio
+    async def test_ranked_results_trace_has_order_and_fingerprint_without_content(self, monkeypatch):
+        store = BoundedTraceStore(max_events=20)
+        monkeypatch.setattr(rag_module, "trace_store", store)
+        svc, _, _ = _make_service()
+        svc.retrieve_document = AsyncMock(return_value=[_make_doc("案情甲"), _make_doc("案情乙")])
+        svc.reorder_documents = AsyncMock(return_value=["案情乙", "案情甲"])
+
+        with trace_span(store, event_type="node", name="law_ref", session_id="ranking-session"):
+            result = await svc.retrieve_documents("query")
+
+        assert result == ["案情乙", "案情甲"]
+        ranked = [event.to_dict() for event in store.events() if event.event_type == "rag_ranked_result"]
+        assert [event["attempt"] for event in ranked] == [1, 2]
+        assert all(event["metadata"]["content"]["sha256"].startswith("sha256:") for event in ranked)
+        assert all(event["metadata"]["origin"]["sha256"].startswith("sha256:") for event in ranked)
+        assert "案情乙" not in str(ranked)
+        assert "案情甲" not in str(ranked)
+        assert "src.txt" not in str(ranked)
+
+    @pytest.mark.asyncio
+    async def test_budget_exhaustion_is_not_swallowed_as_empty_retrieval(self, monkeypatch):
+        """预算异常若被 RAG 的宽泛 except 吞掉，会继续形成无界重试。"""
+        store = BoundedTraceStore(max_events=10)
+        monkeypatch.setattr(rag_module, "trace_store", store, raising=False)
+        monkeypatch.setattr(
+            rag_module,
+            "session_budget",
+            SessionBudget(max_calls=1, max_tokens=100),
+            raising=False,
+        )
+        svc, _, _ = _make_service()
+
+        with trace_span(
+            store,
+            event_type="node",
+            name="law_ref",
+            request_id="rag-budget-request",
+            session_id="rag-budget-session",
+        ):
+            with pytest.raises(SessionBudgetExceeded):
+                await svc.retrieve_documents("案件查询")
+
+        rag_event = next(event for event in store.events() if event.event_type == "rag")
+        assert rag_event.outcome == "error"
+
+    @pytest.mark.asyncio
+    async def test_returns_ranked_documents_without_summary_llm_calls(self):
+        """检索路径只返回重排序文档，不应调用摘要链。"""
+        svc, _, retriever = _make_service()
+        retriever.ainvoke.return_value = [
+            _make_doc("doc1"),
+            _make_doc("doc2"),
+            _make_doc("doc3"),
+        ]
+
+        with patch("app.rag.rag_service.reorder_service") as rs:
+            rs.reorder_documents = AsyncMock(
+                return_value={
+                    "success": True,
+                    "documents": [
+                        {"document": "doc3", "similarity": 0.9},
+                        {"document": "doc1", "similarity": 0.8},
+                        {"document": "doc2", "similarity": 0.7},
+                    ],
+                    "error": "",
+                }
+            )
+            svc.chain = MagicMock()
+            svc.chain.ainvoke = AsyncMock()
+
+            result = await svc.retrieve_documents("q")
+
+        assert result == ["doc3", "doc1", "doc2"]
+        svc.chain.ainvoke.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
 # get_documents_and_summary / rag_summary
 # ---------------------------------------------------------------------------
 
@@ -298,6 +440,7 @@ class TestGetDocumentsAndSummary:
         retriever.ainvoke.return_value = [
             _make_doc("doc1"),
             _make_doc("doc2"),
+            _make_doc("doc3"),
         ]
         with patch("app.rag.rag_service.reorder_service") as rs:
             rs.reorder_documents = AsyncMock(return_value={
@@ -305,14 +448,16 @@ class TestGetDocumentsAndSummary:
                 "documents": [
                     {"document": "doc1", "similarity": 0.9},
                     {"document": "doc2", "similarity": 0.5},
+                    {"document": "doc3", "similarity": 0.4},
                 ],
                 "error": "",
             })
             svc.chain = MagicMock()
-            # First call: summarize doc1 -> "s1", second: doc2 -> "s2", third: combined -> "final"
-            svc.chain.ainvoke = AsyncMock(side_effect=["s1", "s2", "final summary"])
+            # 三次单文档摘要后，再由显式摘要入口请求一次汇总。
+            svc.chain.ainvoke = AsyncMock(side_effect=["s1", "s2", "s3", "final summary"])
             result = await svc.get_documents_and_summary("q")
         assert result["summary"] == "final summary"
+        assert svc.chain.ainvoke.await_count == 4
 
     @pytest.mark.asyncio
     async def test_timeout_returns_timeout_message(self):

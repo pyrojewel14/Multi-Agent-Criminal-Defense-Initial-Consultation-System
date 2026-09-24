@@ -1,0 +1,143 @@
+{
+  "mode": "live-chain",
+  "generated_at": "2026-09-23T08:36:26.496324+00:00",
+  "metadata": {
+    "ready": true,
+    "issues": [],
+    "backend": "OLLAMA",
+    "base_url": "http://127.0.0.1:11434",
+    "model": "qwen3.5:0.8b",
+    "model_digest": "f3817196d142eaf72ce79dfebe53dcb20bd21da87ce13e138a8f8e10a866b3a4",
+    "embedding_model": "qwen3-embedding:0.6b",
+    "embedding_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+    "law_dataset_version": "2026-09-21.1",
+    "law_snapshot_sha256": "sha256:2199fd9e883c09794d0db5271aa45b71efb0daab6eb6e5b860fc44cd9ee83c06",
+    "index_collection": "rag_collection",
+    "index_document_count": 6,
+    "index_sha256": "sha256:5e2ee811d9d80fcbe7cbee1764d206df2fe0e317608895339c8328931dafc229",
+    "reranker_sha256": "sha256:ca898a9cd36b77ada6adb950804c00a948df8698add512b0ef53e0528becd998",
+    "prompt_hashes": {
+      "extract_case_facts.txt": "sha256:8725d06a5607a45f182398cc360e7543e698d112d8ee41e0234602eb4cc29218",
+      "fact_digger.txt": "sha256:151f7cd1e6dcdc2cef774f5f14aa6dbf640c29f268cd3385cfdefa9606384c24",
+      "fact_digger_first.txt": "sha256:06a468d04a753501dadb7d7043f5b934179fe6bc6a78c080bf667848f6780c36",
+      "fact_digger_summary.txt": "sha256:1e38ed61a788b6ff90fc3eb667c83dbde25c5037d577ce19e5e5fbb931085c65",
+      "lawref.txt": "sha256:4e27efe2ae1435d7c6a0f5b7c8d355b1fe7b9377ef4f405d89e81d9de327f722",
+      "rag_summary.txt": "sha256:edb86b372f101453730793e007563c4a398da12b85faa9c047ae0ec2c4f8caf3",
+      "receptionist.txt": "sha256:80bf8a827d2410daa368a46c215262391a5afef59d003653171dac5cc9d29e86",
+      "risk_assessor.txt": "sha256:256a6670d2cb886c3eb01f657315275184a3eee4b5ac351036caf0c174655ff9",
+      "service_planner.txt": "sha256:a59acd306f3fa5babeb6a593449b2cc3dd04830b711b41a03b359b649d885308"
+    },
+    "prompt_registry_sha256": "sha256:7c20eaef80efca5bbbc4d62a9c3aa59acde675c6d28010818d62e890586e26df",
+    "cases_sha256": "sha256:e230d2a2e9ebd1f36f31dcd026221229c6aca4fe6cae5fd135cdd1eb84f84618",
+    "case_count": 3,
+    "checkpoint": "MemorySaver process-local"
+  },
+  "case_count": 3,
+  "cases": [
+    {
+      "id": "ordinary_theft",
+      "status": "error",
+      "error_type": "LLMTimeoutException",
+      "error_code": "LLM_TIMEOUT",
+      "stage": "resume_workflow",
+      "llm_attempts": 2,
+      "rag_calls": 0,
+      "route_reasons": [
+        "consent_given",
+        "consent_given"
+      ],
+      "retrieval_top_k_status": "unavailable",
+      "retrieval_top_k": [],
+      "duration_ms": 31933.69
+    },
+    {
+      "id": "ordinary_injury",
+      "status": "wait_for_user",
+      "workflow_status": null,
+      "law_search_status": "missing_facts",
+      "facts_fields": [],
+      "laws": [],
+      "coverage": 0.0,
+      "awaiting_lawyer_review": null,
+      "alert_triggered": null,
+      "artifact_results": {
+        "fact": {
+          "status": "degraded",
+          "source": "tool_call",
+          "degraded_reason": "schema_validation_failed",
+          "validation_error_count": 1
+        }
+      },
+      "llm_attempts": 1,
+      "rag_calls": 0,
+      "route_reasons": [
+        "consent_given",
+        "consent_given",
+        "facts_accepted",
+        "coverage_insufficient"
+      ],
+      "retrieval_top_k_status": "unavailable",
+      "retrieval_top_k": [],
+      "duration_ms": 8977.109
+    },
+    {
+      "id": "missing_facts",
+      "status": "error",
+      "error_type": "LLMTimeoutException",
+      "error_code": "LLM_TIMEOUT",
+      "stage": "resume_workflow",
+      "llm_attempts": 4,
+      "rag_calls": 1,
+      "route_reasons": [
+        "consent_given",
+        "consent_given",
+        "facts_accepted"
+      ],
+      "retrieval_top_k_status": "observed",
+      "retrieval_top_k": [
+        {
+          "rank": 1,
+          "document_id": "sha256:e9b82012b08388cd0e594c18d3a6a690c41eac4f88476162a34aed33bada43bd",
+          "source": "rag_returned_content",
+          "source_id": null
+        },
+        {
+          "rank": 2,
+          "document_id": "sha256:ee4161001715eda653046722e22de141afdfa45277c575d43ddb739dc8cbdbb9",
+          "source": "rag_returned_content",
+          "source_id": null
+        },
+        {
+          "rank": 3,
+          "document_id": "sha256:4c98e9f42f413188c397c0448614b77de7d0b56df04a71a574baef8736d99f51",
+          "source": "rag_returned_content",
+          "source_id": null
+        },
+        {
+          "rank": 4,
+          "document_id": "sha256:cdb90fdeafda1828363bf8d8336f5c2fbb9d0a2b7c4b39ce8d7047148a6c67f6",
+          "source": "rag_returned_content",
+          "source_id": null
+        },
+        {
+          "rank": 5,
+          "document_id": "sha256:5379ac0734b192b1813dca1540916bd2bea29982c85af27fd954a3fabf122fce",
+          "source": "rag_returned_content",
+          "source_id": null
+        }
+      ],
+      "duration_ms": 46564.844
+    }
+  ],
+  "aggregate": {
+    "completed": 3,
+    "errors": 2,
+    "degraded": 0,
+    "human_review": 0,
+    "human_alert": 0,
+    "llm_attempts": 7,
+    "rag_calls": 1,
+    "latency_ms_total": 87475.643,
+    "degraded_rate": 0.0
+  }
+}

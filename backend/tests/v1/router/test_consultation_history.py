@@ -10,7 +10,7 @@ Tests cover:
 
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -28,6 +28,7 @@ def _make_consultation(**overrides):
     """Build a SimpleNamespace standing in for a Consultation row."""
     c = SimpleNamespace(
         id="consult-001",
+        workflow_session_id="workflow-001",
         client_id="client-001",
         assigned_lawyer_id="lawyer-001",
         user_type="suspect",
@@ -401,16 +402,60 @@ class TestUpdateConsultationStatus:
         _setup_db(mock_db_session, scalar_one_or_none=[c])
         mock_db_session.commit = AsyncMock()
 
-        async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
-            response = await client_http.put(
-                f"{CONSULTATION_PREFIX}/consult-001/status",
-                json={"status": "completed"},
-            )
+        with patch(
+            "app.v1.router.consultation_history.consultation_service.execute_lifecycle_command",
+            new_callable=AsyncMock,
+            return_value={"workflow_status": "completed"},
+        ) as command:
+            async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
+                response = await client_http.put(
+                    f"{CONSULTATION_PREFIX}/consult-001/status",
+                    json={"status": "completed"},
+                )
 
             assert response.status_code == 200
-            assert c.status.value == "completed"
-            assert c.completed_at is not None
-            mock_db_session.commit.assert_awaited()
+            command.assert_awaited_once()
+            mock_db_session.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cancelled_status_delegates_to_close_command(self, admin_app, mock_db_session):
+        c = _make_consultation()
+        _setup_db(mock_db_session, scalar_one_or_none=[c])
+
+        with patch(
+            "app.v1.router.consultation_history.consultation_service.execute_lifecycle_command",
+            new_callable=AsyncMock,
+            return_value={"workflow_status": "closed"},
+        ) as command:
+            async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
+                response = await client_http.put(
+                    f"{CONSULTATION_PREFIX}/consult-001/status",
+                    json={"status": "cancelled"},
+                )
+
+        assert response.status_code == 200
+        assert command.call_args.kwargs["action"] == "close"
+        mock_db_session.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_in_progress_status_remains_an_audit_row_update(self, admin_app, mock_db_session):
+        c = _make_consultation(status=SimpleNamespace(value="pending"))
+        _setup_db(mock_db_session, scalar_one_or_none=[c])
+
+        with patch(
+            "app.v1.router.consultation_history.consultation_service.execute_lifecycle_command",
+            new_callable=AsyncMock,
+        ) as command:
+            async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
+                response = await client_http.put(
+                    f"{CONSULTATION_PREFIX}/consult-001/status",
+                    json={"status": "in_progress"},
+                )
+
+        assert response.status_code == 200
+        command.assert_not_awaited()
+        assert c.status.value == "in_progress"
+        mock_db_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_update_status_not_found(self, admin_app, mock_db_session):

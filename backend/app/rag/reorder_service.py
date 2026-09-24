@@ -102,6 +102,15 @@ class ReorderService:
             _logger.error("【reorder_documents】重排序失败: %s", error_msg)
             return {"success": False, "documents": [], "error": error_msg}
 
+    def readiness(self) -> Dict[str, Any]:
+        """返回重排序器状态，不触发模型懒加载。"""
+        state = self._reranker.readiness()
+        return {**state, "type": self.reranker_type}
+
+    def close(self) -> None:
+        """释放重排序器持有的执行器资源。"""
+        self._reranker.close()
+
     @staticmethod
     async def format_reorder_result(sorted_docs: List[Dict]) -> str:
         """格式化重排序结果。

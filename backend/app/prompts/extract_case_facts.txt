@@ -12,4 +12,19 @@
 - victim_forgiveness: 被害人是否谅解
 - prior_record: 是否有前科劣迹
 
-如果某字段信息不明确或不完整，设为 null。
+必须返回全部字段。字符串或布尔字段不明确时设为 null；列表字段不明确时使用空数组，不得省略字段：
+
+```json
+{
+  "incident_time": null,
+  "incident_location": null,
+  "parties": [],
+  "behavior_sequence": [],
+  "consequence": null,
+  "evidence_mentioned": [],
+  "arrest_status": null,
+  "surrender": null,
+  "victim_forgiveness": null,
+  "prior_record": null
+}
+```
