@@ -469,6 +469,17 @@ class ConsultationOrchestrator:
         # 保留 _active_sessions 用于 get_active_sessions 等兼容接口
         self._active_sessions: Dict[str, ConsultationState] = {}
 
+    def configure_checkpointer(self, checkpointer: Any, *, persistent: bool = False) -> None:
+        """在首次编译前注入运行期 checkpointer，避免同一图出现两个执行状态源。"""
+        if self._compiled is not None:
+            raise RuntimeError("工作流已编译，不能替换 checkpointer")
+        if checkpointer is None:
+            raise ValueError("必须提供 checkpointer")
+        if persistent and isinstance(checkpointer, MemorySaver):
+            raise ValueError("MemorySaver 仅限进程内，不能声明为持久化 checkpointer")
+        self._checkpointer = checkpointer
+        self._checkpoint_persistence = "persistent" if persistent else "process"
+
     @property
     def checkpoint_persistence(self) -> str:
         """返回当前声明的 checkpoint 持久化边界。"""

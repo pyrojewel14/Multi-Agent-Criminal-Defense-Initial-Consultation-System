@@ -3,12 +3,15 @@
 import pytest
 
 import main
+from app.orchestrator.workflow import ConsultationOrchestrator
 
 
 @pytest.mark.asyncio
 async def test_lifespan_runs_law_data_preflight_before_external_services(monkeypatch):
     """Invalid tracked law data must fail before database or Redis startup."""
     events = []
+    monkeypatch.setattr(main, "orchestrator", ConsultationOrchestrator())
+    monkeypatch.setenv("LANGGRAPH_CHECKPOINT_DB_PATH", ":memory:")
 
     def _preflight():
         events.append("preflight")

@@ -420,9 +420,19 @@ async def _execute_lifecycle_command_unlocked(
 
 
 async def assign_lawyer_to_active_session(
-    consultation_id: str, lawyer_id: str
+    consultation_id: str, lawyer_id: str, workflow_session_id: Optional[str] = None
 ) -> Optional[str]:
     """把数据库律师分配同步到对应的活跃工作流状态。"""
+    if workflow_session_id:
+        snapshot = await orchestrator.get_snapshot(workflow_session_id)
+        if snapshot and snapshot.next and snapshot.values.get("consultation_id") == consultation_id:
+            updated = await orchestrator.update_workflow_state(
+                workflow_session_id, {"lawyer_id": lawyer_id}
+            )
+            if updated is not None:
+                await persist_state(workflow_session_id, updated)
+                return workflow_session_id
+        return None
     for session_id, state in orchestrator.get_active_sessions().items():
         if state.get("consultation_id") != consultation_id:
             continue

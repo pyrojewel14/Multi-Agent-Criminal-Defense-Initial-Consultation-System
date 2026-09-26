@@ -66,6 +66,7 @@ class RagService:
             "不要输出分析过程：\n\n问题：{query}\n\n假设文本："
         )
         self.thinking_callback = thinking_callback
+        self.retrieval_failed = False
 
     async def initialize_retriever(self, query: str | None = None):
         """初始化检索器。
@@ -134,6 +135,7 @@ class RagService:
     @traceable
     async def retrieve_document(self, query: str) -> list:
         """在统一 RAG span 与 session call budget 下执行检索。"""
+        self.retrieval_failed = False
         context = current_trace_context()
         session_id = str(context["session_id"]) if context and context["session_id"] else "unknown"
         if self.user_id and session_id != "unknown":
@@ -223,6 +225,7 @@ class RagService:
             raise
         except Exception as e:
             event.outcome = "error"
+            self.retrieval_failed = True
             _logger.error("HyDE 检索文档失败: error_type=%s", type(e).__name__)
             return []
 
@@ -283,6 +286,7 @@ class RagService:
         Returns:
             按相关性排序的文档内容列表。
         """
+        self.retrieval_failed = False
         if not self.user_id:
             _logger.warning("user_id 为空，不返回任何文档")
             return []
@@ -322,6 +326,7 @@ class RagService:
         except SessionBudgetExceeded:
             raise
         except Exception as e:
+            self.retrieval_failed = True
             error_type = type(e).__name__
             if error_type not in _SAFE_RETRIEVAL_ERROR_TYPES:
                 error_type = "OtherError"

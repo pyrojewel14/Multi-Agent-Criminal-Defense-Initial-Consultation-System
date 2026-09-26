@@ -118,30 +118,14 @@ async def test_fact_missing_fields_preserves_previous_artifact_and_records_degra
 @pytest.mark.asyncio
 async def test_law_valid_content_json_records_content_json_source():
     state = make_consultation_state(facts_structured=COMPLETE_FACT)
-    candidate = make_applied_law(title="故意伤害罪", common_keywords=["伤害"])
-    structured = [
-        {
-            "charge_name": "故意伤害罪",
-            "article_number": candidate["article_number"],
-            "elements_matched": [],
-            "elements_missing": [],
-            "base_sentence": candidate["base_sentence"],
-            "probability": "medium",
-        }
+    decisions = [
+        {"content": "", "tool_calls": [{"name": "search_laws", "args": {"query": "故意伤害"}}], "has_tool_call": True},
+        {"content": "", "tool_calls": [{"name": "get_article", "args": {"article_id": "第234条"}}], "has_tool_call": True},
+        {"content": json.dumps({"article_ids": ["第234条"], "matched_elements": {"第234条": ["故意伤害他人身体"]}, "confidence": "medium"}, ensure_ascii=False), "tool_calls": [], "has_tool_call": False},
     ]
     with (
-        patch("app.agents.law_ref.load_criminal_law_data", return_value={"chapters": [{}]}),
         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
-        patch(
-            "app.agents.law_ref.search_laws_by_keyword",
-            new_callable=AsyncMock,
-            return_value=[candidate],
-        ),
-        patch(
-            "app.agents.law_ref.extract_structured_laws",
-            new_callable=AsyncMock,
-            return_value=structured,
-        ),
+        patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=decisions),
     ):
         result = await law_ref_node(state)
 
@@ -150,34 +134,21 @@ async def test_law_valid_content_json_records_content_json_source():
 
 
 @pytest.mark.asyncio
-async def test_law_invalid_llm_artifact_uses_labeled_deterministic_fallback():
-    """Law 输出缺字段时只能使用带来源标记的确定性候选回退。"""
+async def test_law_invalid_final_degrades_without_success_candidate():
+    """Law 最终输出缺字段时不得把候选伪装为成功结果。"""
     state = make_consultation_state(facts_structured=COMPLETE_FACT)
-    candidate = make_applied_law(
-        title="故意伤害罪",
-        content="故意伤害他人身体的。",
-        common_keywords=["伤害"],
-    )
-
+    search = {"content": "", "tool_calls": [{"name": "search_laws", "args": {"query": "故意伤害"}}], "has_tool_call": True}
+    get = {"content": "", "tool_calls": [{"name": "get_article", "args": {"article_id": "第234条"}}], "has_tool_call": True}
+    invalid = {"content": '{"article_ids":["第234条"]}', "tool_calls": [], "has_tool_call": False}
     with (
-        patch("app.agents.law_ref.load_criminal_law_data", return_value={"chapters": [{}]}),
         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
-        patch(
-            "app.agents.law_ref.search_laws_by_keyword",
-            new_callable=AsyncMock,
-            return_value=[candidate],
-        ),
-        patch(
-            "app.agents.law_ref.extract_structured_laws",
-            new_callable=AsyncMock,
-            return_value=[{"charge_name": "故意伤害罪"}],
-        ),
+        patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[search, get, invalid, invalid]),
     ):
         result = await law_ref_node(state)
 
-    assert result["applied_laws"]
+    assert result["applied_laws"] == []
     assert result["artifact_results"]["law"]["status"] == "degraded"
-    assert result["artifact_results"]["law"]["source"] == "deterministic_fallback"
+    assert result["artifact_results"]["law"]["source"] == "content_json"
     assert result["validation_errors"]
 
 

@@ -33,6 +33,7 @@ class ConsultationState(TypedDict, total=False):
     fact_law_failure_streak: int  # 当前重试窗口内任意非事实失败的连续总数
     fact_law_last_failure: Optional[str]  # 当前重试窗口内最近一次非事实失败类型
     law_search_status: Optional[str]  # 法条检索状态（success/missing_facts/no_law_match/dependency_failure）
+    law_research: dict  # LawRef 局部工具循环的非敏感轨迹、计数与终止原因
     workflow_status: Optional[str]  # 工作流运行状态，依赖失败终止时为 degraded
     repair_required: bool  # 生命周期命令跨存储失败后，是否必须先执行修复
     consistency_error: Optional[dict]  # 非敏感的一致性失败阶段和操作标记

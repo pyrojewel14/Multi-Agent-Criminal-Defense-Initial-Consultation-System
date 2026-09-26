@@ -241,7 +241,7 @@ async def assign_lawyer(
     consultation.assigned_lawyer_id = lawyer_id
     await db.commit()
     await consultation_service.assign_lawyer_to_active_session(
-        consultation_id, lawyer_id
+        consultation_id, lawyer_id, workflow_session_id=consultation.workflow_session_id
     )
 
     _logger.info(

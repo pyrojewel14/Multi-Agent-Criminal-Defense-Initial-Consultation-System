@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | `receptionist` | Receptionist | 告知、知情同意与身份入口 |
 | `fact_intake` | FactDigger | 单次消费本轮输入，高风险检测、脱敏、结构化事实刷新 |
-| `law_ref` | LawRef | RAG/JSON 召回、来源标记和权威要件连接 |
+| `law_ref` | LawRef | 有界工具决策、RAG/JSON 召回、来源核验和权威要件连接 |
 | `fact_digger` | FactDigger | 基于刷新事实与法条候选计算覆盖度，生成追问或摘要 |
 | `wait_for_user` | WaitForUser | 覆盖不足时中断，等待下一条用户输入 |
 | `risk_assessor` | RiskAssessor | 生成风险分析草案 |
@@ -57,6 +57,12 @@ human_review
 
 ## 法条来源与覆盖契约
 
+LawRef 节点内运行一个局部 Tool Agent：模型每步选择一个白名单工具，程序校验参数并返回结构化 observation，模型读取 observation 后再作下一步决定。白名单仅含 `search_laws(query)`、`get_article(article_id)` 和 `search_elements(article_id)`。前者复用现有 RAG、快照精确验证和 JSON 关键词召回；后两者仅读取已搜索且通过快照验证的条文与项目要件标注。模型最终输出条文编号、匹配要件和置信档位，程序再次核对编号、来源、要件集合后适配为原有 `applied_laws` 与 `element_to_law_mapping`。
+
+默认最多 4 个决策步骤，可由 `LAW_AGENT_MAX_STEPS`（1–8）配置；每次工具调用和整个循环分别受 `LAW_AGENT_TOOL_TIMEOUT_SECONDS`（默认 90 秒）与 `LAW_AGENT_TIMEOUT_SECONDS`（默认 240 秒）限制。相同工具名及规范化参数再次出现时立即以 `duplicate_call` 停止。无效工具、无效参数、空结果、超时和依赖失败分别进入轨迹；超时、依赖失败或预算耗尽停止本次循环。RAG 内部吞下的检索异常会通过实例级 `retrieval_failed` 标记传回 LawRef，避免误判为空结果；RAG 失败但关键词召回有可信候选时，工具状态记录 `partial_dependency_failure`，模型仍可核验该候选。只有模型提交合法最终答案，且候选确实来自已核验条文并已读取其要件时，才写入 `success`。其余结果不生成成功候选，按 `no_law_match` 或 `dependency_failure` 进入下游有限重试与人工审核机制。
+
+`law_research` 状态字段保存步骤、工具顺序、参数指纹、状态、结果计数、耗时、终止原因及调用计数。模型原文、工具参数值与案件事实不写入该轨迹。已知 token 用量从现有进程内 session budget 取本次差值；供应商未返回 usage 时记为 `unknown`。节点、模型和工具调用继续使用现有 trace span；跨进程汇总与持久化 Agent Eval 不在本次实现范围内。
+
 法条候选的 `data_source` 必须属于 `LawDataSource`：
 
 - `rag_verified`
@@ -84,12 +90,13 @@ human_review
 
 ## 中断、恢复与持久化边界
 
-`start_workflow()` 和 `resume_workflow()` 都以 `session_id` 作为 LangGraph `thread_id`。执行权威始终是 LangGraph checkpointer；当前默认实现是进程内 `MemorySaver`，因为本仓依赖未提供 durable saver。服务层不再从 Redis 或进程缓存猜测 pending node；SQLite 只保存业务审计状态。
+`start_workflow()` 和 `resume_workflow()` 都以 `session_id` 作为 LangGraph `thread_id`。执行权威始终是 LangGraph checkpointer；FastAPI lifespan 使用独立 SQLite 文件中的 `AsyncSqliteSaver`，单实例后端进程重启后可按同一 `session_id` 读取 pending node 并继续执行。直接构造 `ConsultationOrchestrator()` 仍默认使用进程内 `MemorySaver`，便于纯单元测试。服务层不从 Redis 或进程缓存猜测 pending node；业务 SQLite 只保存业务审计状态。
 
 因此：
 
-- 同一进程内的中断恢复有定向测试覆盖；
-- 注入非 `MemorySaver` 的 durable checkpointer 并显式设置 `persistent=True` 后才允许跨进程恢复；缺少 saver 或把 `MemorySaver` 标为 persistent 会在构造时被拒绝；
+- 同一 SQLite checkpoint 文件上的 orchestrator 重建、中断后续跑与 session 隔离有确定性测试覆盖；
+- lifespan 在图首次编译前注入 saver，并在关闭时释放连接；saver 初始化失败会阻止启动，不回退到 `MemorySaver`；
+- 注入非 `MemorySaver` 的 durable checkpointer 并显式设置 `persistent=True` 后才声明跨进程恢复；缺少 saver 或把 `MemorySaver` 标为 persistent 会在构造时被拒绝；
 - `session_id` 是工作流标识，`consultation_id` 是 SQLite 记录标识，两者不能混用；
 - API 鉴权和律师分配校验不能由 LangGraph 中断机制替代。
 
@@ -100,9 +107,10 @@ approve/reject/close 通过同一个 application command 写路径推进 checkpo
 从 `backend/` 运行：
 
 ```bash
-.venv/bin/python -m pytest -q \
+PYTHONNOUSERSITE=1 conda run -n Agent_dev pytest -q \
   tests/agents/test_fact_digger.py \
   tests/agents/test_law_ref.py \
+  tests/agents/test_legal_research.py \
   tests/orchestrator/test_workflow.py \
   tests/orchestrator/test_workflow_degraded.py \
   tests/orchestrator/test_workflow_example.py \

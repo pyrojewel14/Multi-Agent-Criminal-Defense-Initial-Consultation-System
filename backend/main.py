@@ -1,8 +1,13 @@
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+import aiosqlite
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from app.agents.law_ref import preflight_law_knowledge
 from app.db.db_config import close_db, init_db
@@ -31,26 +36,29 @@ _logger = get_logger("Main")
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _logger.info("Starting up application...")
-    if not orchestrator.can_resume_after_restart:
-        _logger.warning(
-            "LangGraph checkpoint 当前仅限进程内；注入并显式确认持久化 saver 前不支持重启恢复"
-        )
     preflight_law_knowledge()
-    await init_db()
-    await init_redis()
-    _logger.info("Database and Redis initialized")
-    try:
-        yield
-    except Exception as e:
-        _logger.error(f"Error occurred: {e}")
-    finally:
-        _logger.info("Shutting down application...")
-        reorder_service.close()
-        chat_model_factory.close()
-        embed_model_factory.close()
-        await close_redis()
-        await close_db()
-        _logger.info("Cleanup completed")
+    checkpoint_path = Path(os.getenv("LANGGRAPH_CHECKPOINT_DB_PATH", "./data/langgraph_checkpoints.db"))
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(checkpoint_path) as connection:
+        # checkpoint 包含咨询原文；只反序列化 LangGraph 内置安全类型。
+        checkpointer = AsyncSqliteSaver(
+            connection, serde=JsonPlusSerializer(allowed_msgpack_modules=None)
+        )
+        await checkpointer.setup()
+        orchestrator.configure_checkpointer(checkpointer, persistent=True)
+        try:
+            await init_db()
+            await init_redis()
+            _logger.info("Database and Redis initialized")
+            yield
+        finally:
+            _logger.info("Shutting down application...")
+            reorder_service.close()
+            chat_model_factory.close()
+            embed_model_factory.close()
+            await close_redis()
+            await close_db()
+            _logger.info("Cleanup completed")
 
 
 app = FastAPI(

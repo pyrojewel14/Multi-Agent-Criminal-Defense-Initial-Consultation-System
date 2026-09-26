@@ -200,6 +200,23 @@ async def test_resumed_fact_refreshes_law_query_and_risk_laws():
     rag_queries: list[str] = []
     risk_inputs: list[tuple[dict, list[dict]]] = []
 
+    async def law_decision(_system: str, message: str, _tools: list, **_kwargs: object) -> dict:
+        import json
+
+        payload = json.loads(message)
+        observations = payload["observations"]
+        if not observations:
+            facts = json.loads(payload["facts"])
+            query = facts["behavior_sequence"][0]["action"]
+            return {"content": "", "tool_calls": [{"name": "search_laws", "args": {"query": query}}], "has_tool_call": True}
+        if len(observations) == 1:
+            article_id = observations[0]["result"]["candidates"][0]["article_id"]
+            return {"content": "", "tool_calls": [{"name": "get_article", "args": {"article_id": article_id}}], "has_tool_call": True}
+        article = observations[-1]["result"]["article"]
+        article_id = article["article_id"]
+        element = article["required_elements"][0]
+        return {"content": json.dumps({"article_ids": [article_id], "matched_elements": {article_id: [element]}, "confidence": "medium"}, ensure_ascii=False), "tool_calls": [], "has_tool_call": False}
+
     class FakeRagService:
         def __init__(self, **_: object) -> None:
             pass
@@ -336,6 +353,7 @@ async def test_resumed_fact_refreshes_law_query_and_risk_laws():
             return_value="事实摘要",
         ),
         patch("app.rag.rag_service.RagService", FakeRagService),
+        patch("app.agents.legal_research.llm_gateway.generate_with_tools", new=law_decision),
         patch("app.agents.law_ref.load_criminal_law_data", return_value=law_data),
         patch(
             "app.agents.law_ref.extract_structured_laws",

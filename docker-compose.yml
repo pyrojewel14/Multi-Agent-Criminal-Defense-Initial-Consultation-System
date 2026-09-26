@@ -21,6 +21,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       DATABASE_PATH: /app/runtime/sqlite/chat_history.db
+      LANGGRAPH_CHECKPOINT_DB_PATH: /app/runtime/sqlite/langgraph_checkpoints.db
       CHROMA_PERSIST_DIRECTORY: /app/runtime/chroma
       CHROMA_MD5_STORE: /app/runtime/md5/md5_hex_store.txt
       MODEL_CACHE_DIR: /app/runtime/models

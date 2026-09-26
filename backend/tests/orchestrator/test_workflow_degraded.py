@@ -28,6 +28,8 @@ async def _fixed_facts(_: list[str]) -> tuple[dict, ArtifactSource]:
 
 @pytest.mark.asyncio
 async def test_law_ref_distinguishes_no_match_from_dependency_failure():
+    search_decision = {"content": "", "tool_calls": [{"name": "search_laws", "args": {"query": "无法识别的行为"}}], "has_tool_call": True}
+    invalid_final = {"content": "{}", "tool_calls": [], "has_tool_call": False}
     no_match_state = make_consultation_state(
         session_id="no-match-session",
         facts_structured={"behavior_sequence": ["无法识别的行为"], "consequence": ""},
@@ -48,6 +50,7 @@ async def test_law_ref_distinguishes_no_match_from_dependency_failure():
         ),
         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
         patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]),
+        patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[search_decision, invalid_final, invalid_final, invalid_final]),
     ):
         no_match_result = await law_ref_node(no_match_state)
 
@@ -55,6 +58,7 @@ async def test_law_ref_distinguishes_no_match_from_dependency_failure():
         patch("app.agents.law_ref.load_criminal_law_data", return_value={"chapters": []}),
         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
         patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]),
+        patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[search_decision, invalid_final, invalid_final, invalid_final]),
     ):
         dependency_result = await law_ref_node(dependency_state)
 
@@ -69,6 +73,7 @@ async def test_law_ref_distinguishes_no_match_from_dependency_failure():
             return_value=LawSearchResults(dependency_failed=True),
         ),
         patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]),
+        patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[search_decision]),
     ):
         rag_failure_result = await law_ref_node(rag_failure_state)
 

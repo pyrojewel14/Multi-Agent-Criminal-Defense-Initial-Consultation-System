@@ -194,4 +194,4 @@ curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/review" \
 - 部分历史路由使用 `success_response()` 返回 `{code,message,data}` wrapper，但装饰器的 `response_model` 仍描述裸 data 模型；运行时成功响应以上述 wrapper 为准。
 - FastAPI 自动生成的 422 OpenAPI schema 仍可能显示默认 `detail` 结构；运行时已由全局处理器转换为统一 `error` envelope。
 - ASGI 测试会 mock LLM、RAG、Redis 或路由数据库依赖；它证明路由、鉴权和错误契约，不证明外部模型、Chroma 或真实 Redis 在线。
-- 当前没有 Alembic migration、默认生产级持久化 checkpointer、access-token 撤销列表或多实例状态一致性。
+- 当前没有 Alembic migration、checkpoint 备份恢复演练、access-token 撤销列表或多实例状态一致性；checkpoint SQLite 仅证明单实例进程重启恢复。

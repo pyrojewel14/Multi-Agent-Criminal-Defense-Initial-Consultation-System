@@ -164,6 +164,7 @@ class TestRetrieveDocument:
         retriever.ainvoke.return_value = docs
         result = await svc.retrieve_document("query")
         assert len(result) == 2
+        assert svc.retrieval_failed is False
 
     @pytest.mark.asyncio
     async def test_deduplicates_results(self):
@@ -182,6 +183,7 @@ class TestRetrieveDocument:
         retriever.ainvoke.side_effect = RuntimeError("retrieve failed")
         result = await svc.retrieve_document("query")
         assert result == []
+        assert svc.retrieval_failed is True
 
     @pytest.mark.asyncio
     async def test_initializes_retriever_if_none(self):
@@ -281,6 +283,7 @@ class TestRetrieveDocuments:
         result = await svc.retrieve_documents("synthetic query")
 
         assert result == []
+        assert svc.retrieval_failed is True
         assert messages
         assert all(secret not in message and "张三" not in message for message in messages)
         assert any("RuntimeError" in message for message in messages)

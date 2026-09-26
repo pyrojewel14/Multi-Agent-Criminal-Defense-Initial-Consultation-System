@@ -39,7 +39,7 @@
 
 ## 状态与持久化
 
-- 默认 LangGraph 使用进程内 `MemorySaver`；当前依赖未提供 durable saver，因此默认部署不宣称服务重启后可恢复原图执行位置。
+- FastAPI lifespan 使用独立的 LangGraph checkpoint SQLite 文件，单实例后端进程重启后可恢复原图执行位置；直接构造 orchestrator 的纯单元测试默认仍使用进程内 `MemorySaver`。checkpoint 包含完整咨询工作流状态，属于敏感本地数据，Git 已忽略运行数据库。
 - 同 session 串行锁和幂等结果也只存在于当前进程。锁项会在最后一个持有者/等待者退出后回收；可安全重放结果最多缓存 2048 条、默认保留一小时。进程重启、多 worker 或多实例之间不共享这些记录，不能据此宣称跨进程 exactly-once。
 - HTTP 消息在 workflow 已推进后若 checkpoint 投影或 SQLite 消息提交失败，同 key 会重放原错误而不会再次 resume；这避免重复 LLM/history，但不会自动补写缺失的 SQLite 消息，需要人工或后续对账任务处理。
 - Redis 不是执行状态源；SQLite 是生命周期/消息审计源。approve/reject/close 先推进 checkpoint，再提交 SQLite；审计提交失败时不会伪造回滚，而是在真实执行位置标记 `repair_required` 并阻断普通 resume，等待相同操作重试修复。
@@ -51,7 +51,7 @@
 - Compose 只包含 backend 与 Redis，并携带六条最小验证快照；不包含前端、Ollama、完整法条语料、Chroma 内容或模型权重。
 - `.env`、数据库、索引、模型、日志、上传资料和私有文档均不应进入 Git 或 Docker context。
 - Docker 配置解析通过不等于镜像 build、容器健康、模型调用或真实 RAG 链已验证。
-- 项目没有 Alembic migration、默认生产级持久化 checkpointer、备份恢复演练或多实例一致性方案。
+- 项目没有 Alembic migration、checkpoint 备份恢复演练或多实例一致性方案；SQLite checkpoint 适用于当前单实例边界，扩展性有限。长期 semantic memory 未实现。
 
 ## 评估解释
 

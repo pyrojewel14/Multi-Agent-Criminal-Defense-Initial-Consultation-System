@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from pydantic import ValidationError
 
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
+from app.observability.tracing import SessionBudgetExceeded
 from app.schemas.law_schemas import LawDataSource, LawSourceSchema
 from app.schemas.llm_artifacts import (
     ArtifactSource,
@@ -634,8 +635,13 @@ async def search_laws_by_rag(facts_structured: Dict[str, Any], user_id: str | No
             )
 
         _logger.info("【search_laws_by_rag】RAG 检索找到 %d 条相关法条", len(matched_laws))
-        return LawSearchResults(matched_laws)
+        return LawSearchResults(
+            matched_laws,
+            dependency_failed=getattr(rag_service, "retrieval_failed", False) is True,
+        )
 
+    except SessionBudgetExceeded:
+        raise
     except Exception as e:
         _logger.error(
             "【search_laws_by_rag】RAG 检索失败: error_type=%s",
@@ -815,154 +821,95 @@ def _build_applied_laws_from_matched(matched_laws: List[Dict[str, Any]]) -> List
 
 
 async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
-    """LawRef Agent 节点函数 - 法条检索 Agent。
-
-    采用两阶段检索策略：
-    1. RAG 语义检索（召回层）：通过向量检索召回语义相关的法条
-    2. JSON 知识库精确匹配（验证+增强层）：用 JSON 知识库验证并补充可靠元数据
-    3. LLM 结构化信息提取
-
-    Args:
-        state: 当前 ConsultationState。
-
-    Returns:
-        更新后的 ConsultationState。
-    """
-    _logger.info("【law_ref_node】LawRef 节点开始执行")
+    """在受控 workflow 节点内运行有限法律检索循环并适配下游契约。"""
+    from app.agents.legal_research import LawResearchResult, run_legal_research
 
     session_id = state.get("session_id", "unknown")
-    user_id = state.get("user_id")
     facts_structured = state.get("facts_structured", {})
-
+    state["current_agent"] = "LawRef"
     if not facts_structured:
-        _logger.warning("【law_ref_node】facts_structured 为空，跳过法条检索")
         state["applied_laws"] = []
+        state["element_to_law_mapping"] = {}
         state["law_search_status"] = "missing_facts"
-        state["current_agent"] = "LawRef"
+        state["rag_only"] = False
+        state["law_research"] = LawResearchResult(termination_reason="missing_facts").audit_summary()
         return state
 
-    law_data = load_criminal_law_data()
-
-    # 阶段1：RAG 语义检索（召回层）
-    _logger.info("【law_ref_node】阶段1：RAG 语义检索")
-    rag_results = await search_laws_by_rag(facts_structured, user_id)
-    rag_dependency_failed = bool(getattr(rag_results, "dependency_failed", False))
-    _logger.info(
-        "【law_ref_node】RAG 检索返回 %d 条结果: %s",
-        len(rag_results),
-        [f"article_number={r.get('article_number', '')}, title={r.get('title', '')}" for r in rag_results],
-    )
-
-    # 阶段2：JSON 知识库精确匹配（验证+增强层）
-    if rag_results and law_data.get("chapters"):
-        _logger.info("【law_ref_node】阶段2：JSON 知识库验证增强")
-        article_index = _build_article_index(law_data)
-        _logger.debug(
-            "【law_ref_node】JSON 索引构建完成，共 %d 条法条: %s",
-            len(article_index),
-            list(article_index.keys())[:10],
-        )
-        rag_results = _verify_and_enrich_with_json(rag_results, article_index)
-        _logger.info(
-            "【law_ref_node】JSON 验证增强后: %s",
-            [f"article_number={r.get('article_number', '')}, data_source={r.get('data_source', '')}, title={r.get('title', '')}" for r in rag_results],
-        )
-
-    # JSON 关键词匹配作为补充（覆盖 RAG 可能遗漏的精确匹配场景）
-    keyword_laws = []
-    if law_data.get("chapters"):
-        _logger.info("【law_ref_node】JSON 关键词匹配补充")
-        keyword_laws = await search_laws_by_keyword(facts_structured, law_data)
-        _logger.info(
-            "【law_ref_node】关键词匹配返回 %d 条结果: %s",
-            len(keyword_laws),
-            [f"article_number={k.get('article_number', '')}, title={k.get('title', '')}" for k in keyword_laws],
-        )
-
-    # 合并去重：RAG 验证结果优先，关键词匹配补充
-    matched_laws = _merge_and_deduplicate(rag_results, keyword_laws)
-    _logger.info(
-        "【law_ref_node】合并去重后共 %d 条: %s",
-        len(matched_laws),
-        [f"article_number={m.get('article_number', '')}, data_source={m.get('data_source', '')}" for m in matched_laws],
-    )
-
-    # 阶段3：LLM 结构化信息提取
-    structured_laws = await extract_structured_laws(matched_laws, facts_structured)
-    law_artifact, artifact_result = validate_artifact(
-        LawArtifact,
-        {"charges": structured_laws, "procedural_notes": []},
-        source=ArtifactSource.CONTENT_JSON,
-    )
-
-    if law_artifact is not None:
-        validated_laws = [charge.model_dump(mode="json") for charge in law_artifact.charges]
-        element_to_law_mapping = _build_element_to_law_mapping(validated_laws, "elements_matched")
-        applied_laws = _build_applied_laws_from_structured(validated_laws, matched_laws)
-    else:
-        element_to_law_mapping = _build_element_to_law_mapping(matched_laws[:5], "elements")
-        applied_laws = _build_applied_laws_from_matched(matched_laws[:5])
-        _, artifact_result = validate_artifact(
+    try:
+        law_data = load_criminal_law_data()
+        if not law_data.get("chapters"):
+            raise LawKnowledgeDataError("法条验证快照不含章节")
+        research = await run_legal_research(facts_structured, state.get("user_id"), law_data)
+    except (LawKnowledgeDataError, ValueError) as exc:
+        reason = "knowledge_unavailable" if isinstance(exc, LawKnowledgeDataError) else "configuration_error"
+        state["applied_laws"] = []
+        state["element_to_law_mapping"] = {}
+        state["law_search_status"] = "dependency_failure"
+        state["rag_only"] = False
+        state["law_research"] = LawResearchResult(termination_reason=reason).audit_summary()
+        _, failure_result = validate_artifact(
             LawArtifact,
-            {"charges": structured_laws, "procedural_notes": []},
-            source=ArtifactSource.DETERMINISTIC_FALLBACK,
+            {"charges": [], "procedural_notes": []},
+            source=ArtifactSource.CONTENT_JSON,
         )
-    record_artifact_result(state, "law", artifact_result)
-
-    # 统计各来源数量
-    rag_verified = sum(1 for law in matched_laws if law.get("data_source") == "rag_verified")
-    rag_unverified = sum(1 for law in matched_laws if law.get("data_source") == "rag_unverified")
-    json_keyword = sum(1 for law in matched_laws if law.get("data_source") == "json_keyword")
-    has_verified = rag_verified + json_keyword > 0
-
-    state["applied_laws"] = applied_laws
-    state["element_to_law_mapping"] = element_to_law_mapping
-    state["current_agent"] = "LawRef"
-    state["rag_only"] = not has_verified and len(applied_laws) > 0
-
-    knowledge_available = bool(law_data.get("chapters"))
-    has_coverage_candidate = any(
-        law.get("data_source") in {
-            LawDataSource.RAG_VERIFIED.value,
-            LawDataSource.JSON_KEYWORD.value,
-        }
-        and bool(law.get("required_elements"))
-        for law in applied_laws
-    )
-    if has_coverage_candidate:
-        law_search_status = "success"
-    elif rag_dependency_failed or not knowledge_available:
-        law_search_status = "dependency_failure"
-    else:
-        law_search_status = "no_law_match"
-    state["law_search_status"] = law_search_status
-
-    if not has_verified and len(applied_laws) > 0:
-        _logger.warning(
-            "【law_ref_node】无可信 allowlist 来源，候选仅供人工复核且不参与 coverage"
-        )
-
-    if "conversation_history" not in state:
-        state["conversation_history"] = []
-    state["conversation_history"].append(
-        {
+        record_artifact_result(state, "law", failure_result.model_copy(update={"degraded_reason": reason}))
+        state.setdefault("conversation_history", []).append({
             "agent": "LawRef",
             "action": "law_search",
-            "matched_count": len(applied_laws),
-            "rag_verified": rag_verified,
-            "rag_unverified": rag_unverified,
-            "json_keyword": json_keyword,
-            "search_status": law_search_status,
+            "matched_count": 0,
+            "search_status": "dependency_failure",
+            "termination_reason": reason,
             "session_id": session_id,
-        }
-    )
+        })
+        return state
 
-    _logger.info(
-        "【law_ref_node】法条检索完成，找到 %d 个匹配罪名 (RAG验证: %d, RAG未验证: %d, JSON关键词: %d)",
-        len(applied_laws),
-        rag_verified,
-        rag_unverified,
-        json_keyword,
-    )
-
+    state["law_research"] = research.audit_summary()
+    if research.termination_reason == "final_answer" and research.candidate_laws:
+        structured_laws = []
+        for law in research.candidate_laws:
+            article_id = _normalize_article_number(law.get("article_number", ""))
+            structured_laws.append({
+                "charge_name": law.get("title", ""),
+                "article_number": law.get("article_number", ""),
+                "elements_matched": research.matched_elements.get(article_id, []),
+                "elements_missing": research.missing_elements.get(article_id, []),
+                "base_sentence": law.get("base_sentence", ""),
+                "probability": research.confidence,
+            })
+        artifact, artifact_result = validate_artifact(
+            LawArtifact,
+            {"charges": structured_laws, "procedural_notes": []},
+            source=ArtifactSource.CONTENT_JSON,
+        )
+        if artifact is not None:
+            validated = [charge.model_dump(mode="json") for charge in artifact.charges]
+            state["applied_laws"] = _build_applied_laws_from_structured(validated, research.candidate_laws)
+            state["element_to_law_mapping"] = _build_element_to_law_mapping(validated, "elements_matched")
+            state["law_search_status"] = "success"
+            state["rag_only"] = False
+        else:
+            state["applied_laws"] = []
+            state["element_to_law_mapping"] = {}
+            state["law_search_status"] = "dependency_failure"
+    else:
+        state["applied_laws"] = []
+        state["element_to_law_mapping"] = {}
+        state["rag_only"] = False
+        searched_empty = any(step.tool_name == "search_laws" and step.tool_status == "empty" for step in research.trajectory)
+        state["law_search_status"] = "no_law_match" if searched_empty and all(step.tool_status in {"empty", "invalid_final"} for step in research.trajectory) else "dependency_failure"
+        _, artifact_result = validate_artifact(
+            LawArtifact,
+            {"charges": [], "procedural_notes": []},
+            source=ArtifactSource.CONTENT_JSON,
+        )
+        artifact_result = artifact_result.model_copy(update={"degraded_reason": research.termination_reason})
+    record_artifact_result(state, "law", artifact_result)
+    state.setdefault("conversation_history", []).append({
+        "agent": "LawRef",
+        "action": "law_search",
+        "matched_count": len(state["applied_laws"]),
+        "search_status": state["law_search_status"],
+        "termination_reason": research.termination_reason,
+        "session_id": session_id,
+    })
     return state

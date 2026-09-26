@@ -103,6 +103,8 @@ make compose-down
 
 Compose 只包含 backend 与 Redis。六条 tracked 法条快照会进入 backend 镜像；前端、Ollama、完整法条语料、Chroma 内容和模型权重不在镜像内。SQLite、Chroma、MD5 store 与模型缓存使用 `backend-runtime` 命名卷；Redis 使用 `redis-data`。
 
+业务记录使用 `DATABASE_PATH` 指向的 `chat_history.db`；LangGraph 执行 checkpoint 使用独立的 `LANGGRAPH_CHECKPOINT_DB_PATH`（本地默认 `./data/langgraph_checkpoints.db`，Compose 为 `/app/runtime/sqlite/langgraph_checkpoints.db`）。checkpoint 含咨询 workflow state，属于敏感本地数据；运行数据库被 Git 忽略。请保持 checkpoint 文件及 Compose runtime 卷，否则重启后无法恢复原中断位置。
+
 `make compose-config` 只验证配置解析。只有实际完成镜像 build、容器启动、健康检查和所需外部依赖调用后，才能分别声明这些步骤通过。
 
 ## 7. 验证

@@ -28,6 +28,36 @@ from app.agents.law_ref import (
 from tests.factories import make_consultation_state
 
 
+@pytest.fixture(autouse=True)
+def scripted_law_tool_decisions():
+    """为现有节点回归提供逐轮观察的确定性模型决策。"""
+    async def decide(_system, message, _tools, **_kwargs):
+        payload = json.loads(message)
+        observations = payload["observations"]
+        if not observations:
+            facts = json.loads(payload["facts"])
+            behavior = facts.get("behavior_sequence") or []
+            term = behavior[0] if isinstance(behavior, list) else behavior
+            if isinstance(term, dict):
+                term = next((value for value in term.values() if isinstance(value, str)), "")
+            return {"content": "", "tool_calls": [{"name": "search_laws", "args": {"query": str(term)}}], "has_tool_call": True}
+        if len(observations) == 1:
+            candidates = observations[0]["result"].get("candidates", [])
+            if candidates:
+                return {"content": "", "tool_calls": [{"name": "get_article", "args": {"article_id": candidates[0]["article_id"]}}], "has_tool_call": True}
+        if len(observations) >= 2:
+            article = observations[-1]["result"].get("article")
+            if article:
+                article_id = article["article_id"]
+                elements = article["required_elements"]
+                matched = [elements[0]["name"] if isinstance(elements[0], dict) else elements[0]] if elements else []
+                return {"content": json.dumps({"article_ids": [article_id], "matched_elements": {article_id: matched}, "confidence": "medium"}, ensure_ascii=False), "tool_calls": [], "has_tool_call": False}
+        return {"content": "{}", "tool_calls": [], "has_tool_call": False}
+
+    with patch("app.agents.legal_research.llm_gateway.generate_with_tools", new=decide):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Helper: build law_data in the format load_criminal_law_data returns
 # ---------------------------------------------------------------------------
@@ -227,6 +257,18 @@ async def test_search_laws_by_rag():
 
 
 @pytest.mark.asyncio
+async def test_search_laws_by_rag_preserves_internal_retrieval_failure():
+    rag_service = MagicMock()
+    rag_service.initialize_retriever = AsyncMock()
+    rag_service.retrieve_documents = AsyncMock(return_value=[])
+    rag_service.retrieval_failed = True
+    with patch("app.rag.rag_service.RagService", return_value=rag_service):
+        results = await search_laws_by_rag({"behavior_sequence": ["盗窃"]}, "user-001")
+    assert results == []
+    assert results.dependency_failed is True
+
+
+@pytest.mark.asyncio
 async def test_search_laws_by_rag_uses_retrieval_only_without_summary_calls():
     """LawRef 只消费 documents 时不得请求文档摘要或汇总。"""
     facts = {
@@ -392,7 +434,7 @@ async def test_law_ref_node_with_matching_facts():
     with patch("app.agents.law_ref.llm_gateway") as mock_llm, \
          patch("app.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()), \
          patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]), \
-         patch("app.agents.law_ref.search_laws_by_keyword") as mock_keyword, \
+         patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock) as mock_keyword, \
          patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
 
         mock_keyword.return_value = [
@@ -407,6 +449,7 @@ async def test_law_ref_node_with_matching_facts():
                 "chapter": "侵犯财产罪",
                 "relevance_score": 3.0,
                 "matched_tags": ["标签匹配: 盗窃"],
+                "data_source": "json_keyword",
             }
         ]
         mock_llm.generate = AsyncMock(return_value="mocked")
@@ -486,6 +529,7 @@ async def test_law_ref_node_empty_facts():
 
     assert result.get("applied_laws") == []
     assert result.get("current_agent") == "LawRef"
+    assert result["law_research"]["termination_reason"] == "missing_facts"
 
 
 # ---------------------------------------------------------------------------
@@ -1285,9 +1329,10 @@ async def test_law_ref_node_rag_unverified_only():
 
         result = await law_ref_node(state)
 
-    # matched_laws is non-empty (the unverified RAG result), rag_verified == 0 → rag_only True
-    assert result.get("rag_only") is True
-    assert result.get("law_search_status") == "no_law_match"
+    # 未经快照核验的候选不能由模型最终答案升级为可信法条。
+    assert result.get("rag_only") is False
+    assert result.get("applied_laws") == []
+    assert result.get("law_search_status") == "dependency_failure"
 
 
 @pytest.mark.asyncio
@@ -1324,12 +1369,12 @@ async def test_law_ref_node_uses_user_id_for_rag_filter():
         facts_structured={"behavior_sequence": ["盗窃"], "consequence": "财产损失"},
     )
 
-    with patch("app.agents.law_ref.load_criminal_law_data", return_value={"chapters": []}), \
+    with patch("app.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()), \
          patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]) as rag_search, \
          patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
         result = await law_ref_node(state)
 
-    rag_search.assert_awaited_once_with(state["facts_structured"], "real-user-42")
+    rag_search.assert_awaited_once_with({"behavior_sequence": ["盗窃"], "consequence": ""}, "real-user-42")
     assert result["conversation_history"][-1]["session_id"] == "session-must-not-be-user"
 
 
@@ -1341,9 +1386,9 @@ async def test_law_ref_node_missing_user_id_does_not_use_session_id():
     )
     state.pop("user_id", None)
 
-    with patch("app.agents.law_ref.load_criminal_law_data", return_value={"chapters": []}), \
+    with patch("app.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()), \
          patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]) as rag_search, \
          patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
         await law_ref_node(state)
 
-    rag_search.assert_awaited_once_with(state["facts_structured"], None)
+    rag_search.assert_awaited_once_with({"behavior_sequence": ["盗窃"], "consequence": ""}, None)
