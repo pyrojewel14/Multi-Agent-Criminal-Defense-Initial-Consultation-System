@@ -1,6 +1,4 @@
-import pytest
-
-from app.security.disclaimer import DisclaimerService, DISCLAIMER_PREFIX, disclaimer
+from app.security.disclaimer import DISCLAIMER_PREFIX, DisclaimerService, disclaimer
 
 
 class TestDisclaimerInject:

@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
 from app.security.jwt import create_access_token
 
@@ -15,15 +14,15 @@ from app.security.jwt import create_access_token
 # numpy when ``consultation_service`` was also imported by other test files.
 from main import app as _fastapi_app  # noqa: F401
 
-
 # ---------------------------------------------------------------------------
 # LLM Gateway mock
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_llm_gateway():
     """Patch the module-level ``llm_gateway`` singleton so no real LLM calls are made."""
-    with patch("app.utils.llm_gateway.llm_gateway") as mock:
+    with patch("app.infrastructure.llm.gateway.llm_gateway") as mock:
         mock.generate = AsyncMock(return_value="mocked LLM response")
         mock.generate_with_tools = AsyncMock(
             return_value={
@@ -38,6 +37,7 @@ def mock_llm_gateway():
 # ---------------------------------------------------------------------------
 # Sample consultation state
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sample_state():
@@ -76,6 +76,7 @@ def sample_state():
 # Database session mock
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_db_session():
     """AsyncMock standing in for ``sqlalchemy.ext.asyncio.AsyncSession``."""
@@ -89,6 +90,7 @@ def mock_db_session():
 # ---------------------------------------------------------------------------
 # Redis cache mock
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_redis(monkeypatch):
@@ -109,9 +111,9 @@ def mock_redis(monkeypatch):
     async def _get_str(key: str):
         return _store.get(key)
 
-    monkeypatch.setattr("app.db.redis_config.get_redis_cache_json", _get_json)
-    monkeypatch.setattr("app.db.redis_config.set_redis_cache", _set_cache)
-    monkeypatch.setattr("app.db.redis_config.get_redis_cache_str", _get_str)
+    monkeypatch.setattr("app.infrastructure.database.redis.get_redis_cache_json", _get_json)
+    monkeypatch.setattr("app.infrastructure.database.redis.set_redis_cache", _set_cache)
+    monkeypatch.setattr("app.infrastructure.database.redis.get_redis_cache_str", _get_str)
 
     return _store
 
@@ -119,6 +121,7 @@ def mock_redis(monkeypatch):
 # ---------------------------------------------------------------------------
 # Auth headers
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def auth_headers():
@@ -131,6 +134,7 @@ def auth_headers():
 # FastAPI test application
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 async def test_app(mock_llm_gateway, mock_redis, mock_db_session):
     """Create a FastAPI app instance for integration testing.
@@ -138,7 +142,7 @@ async def test_app(mock_llm_gateway, mock_redis, mock_db_session):
     The lifespan (DB / Redis init) is bypassed and key dependencies are
     overridden so tests run without external services.
     """
-    from app.db.db_config import get_db
+    from app.infrastructure.database.db import get_db
 
     # Override the DB dependency so every request gets the mock session.
     async def _override_get_db():

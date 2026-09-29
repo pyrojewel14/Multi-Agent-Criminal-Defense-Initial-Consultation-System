@@ -4,7 +4,7 @@ from typing import get_origin, get_type_hints
 
 from sqlalchemy.orm import DeclarativeBase, Mapped
 
-from app.models.user import (
+from app.models import (
     Base,
     Consultation,
     ConsultationMessage,

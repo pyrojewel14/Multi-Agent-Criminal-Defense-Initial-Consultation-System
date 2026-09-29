@@ -1,16 +1,12 @@
 """sensitive_filter 模块纯函数单元测试。"""
 
-import pytest
-
 from app.security.sensitive_filter import (
-    CHINESE_SURNAMES,
     _is_chinese_surname,
     _mask_name,
     detect_high_risk,
     mask_pii,
     sanitize_input,
 )
-
 
 # ──────────────────────────── _is_chinese_surname ────────────────────────────
 

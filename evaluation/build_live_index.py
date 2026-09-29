@@ -8,16 +8,20 @@ import json
 import math
 import subprocess
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
 import chromadb
-
+from chromadb.api.types import Embedding, Metadata
 
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT = ROOT / "backend/data/law_knowledge/criminal_law_chapters.json"
 EXPECTED_ARTICLES = {
-    "第二百三十二条", "第二百三十四条", "第二百六十三条",
-    "第二百六十四条", "第二百六十六条", "第二百九十三条",
+    "第二百三十二条",
+    "第二百三十四条",
+    "第二百六十三条",
+    "第二百六十四条",
+    "第二百六十六条",
+    "第二百九十三条",
 }
 
 
@@ -59,9 +63,12 @@ def build_index(
     if len(embeddings) != len(documents):
         raise ValueError("embedding count mismatch")
     dimensions = {len(vector) for vector in embeddings}
-    if len(dimensions) != 1 or not dimensions.pop() or any(
-        not isinstance(value, (int, float)) or not math.isfinite(value)
-        for vector in embeddings for value in vector
+    if (
+        len(dimensions) != 1
+        or not dimensions.pop()
+        or any(
+            not isinstance(value, (int, float)) or not math.isfinite(value) for vector in embeddings for value in vector
+        )
     ):
         raise ValueError("embedding vector invalid")
     ids = [_hash_bytes(article["article_number"].encode("utf-8")) for article in articles]
@@ -79,17 +86,32 @@ def build_index(
     index_dir.mkdir(parents=True)
     client = chromadb.PersistentClient(path=str(index_dir))
     target = client.create_collection(collection)
-    target.add(ids=ids, documents=documents, embeddings=embeddings, metadatas=chroma_metadata)
-    if target.count() != 6 or not target.query(
-        query_embeddings=[embeddings[0]], n_results=1, where={"is_public": True}
-    )["ids"][0]:
+    # Chroma 运行时接受普通数值列表，其类型声明要求 Embedding/Metadata 别名。
+    target.add(
+        ids=ids,
+        documents=documents,
+        embeddings=cast(list[Embedding], embeddings),
+        metadatas=cast(list[Metadata], chroma_metadata),
+    )
+    if (
+        target.count() != 6
+        or not target.query(query_embeddings=[embeddings[0]], n_results=1, where={"is_public": True})["ids"][0]
+    ):
         raise RuntimeError("public index query failed")
-    tracked = subprocess.run(
-        ["git", "ls-files", "--error-unmatch", str(snapshot_path)],
-        cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
-    ).returncode == 0
+    tracked = (
+        subprocess.run(
+            ["git", "ls-files", "--error-unmatch", str(snapshot_path)],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        == 0
+    )
     manifest = {
-        "snapshot_path": str(snapshot_path.relative_to(ROOT)) if snapshot_path.is_relative_to(ROOT) else str(snapshot_path),
+        "snapshot_path": str(snapshot_path.relative_to(ROOT))
+        if snapshot_path.is_relative_to(ROOT)
+        else str(snapshot_path),
         "snapshot_sha256": _hash_bytes(raw),
         "snapshot_git_tracked": tracked,
         "snapshot_version": metadata["dataset_version"],
@@ -124,10 +146,14 @@ def main() -> int:
     digests = {item.get("name"): item.get("digest") for item in tags.get("models", [])}
     if not digests.get(model):
         raise RuntimeError("embedding model unavailable")
-    from app.utils.factory import embed_model
+    from app.infrastructure.llm.factory import embed_model
 
     manifest = build_index(
-        SNAPSHOT, args.index_dir, args.collection, model, digests[model],
+        SNAPSHOT,
+        args.index_dir,
+        args.collection,
+        model,
+        digests[model],
         embed_model.embed_documents,
     )
     print(json.dumps(manifest, ensure_ascii=False, indent=2))

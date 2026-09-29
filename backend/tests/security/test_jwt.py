@@ -1,8 +1,5 @@
 import os
-import time
 from datetime import datetime, timedelta
-
-import pytest
 
 # Set env vars before importing JWT module so config picks them up
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-at-least-32-characters-long!!")
@@ -100,6 +97,7 @@ class TestExpiredToken:
 
     def test_expired_token_returns_none(self):
         import jwt as pyjwt
+
         from app.security.config import get_jwt_config
 
         config = get_jwt_config()
@@ -111,9 +109,7 @@ class TestExpiredToken:
             "exp": datetime.utcnow() - timedelta(hours=1),
             "iat": datetime.utcnow() - timedelta(hours=2),
         }
-        expired_token = pyjwt.encode(
-            payload, config.get_secret_key(), algorithm=config.get_algorithm()
-        )
+        expired_token = pyjwt.encode(payload, config.get_secret_key(), algorithm=config.get_algorithm())
         result = decode_token(expired_token)
         assert result is None
 

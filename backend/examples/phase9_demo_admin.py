@@ -12,8 +12,8 @@ from collections.abc import Mapping
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.db_config import AsyncSessionLocal, close_db, init_db
-from app.models.user import User, UserRole
+from app.infrastructure.database.db import AsyncSessionLocal, close_db, init_db
+from app.models import User, UserRole
 from app.security.jwt import hash_password
 
 

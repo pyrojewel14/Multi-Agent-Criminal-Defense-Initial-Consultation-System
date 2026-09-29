@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT_DIR = Path(__file__).resolve().parents[3]
 EVALUATION_DIR = ROOT_DIR / "evaluation"
 CASES_PATH = EVALUATION_DIR / "cases.jsonl"

@@ -7,8 +7,15 @@ import os
 from pathlib import Path
 
 from evaluation.build_live_index import build_index
-
-from evaluation.run_live_eval import preflight, summarize_events, run_cases, _run_ablation, _execute_chain, configure_runtime, _metadata
+from evaluation.run_live_eval import (
+    _execute_chain,
+    _metadata,
+    _run_ablation,
+    configure_runtime,
+    preflight,
+    run_cases,
+    summarize_events,
+)
 
 
 def test_metadata_records_actual_llm_deadlines(monkeypatch):
@@ -29,24 +36,39 @@ def test_preflight_separates_mutable_chroma_snapshot_from_build_manifest(tmp_pat
     law = Path(__file__).resolve().parents[1] / "backend/data/law_knowledge/criminal_law_chapters.json"
     index = tmp_path / "index"
     build_manifest = build_index(
-        law, index, "rag_collection", "qwen3-embedding:0.6b", "embed-digest",
+        law,
+        index,
+        "rag_collection",
+        "qwen3-embedding:0.6b",
+        "embed-digest",
         lambda texts: [[float(i), 1.0] for i in range(len(texts))],
     )
     reranker = tmp_path / "reranker"
     reranker.mkdir()
     (reranker / "config.json").write_text("{}")
     (reranker / "model.safetensors").write_bytes(b"test")
-    kwargs = dict(
-        base_url="http://127.0.0.1:11434", model="qwen3.5:0.8b",
-        embedding_model="qwen3-embedding:0.6b", index_dir=index,
-        reranker_path=reranker, law_path=law,
-        fetch_tags=lambda _: {"models": [
-            {"name": "qwen3.5:0.8b", "digest": "chat-digest"},
-            {"name": "qwen3-embedding:0.6b", "digest": "embed-digest"},
-        ]},
-    )
-    first = preflight(**kwargs)
-    second = preflight(**kwargs)
+
+    def fetch_tags(_):
+        return {
+            "models": [
+                {"name": "qwen3.5:0.8b", "digest": "chat-digest"},
+                {"name": "qwen3-embedding:0.6b", "digest": "embed-digest"},
+            ]
+        }
+
+    def run_preflight():
+        return preflight(
+            base_url="http://127.0.0.1:11434",
+            model="qwen3.5:0.8b",
+            embedding_model="qwen3-embedding:0.6b",
+            index_dir=index,
+            reranker_path=reranker,
+            law_path=law,
+            fetch_tags=fetch_tags,
+        )
+
+    first = run_preflight()
+    second = run_preflight()
     manifest_path = index.parent / "index.manifest.json"
     stable_hash = "sha256:" + hashlib.sha256(manifest_path.read_bytes()).hexdigest()
     assert first["ready"] and second["ready"]
@@ -63,8 +85,12 @@ def test_preflight_blocks_missing_index_and_records_model_digest(tmp_path, monke
     reranker.mkdir()
 
     def tags(_url):
-        return {"models": [{"name": "qwen3.5:0.8b", "digest": "sha256:chat"},
-                           {"name": "qwen3-embedding:0.6b", "digest": "sha256:embed"}]}
+        return {
+            "models": [
+                {"name": "qwen3.5:0.8b", "digest": "sha256:chat"},
+                {"name": "qwen3-embedding:0.6b", "digest": "sha256:embed"},
+            ]
+        }
 
     result = preflight(
         base_url="http://127.0.0.1:11434",
@@ -106,10 +132,15 @@ def test_preflight_rejects_empty_chroma_collection(tmp_path):
     law = tmp_path / "law.json"
     law.write_text('{"metadata":{"dataset_version":"v1"}}', encoding="utf-8")
     result = preflight(
-        base_url="http://127.0.0.1:11434", model="chat", embedding_model="embed",
-        index_dir=index, reranker_path=tmp_path / "reranker", law_path=law,
-        fetch_tags=lambda _: {"models": [{"name": "chat", "digest": "chat-digest"},
-                                      {"name": "embed", "digest": "embed-digest"}]},
+        base_url="http://127.0.0.1:11434",
+        model="chat",
+        embedding_model="embed",
+        index_dir=index,
+        reranker_path=tmp_path / "reranker",
+        law_path=law,
+        fetch_tags=lambda _: {
+            "models": [{"name": "chat", "digest": "chat-digest"}, {"name": "embed", "digest": "embed-digest"}]
+        },
     )
     assert "index_empty" in result["issues"]
     assert result["index_document_count"] == 0
@@ -122,8 +153,12 @@ def test_preflight_rejects_reranker_config_without_weights(tmp_path):
     law = tmp_path / "law.json"
     law.write_text('{"metadata":{"dataset_version":"v1"}}', encoding="utf-8")
     result = preflight(
-        base_url="http://127.0.0.1:11434", model="chat", embedding_model="embed",
-        index_dir=tmp_path / "missing", reranker_path=reranker, law_path=law,
+        base_url="http://127.0.0.1:11434",
+        model="chat",
+        embedding_model="embed",
+        index_dir=tmp_path / "missing",
+        reranker_path=reranker,
+        law_path=law,
         fetch_tags=lambda _: {"models": [{"name": "chat"}, {"name": "embed"}]},
     )
     assert "reranker_weights_missing" in result["issues"]
@@ -148,9 +183,11 @@ def test_summary_counts_attempts_and_routes_without_claiming_accuracy():
     ]
     summary = summarize_events(events)
     assert summary == {
-        "llm_attempts": 2, "rag_calls": 1,
+        "llm_attempts": 2,
+        "rag_calls": 1,
         "route_reasons": ["dependency_degraded"],
-        "retrieval_top_k_status": "unavailable", "retrieval_top_k": [],
+        "retrieval_top_k_status": "unavailable",
+        "retrieval_top_k": [],
     }
 
 
@@ -161,8 +198,7 @@ def test_run_cases_keeps_failed_case_and_continues(tmp_path):
         return {"status": "wait_for_user", "llm_attempts": 1}
 
     output = tmp_path / "result.json"
-    result = asyncio.run(run_cases([{"id": "broken", "input": "A"},
-                                    {"id": "ok", "input": "B"}], execute, output))
+    result = asyncio.run(run_cases([{"id": "broken", "input": "A"}, {"id": "ok", "input": "B"}], execute, output))
     assert all(case["id"].startswith("sha256:") for case in result["cases"])
     assert result["cases"][0]["status"] == "error"
     assert result["cases"][0]["error_type"] == "RuntimeError"
@@ -171,8 +207,8 @@ def test_run_cases_keeps_failed_case_and_continues(tmp_path):
 
 
 def test_reception_ablation_records_both_disclaimers(tmp_path, monkeypatch):
-    from app.agents.receptionist import llm_gateway
-    from app.observability.tracing import trace_span, trace_store
+    from app.consultation.agents.receptionist import llm_gateway
+    from app.infrastructure.observability.tracing import trace_span, trace_store
 
     async def response(**_kwargs):
         with trace_span(trace_store, event_type="llm", name="test-provider-attempt", attempt=1):
@@ -190,8 +226,8 @@ def test_reception_ablation_records_both_disclaimers(tmp_path, monkeypatch):
 
 
 def test_reception_ablation_keeps_failed_attempt_count(tmp_path, monkeypatch):
-    from app.agents.receptionist import llm_gateway
-    from app.observability.tracing import trace_span, trace_store
+    from app.consultation.agents.receptionist import llm_gateway
+    from app.infrastructure.observability.tracing import trace_span, trace_store
 
     secret = "张三13800138000110105199001011234"
 
@@ -211,7 +247,7 @@ def test_reception_ablation_keeps_failed_attempt_count(tmp_path, monkeypatch):
 
 
 def test_chain_result_reports_wait_node_instead_of_successor(monkeypatch):
-    import app.orchestrator.workflow as workflow
+    import app.consultation.workflow as workflow
 
     class Orchestrator:
         async def start_workflow(self, _state):
@@ -229,8 +265,8 @@ def test_chain_result_reports_wait_node_instead_of_successor(monkeypatch):
 
 
 def test_chain_result_counts_attempt_before_failure(monkeypatch):
-    import app.orchestrator.workflow as workflow
-    from app.observability.tracing import trace_span, trace_store
+    import app.consultation.workflow as workflow
+    from app.infrastructure.observability.tracing import trace_span, trace_store
 
     class Orchestrator:
         async def start_workflow(self, state):
@@ -246,18 +282,24 @@ def test_chain_result_counts_attempt_before_failure(monkeypatch):
 
 
 def test_real_compiled_graph_consumes_case_once(monkeypatch):
-    import app.agents.fact_digger as fact_digger
-    import app.orchestrator.workflow as workflow
-    from app.schemas.llm_artifacts import ArtifactSource
+    import app.consultation.agents.fact_digger as fact_digger
+    import app.consultation.workflow as workflow
+    from app.consultation.schemas.artifacts import ArtifactSource
 
     seen = []
 
     async def extract(facts_raw):
         seen.append(list(facts_raw))
         return {
-            "incident_time": None, "incident_location": None, "parties": [],
-            "behavior_sequence": [], "consequence": None, "evidence_mentioned": [],
-            "arrest_status": None, "surrender": None, "victim_forgiveness": None,
+            "incident_time": None,
+            "incident_location": None,
+            "parties": [],
+            "behavior_sequence": [],
+            "consequence": None,
+            "evidence_mentioned": [],
+            "arrest_status": None,
+            "surrender": None,
+            "victim_forgiveness": None,
             "prior_record": None,
         }, ArtifactSource.CONTENT_JSON
 
@@ -284,7 +326,8 @@ def test_failed_case_omits_sensitive_exception_text(tmp_path):
 
 
 def test_chain_public_result_excludes_untrusted_artifact_and_law_text(monkeypatch, tmp_path):
-    import app.orchestrator.workflow as workflow
+    import app.consultation.workflow as workflow
+
     secret = "张三13800138000110105199001011234"
 
     class Orchestrator:
@@ -298,8 +341,13 @@ def test_chain_public_result_excludes_untrusted_artifact_and_law_text(monkeypatc
                     {"article_number": secret, "data_source": secret, "content": secret},
                     {"article_number": "第13800138000条", "data_source": "rag_unverified"},
                 ],
-                "artifact_results": {"fact": {"status": "degraded", "source": "content_json",
-                                               "validation_errors": [{"msg": secret, "loc": [secret]}]}},
+                "artifact_results": {
+                    "fact": {
+                        "status": "degraded",
+                        "source": "content_json",
+                        "validation_errors": [{"msg": secret, "loc": [secret]}],
+                    }
+                },
                 "law_search_status": secret,
             }
 
@@ -322,10 +370,16 @@ def test_ranked_trace_is_not_confused_with_final_law_candidates():
     origin_two = "sha256:" + "d" * 64
     events = [
         {"event_type": "rag_ranked_result_set"},
-        {"event_type": "rag_ranked_result", "attempt": 2,
-         "metadata": {"content": {"sha256": digest_two}, "origin": {"sha256": origin_two}}},
-        {"event_type": "rag_ranked_result", "attempt": 1,
-         "metadata": {"content": {"sha256": digest_one}, "origin": {"sha256": origin_one}}},
+        {
+            "event_type": "rag_ranked_result",
+            "attempt": 2,
+            "metadata": {"content": {"sha256": digest_two}, "origin": {"sha256": origin_two}},
+        },
+        {
+            "event_type": "rag_ranked_result",
+            "attempt": 1,
+            "metadata": {"content": {"sha256": digest_one}, "origin": {"sha256": origin_one}},
+        },
     ]
     summary = summarize_events(events)
     assert summary["retrieval_top_k_status"] == "observed"
@@ -336,18 +390,26 @@ def test_ranked_trace_is_not_confused_with_final_law_candidates():
 
 
 def test_chain_result_reads_actual_ranked_events_separately_from_laws(monkeypatch):
-    import app.orchestrator.workflow as workflow
-    from app.observability.tracing import trace_span, trace_store
+    import app.consultation.workflow as workflow
+    from app.infrastructure.observability.tracing import trace_span, trace_store
 
     class Orchestrator:
         async def start_workflow(self, _state):
             return {}
 
         async def resume_workflow(self, session_id, _updates=None):
-            with trace_span(trace_store, event_type="rag_ranked_result_set", name="retrieve_documents", session_id=session_id):
+            with trace_span(
+                trace_store, event_type="rag_ranked_result_set", name="retrieve_documents", session_id=session_id
+            ):
                 pass
-            with trace_span(trace_store, event_type="rag_ranked_result", name="reranked_document",
-                            session_id=session_id, attempt=1, metadata={"content": "检索文档"}):
+            with trace_span(
+                trace_store,
+                event_type="rag_ranked_result",
+                name="reranked_document",
+                session_id=session_id,
+                attempt=1,
+                metadata={"content": "检索文档"},
+            ):
                 pass
             return {"applied_laws": [{"article_number": "第264条", "data_source": "json_keyword"}]}
 
@@ -369,7 +431,8 @@ def test_empty_ranked_result_set_is_observed_empty():
 
 
 def test_chain_failure_omits_sensitive_exception_text(monkeypatch):
-    import app.orchestrator.workflow as workflow
+    import app.consultation.workflow as workflow
+
     secret = "张三13800138000110105199001011234"
 
     class Orchestrator:
@@ -407,10 +470,10 @@ def test_numeric_phone_and_identity_case_ids_are_hashed(tmp_path):
 
 def test_untrusted_exception_class_name_is_not_written(tmp_path):
     secret = "13800138000"
-    LeakError = type(f"LeakError_{secret}", (Exception,), {})
+    leak_error = type(f"LeakError_{secret}", (Exception,), {})
 
     async def execute(_case):
-        raise LeakError("sensitive")
+        raise leak_error("sensitive")
 
     output = tmp_path / "error.json"
     result = asyncio.run(run_cases([{"id": "safe", "input": "synthetic"}], execute, output))
@@ -421,8 +484,11 @@ def test_untrusted_exception_class_name_is_not_written(tmp_path):
 def test_preflight_does_not_echo_url_credentials(tmp_path):
     result = preflight(
         base_url="http://user:topsecret@127.0.0.1:11434",
-        model="chat", embedding_model="embed",
-        index_dir=tmp_path, reranker_path=tmp_path, law_path=tmp_path / "none",
+        model="chat",
+        embedding_model="embed",
+        index_dir=tmp_path,
+        reranker_path=tmp_path,
+        law_path=tmp_path / "none",
         fetch_tags=lambda _: {"models": []},
     )
     assert "topsecret" not in json.dumps(result)
@@ -433,10 +499,15 @@ def test_preflight_hashes_nondefault_model_names(tmp_path):
     model = "secretChat_13800138000"
     embedding = "secretEmbed_110105199001011234"
     result = preflight(
-        base_url="http://127.0.0.1:11434", model=model, embedding_model=embedding,
-        index_dir=tmp_path, reranker_path=tmp_path, law_path=tmp_path / "none",
-        fetch_tags=lambda _: {"models": [{"name": model, "digest": "chat-digest"},
-                                      {"name": embedding, "digest": "embed-digest"}]},
+        base_url="http://127.0.0.1:11434",
+        model=model,
+        embedding_model=embedding,
+        index_dir=tmp_path,
+        reranker_path=tmp_path,
+        law_path=tmp_path / "none",
+        fetch_tags=lambda _: {
+            "models": [{"name": model, "digest": "chat-digest"}, {"name": embedding, "digest": "embed-digest"}]
+        },
     )
     encoded = json.dumps(result)
     assert model not in encoded

@@ -2,15 +2,14 @@
 
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import chromadb
 import pytest
 
 from evaluation.build_live_index import build_index
-
 
 SNAPSHOT = Path(__file__).resolve().parents[1] / "backend/data/law_knowledge/criminal_law_chapters.json"
 
@@ -18,24 +17,35 @@ SNAPSHOT = Path(__file__).resolve().parents[1] / "backend/data/law_knowledge/cri
 def test_build_index_is_public_and_records_provenance(tmp_path):
     index = tmp_path / "eval-index"
     manifest = build_index(
-        SNAPSHOT, index, "rag_collection", "qwen3-embedding:0.6b",
-        "test-model-digest", lambda texts: [[float(i), 1.0] for i in range(len(texts))],
+        SNAPSHOT,
+        index,
+        "rag_collection",
+        "qwen3-embedding:0.6b",
+        "test-model-digest",
+        lambda texts: [[float(i), 1.0] for i in range(len(texts))],
     )
     collection = chromadb.PersistentClient(path=str(index)).get_collection("rag_collection")
     visible = collection.get(where={"is_public": True}, include=["documents", "metadatas"])
+    metadatas = [item for item in (visible["metadatas"] or []) if item is not None]
+    documents = [item for item in (visible["documents"] or []) if item is not None]
+    article_numbers = [item["article_number"] for item in metadatas if isinstance(item["article_number"], str)]
     assert collection.count() == 6
     assert len(visible["ids"]) == 6
-    assert {item["article_number"] for item in visible["metadatas"]} == {
-        "第二百三十二条", "第二百三十四条", "第二百六十三条",
-        "第二百六十四条", "第二百六十六条", "第二百九十三条",
+    assert len(metadatas) == len(documents) == len(article_numbers) == 6
+    assert set(article_numbers) == {
+        "第二百三十二条",
+        "第二百三十四条",
+        "第二百六十三条",
+        "第二百六十四条",
+        "第二百六十六条",
+        "第二百九十三条",
     }
-    assert all(item["official_text_source"] == "criminal-law-consolidated-amendment-12" for item in visible["metadatas"])
-    assert all(item["annotation_source"] == "project-maintained-v1" for item in visible["metadatas"])
+    assert all(item["official_text_source"] == "criminal-law-consolidated-amendment-12" for item in metadatas)
+    assert all(item["annotation_source"] == "project-maintained-v1" for item in metadatas)
     assert all(
-        item["source"] == f"criminal-law-consolidated-amendment-12:{item['article_number']}"
-        for item in visible["metadatas"]
+        item["source"] == f"criminal-law-consolidated-amendment-12:{item['article_number']}" for item in metadatas
     )
-    assert all("第二百" in text for text in visible["documents"])
+    assert all("第二百" in text for text in documents)
     public_query = collection.query(query_embeddings=[[0.0, 1.0]], n_results=3, where={"is_public": True})
     assert len(public_query["ids"][0]) == 3
     private_query = collection.query(query_embeddings=[[0.0, 1.0]], n_results=3, where={"user_id": "other"})
@@ -69,9 +79,10 @@ def test_build_index_rejects_non_public_or_incomplete_snapshot(tmp_path):
 def test_direct_script_entrypoint_resolves_sibling_runner(tmp_path):
     env = {**os.environ, "OLLAMA_BASE_URL": "http://127.0.0.1:1"}
     result = subprocess.run(
-        [sys.executable, str(Path(__file__).with_name("build_live_index.py")),
-         "--index-dir", str(tmp_path / "index")],
-        env=env, capture_output=True, text=True,
+        [sys.executable, str(Path(__file__).with_name("build_live_index.py")), "--index-dir", str(tmp_path / "index")],
+        env=env,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode != 0
     assert "ModuleNotFoundError" not in result.stderr

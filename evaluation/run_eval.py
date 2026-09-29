@@ -16,22 +16,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 ROOT_DIR = Path(__file__).resolve().parents[1]
 BACKEND_DIR = ROOT_DIR / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.agents.human_alert import human_alert_node  # noqa: E402
-from app.agents.law_ref import (  # noqa: E402
+from app.consultation.agents.human_alert import human_alert_node  # noqa: E402
+from app.consultation.agents.law_ref import (  # noqa: E402
     _normalize_article_number,
     load_criminal_law_data,
-    search_laws_by_keyword,
 )
-from app.orchestrator.workflow import check_facts_sufficient  # noqa: E402
+from app.consultation.state import ConsultationState  # noqa: E402
+from app.consultation.workflow import check_facts_sufficient  # noqa: E402
+from app.knowledge.law_retrieval import search_laws_by_keyword  # noqa: E402
 from app.security.disclaimer import DISCLAIMER_PREFIX, disclaimer  # noqa: E402
 from app.security.sensitive_filter import detect_high_risk  # noqa: E402
-
 
 MODE = "offline-deterministic-baseline"
 DEFAULT_CASES_PATH = Path(__file__).resolve().with_name("cases.jsonl")
@@ -303,7 +302,7 @@ async def predict_input(
     """只接收被评估 input，返回与 gold 隔离的预测。"""
     high_risk, risk_type = detect_high_risk(input_text)
     if high_risk:
-        alert_state: dict[str, Any] = {
+        alert_state: ConsultationState = {
             "session_id": "evaluation-offline",
             "user_id": "evaluation-offline",
             "conversation_history": [],
@@ -367,10 +366,7 @@ async def predict_input(
 def _keyword_hit(keyword: str, laws: list[dict[str, Any]]) -> bool:
     normalized_keyword = _normalize_article_number(keyword)
     if normalized_keyword != keyword or re.fullmatch(r"第\d+条(?:之.+)?", keyword):
-        return any(
-            _normalize_article_number(str(law.get("article_number", ""))) == normalized_keyword
-            for law in laws
-        )
+        return any(_normalize_article_number(str(law.get("article_number", ""))) == normalized_keyword for law in laws)
 
     needle = keyword.casefold()
     for law in laws:
@@ -419,10 +415,7 @@ async def evaluate_case(case: dict[str, Any], law_data: dict[str, Any]) -> dict[
         "id": case["id"],
         "category": case["category"],
         "input": case["input"],
-        "gold": {
-            key: case[key]
-            for key in sorted(CASE_FIELDS - {"id", "category", "input"})
-        },
+        "gold": {key: case[key] for key in sorted(CASE_FIELDS - {"id", "category", "input"})},
         "prediction": prediction,
         "scores": scores,
     }
@@ -523,23 +516,18 @@ def collect_failures(results: list[dict[str, Any]]) -> dict[str, list[dict[str, 
 def build_diagnostics(results: list[dict[str, Any]]) -> dict[str, Any]:
     """输出高风险触发混淆矩阵，显式展示 false positive。"""
     true_positive = sum(
-        result["gold"]["should_trigger_human"]
-        and result["prediction"]["should_trigger_human"]
-        for result in results
+        result["gold"]["should_trigger_human"] and result["prediction"]["should_trigger_human"] for result in results
     )
     true_negative = sum(
-        not result["gold"]["should_trigger_human"]
-        and not result["prediction"]["should_trigger_human"]
+        not result["gold"]["should_trigger_human"] and not result["prediction"]["should_trigger_human"]
         for result in results
     )
     false_positive = sum(
-        not result["gold"]["should_trigger_human"]
-        and result["prediction"]["should_trigger_human"]
+        not result["gold"]["should_trigger_human"] and result["prediction"]["should_trigger_human"]
         for result in results
     )
     false_negative = sum(
-        result["gold"]["should_trigger_human"]
-        and not result["prediction"]["should_trigger_human"]
+        result["gold"]["should_trigger_human"] and not result["prediction"]["should_trigger_human"]
         for result in results
     )
     negative_count = true_negative + false_positive
@@ -673,9 +661,7 @@ def write_report(summary: dict[str, Any], path: Path) -> None:
     }
     for key, label in metric_labels.items():
         metric = metrics[key]
-        lines.append(
-            f"| {label} | {_format_percent(metric)} | {metric['numerator']} | {metric['denominator']} |"
-        )
+        lines.append(f"| {label} | {_format_percent(metric)} | {metric['numerator']} | {metric['denominator']} |")
 
     confusion = diagnostics["high_risk_confusion_matrix"]
     false_positive_rate = diagnostics["high_risk_false_positive_rate"]
@@ -755,10 +741,7 @@ def main() -> None:
     print(f"Mode: {summary['metadata']['mode']}")
     print(f"Cases: {summary['dataset']['sample_count']}")
     for name, metric in summary["metrics"].items():
-        print(
-            f"{name}: {_format_percent(metric)} "
-            f"({metric['numerator']}/{metric['denominator']})"
-        )
+        print(f"{name}: {_format_percent(metric)} ({metric['numerator']}/{metric['denominator']})")
     print(f"Results: {args.output_dir.resolve()}")
 
 

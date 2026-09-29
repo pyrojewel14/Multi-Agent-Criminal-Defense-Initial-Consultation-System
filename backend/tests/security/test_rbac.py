@@ -9,9 +9,9 @@ Tests cover:
 6. get_user_from_request: Reading user back from request state
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from fastapi import HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
 
@@ -27,7 +27,6 @@ from app.security.rbac import (
     require_lawyer,
     require_roles,
 )
-
 
 # ---------------------------------------------------------------------------
 # RoleChecker
@@ -84,9 +83,7 @@ class TestGetCurrentUser:
     @pytest.mark.asyncio
     async def test_valid_token_returns_user_dict(self):
         token = create_access_token(user_id="user-001", role="client")
-        credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer", credentials=token
-        )
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
         result = await get_current_user(credentials)
         assert result["user_id"] == "user-001"
         assert result["role"] == "client"
@@ -100,9 +97,7 @@ class TestGetCurrentUser:
 
     @pytest.mark.asyncio
     async def test_invalid_token_raises_401(self):
-        credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer", credentials="invalid-token"
-        )
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="invalid-token")
         with pytest.raises(HTTPException) as exc_info:
             await get_current_user(credentials)
         assert exc_info.value.status_code == 401
@@ -113,9 +108,7 @@ class TestGetCurrentUser:
         from app.security.jwt import create_refresh_token
 
         refresh_token = create_refresh_token("user-001")
-        credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer", credentials=refresh_token
-        )
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=refresh_token)
         with pytest.raises(HTTPException) as exc_info:
             await get_current_user(credentials)
         assert exc_info.value.status_code == 401
@@ -249,9 +242,7 @@ class TestGetOptionalUser:
         """A refresh token returns None (only access tokens are accepted)."""
         from app.security.jwt import create_refresh_token
 
-        credentials = HTTPAuthorizationCredentials(
-            scheme="Bearer", credentials=create_refresh_token("user-001")
-        )
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=create_refresh_token("user-001"))
         result = await get_optional_user(credentials)
         assert result is None
 
@@ -273,6 +264,7 @@ class TestGetUserFromRequest:
     @pytest.mark.asyncio
     async def test_no_user_attribute(self):
         """When request.state has no 'user' attribute, return None."""
+
         # Use a real object with no attribute 'user' to exercise the getattr default
         class _NoUserState:
             pass

@@ -9,6 +9,7 @@ Redis-SQLite 并发数据一致性测试脚本
 5. 会话关闭与状态同步 - 验证删除/关闭操作的一致性
 """
 
+# ruff: noqa: E402 - 脚本模式先配置项目导入路径
 import asyncio
 import json
 import sys
@@ -16,7 +17,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List
 
 import pytest
 
@@ -26,19 +27,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 # 使用 session 级别事件循环，避免模块级单例（Redis 连接池等）跨测试失效
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.db_config import AsyncSessionLocal, async_engine, init_db  # noqa: E402
-from app.db.redis_config import (  # noqa: E402
+from app.consultation.state import validate_consultation_state
+from app.infrastructure.database.db import AsyncSessionLocal, async_engine, init_db  # noqa: E402
+from app.infrastructure.database.redis import (  # noqa: E402
     close_redis,
     connect_redis,
     get_redis_cache_json,
     init_redis,
     set_redis_cache,
 )
-from app.models.user import (  # noqa: E402
-    Base,
+from app.models import (  # noqa: E402
     Consultation,
     ConsultationMessage,
     ConsultationStatus,
@@ -46,7 +47,6 @@ from app.models.user import (  # noqa: E402
     UserRole,
 )
 from app.security.jwt import hash_password
-from app.state.consultation_state import validate_consultation_state
 
 
 # ============================================================
@@ -191,8 +191,6 @@ async def test_concurrent_session_creation():
     async def create_single_session(user: User, index: int) -> dict:
         """单个用户创建会话的模拟"""
         session_id = f"test_session_{index}_{uuid.uuid4().hex[:8]}"
-        consultation_id = str(uuid.uuid4())
-
         # 模拟 consultation.py 中 create_session 的逻辑
         # 1. 写入 SQLite
         async with AsyncSessionLocal() as db:
@@ -373,7 +371,7 @@ async def test_concurrent_message_on_same_session():
     # 并发执行
     start = time.time()
     tasks = [send_concurrent_message(i) for i in range(num_concurrent)]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    await asyncio.gather(*tasks, return_exceptions=True)
     elapsed = time.time() - start
 
     # 验证最终状态
@@ -441,14 +439,16 @@ async def test_cache_expiry_consistency():
         await db.commit()
 
     # 写入 Redis，设置极短 TTL
-    state = validate_consultation_state({
-        "consultation_id": consultation_id,
-        "user_id": user.id,
-        "session_id": session_id,
-        "consent_given": True,
-        "facts_raw": ["测试事实1"],
-        "current_agent": "FactDigger",
-    })
+    state = validate_consultation_state(
+        {
+            "consultation_id": consultation_id,
+            "user_id": user.id,
+            "session_id": session_id,
+            "consent_given": True,
+            "facts_raw": ["测试事实1"],
+            "current_agent": "FactDigger",
+        }
+    )
     await set_redis_cache(f"session:{session_id}", state, expire=3)  # 3 秒过期
 
     # 验证 Redis 有数据
@@ -616,7 +616,7 @@ async def test_three_layer_consistency():
     """测试 Orchestrator 内存 / Redis / SQLite 三层状态一致性"""
     test_name = "三层存储一致性 (内存/Redis/SQLite)"
 
-    from app.orchestrator.workflow import ConsultationOrchestrator
+    from app.consultation.workflow import ConsultationOrchestrator
 
     orchestrator = ConsultationOrchestrator()
 
@@ -698,8 +698,6 @@ async def test_three_layer_consistency():
     redis_facts = len(redis_state.get("facts_raw", [])) if redis_state else 0
 
     memory_redis_match = memory_facts == redis_facts
-    redis_sqlite_consistent = redis_facts >= db_msg_count  # Redis 可能包含初始事实
-
     # 检测：Orchestrator 内存和 Redis 是否同步
     # 注意：当前代码中 update_session_context 使用 dict.update()，
     # 如果并发调用可能导致部分更新
@@ -756,10 +754,8 @@ async def test_cache_penetration():
         # 但 consultation.py 中没有从 SQLite 回填 Redis 的逻辑
         return {"key": key, "redis_hit": redis_result is not None, "elapsed": elapsed}
 
-    start = time.time()
     tasks = [query_nonexistent(k) for k in non_existent_ids]
     results = await asyncio.gather(*tasks)
-    total_elapsed = time.time() - start
 
     # 所有查询都应该 miss
     all_miss = all(not r["redis_hit"] for r in results)
@@ -1138,7 +1134,7 @@ async def main():
         print(f"\n[运行] {name}...")
         try:
             if not redis_available and "Redis" in name:
-                print(f"  [跳过] Redis 不可用")
+                print("  [跳过] Redis 不可用")
                 report.add_result(name, False, "Redis 不可用，测试跳过")
                 continue
             await test_func()

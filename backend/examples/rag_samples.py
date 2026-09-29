@@ -15,17 +15,16 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from app.law_retrieval import (
-    _extract_article_number_from_text,
-    _verify_and_enrich_with_json,
-    search_laws_by_keyword,
-)
-from app.law_knowledge import (
+from app.knowledge.law_knowledge import (
     _build_article_index,
     _normalize_article_number,
     load_criminal_law_data,
 )
-
+from app.knowledge.law_retrieval import (
+    _extract_article_number_from_text,
+    _verify_and_enrich_with_json,
+    search_laws_by_keyword,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 QUERY_FILE = PROJECT_ROOT / "demos" / "rag" / "queries.json"
@@ -112,7 +111,7 @@ def _error_result(exc: Exception) -> dict[str, Any]:
 
 async def probe_dependencies(probe_live: bool) -> dict[str, Any]:
     """探测本地知识库、Chroma、BM25、HyDE 和 embedding 状态。"""
-    from app.rag.vector_store import get_vector_store
+    from app.knowledge.rag.vector_store import get_vector_store
 
     law_data = load_criminal_law_data()
     article_count = sum(len(chapter.get("articles", [])) for chapter in law_data.get("chapters", []))
@@ -140,9 +139,7 @@ async def probe_dependencies(probe_live: bool) -> dict[str, Any]:
                 str(key).lower(): value
                 for key, value in Counter(item.get("is_public") for item in collection_metadata).items()
             },
-            "source_counts": dict(
-                Counter(item.get("original_filename") for item in collection_metadata)
-            ),
+            "source_counts": dict(Counter(item.get("original_filename") for item in collection_metadata)),
         },
         "bm25": {
             "status": "available" if bm25 is not None else "unavailable_empty_corpus",
@@ -152,9 +149,7 @@ async def probe_dependencies(probe_live: bool) -> dict[str, Any]:
         "vector_search": {
             "status": "not_run",
             "reason": (
-                "等待 live 样例执行"
-                if collection_count
-                else "当前 Chroma collection 为空，不能产生真实向量 top-k"
+                "等待 live 样例执行" if collection_count else "当前 Chroma collection 为空，不能产生真实向量 top-k"
             ),
         },
     }
@@ -167,7 +162,7 @@ async def probe_dependencies(probe_live: bool) -> dict[str, Any]:
     probe_query = "故意伤害他人身体"
 
     try:
-        from app.rag.rag_service import RagService
+        from app.knowledge.rag.rag_service import RagService
 
         service = RagService(user_id="phase3-rag-samples", include_public=True)
         hypothetical = await service.generate_hypothetical_document(probe_query)
@@ -181,7 +176,7 @@ async def probe_dependencies(probe_live: bool) -> dict[str, Any]:
         dependencies["hyde"] = _error_result(exc)
 
     try:
-        from app.utils.factory import embed_model
+        from app.infrastructure.llm.factory import embed_model
 
         vector = await asyncio.to_thread(embed_model.embed_query, probe_query)
         dependencies["embedding"] = {
@@ -201,8 +196,8 @@ async def _run_live_rag_sample(
     top_k: int,
 ) -> dict[str, Any]:
     """按真实 RAG 子链运行单条查询并记录各层结果。"""
-    from app.rag.rag_service import RagService, _deduplicate_documents
-    from app.rag.reorder_service import reorder_service
+    from app.knowledge.rag.rag_service import RagService, _deduplicate_documents
+    from app.knowledge.rag.reorder_service import reorder_service
 
     service = RagService(user_id=LIVE_VALIDATION_USER_ID, include_public=True)
     hypothetical = await service.generate_hypothetical_document(query)
@@ -225,10 +220,7 @@ async def _run_live_rag_sample(
             "model": reorder_service.config.model_name,
         }
     else:
-        ranked_items = [
-            {"document": content, "similarity": None}
-            for content in contents
-        ]
+        ranked_items = [{"document": content, "similarity": None} for content in contents]
         reranker = {
             "status": "fallback_to_retrieval_order",
             "error": rerank_result.get("error", "未知 rerank 错误"),
@@ -255,11 +247,7 @@ async def _run_live_rag_sample(
         )
         ranked_metadata.append(
             {
-                "rerank_score": (
-                    round(float(item["similarity"]), 6)
-                    if item.get("similarity") is not None
-                    else None
-                ),
+                "rerank_score": (round(float(item["similarity"]), 6) if item.get("similarity") is not None else None),
                 "metadata": content_to_metadata.get(content, {}),
             }
         )
@@ -341,7 +329,7 @@ async def _rank_candidates(
     if not with_reranker:
         return candidates, {"status": "not_run"}
 
-    from app.rag.reorder_service import reorder_service
+    from app.knowledge.rag.reorder_service import reorder_service
 
     document_map = {_candidate_text(law): law for law in candidates}
     result = await reorder_service.reorder_documents(query, list(document_map))
@@ -399,8 +387,7 @@ async def run_samples(
 
         expected_normalized = _normalize_article_number(sample["expected_article_number"])
         fallback_expected_hit = any(
-            _normalize_article_number(item["article_number"]) == expected_normalized
-            for item in actual_top_k
+            _normalize_article_number(item["article_number"]) == expected_normalized for item in actual_top_k
         )
 
         live_result = {
@@ -432,8 +419,7 @@ async def run_samples(
             for item in live_result["live_rag_top_k"]
         )
         live_json_verified = any(
-            _normalize_article_number(item["article_number"]) == expected_normalized
-            and item["json_verified"]
+            _normalize_article_number(item["article_number"]) == expected_normalized and item["json_verified"]
             for item in live_result["live_rag_top_k"]
         )
 
@@ -478,8 +464,7 @@ async def run_samples(
         )
 
     live_reranker_statuses = [
-        sample.get("layers", {}).get("reranker", {}).get("status", "not_run")
-        for sample in sample_results
+        sample.get("layers", {}).get("reranker", {}).get("status", "not_run") for sample in sample_results
     ]
     dependencies["reranker"] = {
         "status": (

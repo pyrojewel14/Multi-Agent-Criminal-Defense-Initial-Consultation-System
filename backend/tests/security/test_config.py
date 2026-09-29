@@ -1,6 +1,7 @@
 import os
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from app.security.config import (
     JWTConfig,
@@ -71,6 +72,7 @@ class TestJWTConfig:
     def test_short_secret_key_warning(self, caplog):
         """测试短密钥警告"""
         import logging
+
         caplog.set_level(logging.WARNING)
 
         config = JWTConfig(secret_key="short")
@@ -83,11 +85,13 @@ class TestJWTConfigSingleton:
     def setup_method(self):
         """每个测试前重置全局配置"""
         import app.security.config as config_module
+
         config_module.jwt_config = None
 
     def teardown_method(self):
         """每个测试后重置全局配置"""
         import app.security.config as config_module
+
         config_module.jwt_config = None
 
     def test_get_jwt_config_returns_instance(self):
@@ -116,19 +120,24 @@ class TestJWTConfigFromEnv:
     def setup_method(self):
         """每个测试前重置"""
         import app.security.config as config_module
+
         config_module.jwt_config = None
 
     def teardown_method(self):
         """每个测试后重置"""
         import app.security.config as config_module
+
         config_module.jwt_config = None
 
-    @patch.dict(os.environ, {
-        "JWT_SECRET_KEY": "env-secret-key-with-at-least-32-characters-long",
-        "JWT_ALGORITHM": "HS384",
-        "JWT_ACCESS_TOKEN_EXPIRE_MINUTES": "45",
-        "JWT_REFRESH_TOKEN_EXPIRE_DAYS": "21",
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "JWT_SECRET_KEY": "env-secret-key-with-at-least-32-characters-long",
+            "JWT_ALGORITHM": "HS384",
+            "JWT_ACCESS_TOKEN_EXPIRE_MINUTES": "45",
+            "JWT_REFRESH_TOKEN_EXPIRE_DAYS": "21",
+        },
+    )
     def test_load_from_env(self):
         """测试从环境变量加载"""
         config = JWTConfig()

@@ -14,10 +14,9 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from app.agents.human_alert import human_alert_node
-from app.orchestrator.workflow import ConsultationOrchestrator
-from app.state.consultation_state import ConsultationState
-
+from app.consultation.agents.human_alert import human_alert_node
+from app.consultation.state import ConsultationState
+from app.consultation.workflow import ConsultationOrchestrator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CASE_DIR = PROJECT_ROOT / "demos" / "consultation" / "cases"
@@ -106,7 +105,7 @@ async def run_case(case_id: str = "ordinary_assault") -> dict[str, Any]:
             {
                 "stage": "fact_and_law_contract",
                 "agent": "FactDigger",
-                "facts_structured": state["facts_structured"],
+                "facts_structured": state.get("facts_structured", {}),
                 "candidate_laws": laws,
                 "facts_coverage_rate": state["facts_coverage_rate"],
                 "pending_questions": state["pending_questions"],
@@ -164,13 +163,13 @@ async def run_case(case_id: str = "ordinary_assault") -> dict[str, Any]:
     }
 
     with (
-        patch("app.orchestrator.workflow.receptionist_node", receptionist),
-        patch("app.orchestrator.workflow.fact_intake_node", fact_intake),
-        patch("app.orchestrator.workflow.fact_coverage_node", fact_digger),
-        patch("app.orchestrator.workflow.law_ref_node", law_ref),
-        patch("app.orchestrator.workflow.risk_assessor_node", risk_assessor),
-        patch("app.orchestrator.workflow.service_planner_node", service_planner),
-        patch("app.orchestrator.workflow.human_alert_node", human_alert_node),
+        patch("app.consultation.workflow.receptionist_node", receptionist),
+        patch("app.consultation.workflow.fact_intake_node", fact_intake),
+        patch("app.consultation.workflow.fact_coverage_node", fact_digger),
+        patch("app.consultation.workflow.law_ref_node", law_ref),
+        patch("app.consultation.workflow.risk_assessor_node", risk_assessor),
+        patch("app.consultation.workflow.service_planner_node", service_planner),
+        patch("app.consultation.workflow.human_alert_node", human_alert_node),
     ):
         orchestrator = ConsultationOrchestrator()
         await orchestrator.start_workflow(initial_state)

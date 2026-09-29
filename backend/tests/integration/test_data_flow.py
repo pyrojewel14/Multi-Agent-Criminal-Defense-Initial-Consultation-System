@@ -1,5 +1,7 @@
 """验证修复后的数据流向：data_source 字段在 applied_laws 构建和覆盖率计算中的传递。"""
 
+# ruff: noqa: E402 - 脚本模式按验证阶段导入模块
+
 import sys
 from pathlib import Path
 
@@ -13,7 +15,7 @@ print("=" * 60)
 print("2. 测试 _build_applied_laws_from_structured (主路径)")
 print("=" * 60)
 
-from app.agents.law_ref import _build_applied_laws_from_structured
+from app.consultation.agents.law_ref import _build_applied_laws_from_structured
 
 matched_laws = [
     {
@@ -80,17 +82,22 @@ applied_laws = _build_applied_laws_from_structured(structured_laws, matched_laws
 for i, law in enumerate(applied_laws):
     ds = law.get("data_source", "<缺失>")
     is_unverified = law.get("data_source") == "rag_unverified"
-    print(f"  法条 {i+1}: charge_name={law['charge_name']}, "
-          f"article_number={law['article_number']}, data_source={ds}, "
-          f"is_unverified={is_unverified}")
+    print(
+        f"  法条 {i + 1}: charge_name={law['charge_name']}, "
+        f"article_number={law['article_number']}, data_source={ds}, "
+        f"is_unverified={is_unverified}"
+    )
 
 # 验证关键断言
-assert applied_laws[0]["data_source"] == "rag_verified", \
+assert applied_laws[0]["data_source"] == "rag_verified", (
     f"故意伤害罪应回填 rag_verified，实际为 {applied_laws[0]['data_source']}"
-assert applied_laws[1]["data_source"] == "rag_unverified", \
+)
+assert applied_laws[1]["data_source"] == "rag_unverified", (
     f"盗窃罪应回填 rag_unverified，实际为 {applied_laws[1]['data_source']}"
-assert applied_laws[2]["data_source"] == "llm_extracted", \
+)
+assert applied_laws[2]["data_source"] == "llm_extracted", (
     f"寻衅滋事罪无匹配来源，应为 llm_extracted，实际为 {applied_laws[2]['data_source']}"
+)
 assert applied_laws[0]["required_elements"] == ["故意", "伤害行为", "轻伤以上后果"]
 assert applied_laws[0]["elements"] == applied_laws[0]["required_elements"]
 assert applied_laws[0]["elements_matched"] == ["故意", "伤害行为"]
@@ -107,7 +114,8 @@ print("3. 测试 _analyze_coverage (覆盖率计算)")
 print("=" * 60)
 
 import asyncio
-from app.agents.fact_digger import _analyze_coverage
+
+from app.consultation.agents.fact_digger import _analyze_coverage
 
 facts_structured = {
     "behavior_sequence": ["推搡对方", "对方倒地"],
@@ -142,7 +150,7 @@ mixed_applied_laws = [
 ]
 
 result_a = asyncio.run(_analyze_coverage(facts_structured, mixed_applied_laws))
-print(f"  场景 A (混合来源):")
+print("  场景 A (混合来源):")
 print(f"    source={result_a['source']}")
 print(f"    json_law_count={result_a.get('json_law_count', 'N/A')}")
 print(f"    rag_count={result_a.get('rag_count', 'N/A')}")
@@ -153,7 +161,9 @@ print(f"    missing_elements={result_a['missing_elements']}")
 
 # 验证：rag_unverified 应被过滤，只有 rag_verified 和 json_keyword 参与
 assert result_a.get("rag_count", 0) == 1, f"应过滤出 1 个 rag_unverified，实际 rag_count={result_a.get('rag_count')}"
-assert result_a.get("json_law_count", 0) == 2, f"应有 2 个可靠结果，实际 json_law_count={result_a.get('json_law_count')}"
+assert result_a.get("json_law_count", 0) == 2, (
+    f"应有 2 个可靠结果，实际 json_law_count={result_a.get('json_law_count')}"
+)
 print("  [PASS] 场景 A: rag_unverified 被正确过滤")
 
 # 场景 B: 全部为 rag_unverified
@@ -168,7 +178,7 @@ rag_only_laws = [
 ]
 
 result_b = asyncio.run(_analyze_coverage(facts_structured, rag_only_laws))
-print(f"  场景 B (全部 rag_unverified):")
+print("  场景 B (全部 rag_unverified):")
 print(f"    source={result_b['source']}")
 print(f"    rag_count={result_b.get('rag_count', 'N/A')}")
 print(f"    coverage_rate={result_b['coverage_rate']:.2f}")
@@ -179,7 +189,7 @@ print("  [PASS] 场景 B: 全部 rag_unverified 时正确返回 degraded")
 
 # 场景 C: 无 applied_laws
 result_c = asyncio.run(_analyze_coverage(facts_structured, []))
-print(f"  场景 C (无 applied_laws):")
+print("  场景 C (无 applied_laws):")
 print(f"    source={result_c['source']}")
 print(f"    coverage_rate={result_c['coverage_rate']:.2f}")
 

@@ -11,8 +11,8 @@ import json
 from typing import Any
 from unittest.mock import patch
 
-from app.orchestrator.workflow import ConsultationOrchestrator
-from app.state.consultation_state import ConsultationState
+from app.consultation.state import ConsultationState
+from app.consultation.workflow import ConsultationOrchestrator
 
 
 async def _receptionist(state: ConsultationState) -> ConsultationState:
@@ -85,12 +85,12 @@ async def run_demo() -> list[dict[str, Any]]:
     }
 
     with (
-        patch("app.orchestrator.workflow.receptionist_node", _receptionist),
-        patch("app.orchestrator.workflow.fact_intake_node", _fact_intake),
-        patch("app.orchestrator.workflow.law_ref_node", _law_ref),
-        patch("app.orchestrator.workflow.fact_coverage_node", _fact_digger),
-        patch("app.orchestrator.workflow.risk_assessor_node", _risk_assessor),
-        patch("app.orchestrator.workflow.service_planner_node", _service_planner),
+        patch("app.consultation.workflow.receptionist_node", _receptionist),
+        patch("app.consultation.workflow.fact_intake_node", _fact_intake),
+        patch("app.consultation.workflow.law_ref_node", _law_ref),
+        patch("app.consultation.workflow.fact_coverage_node", _fact_digger),
+        patch("app.consultation.workflow.risk_assessor_node", _risk_assessor),
+        patch("app.consultation.workflow.service_planner_node", _service_planner),
     ):
         orchestrator = ConsultationOrchestrator()
         await orchestrator.start_workflow(initial_state)

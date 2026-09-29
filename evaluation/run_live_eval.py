@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
-
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
 if str(BACKEND) not in sys.path:
@@ -30,19 +29,46 @@ LAW = BACKEND / "data/law_knowledge/criminal_law_chapters.json"
 _PUBLIC_CASE_IDS = {"ordinary_theft", "ordinary_injury", "missing_facts"}
 _PUBLIC_MODEL_NAMES = {"qwen3.5:0.8b", "qwen3-embedding:0.6b"}
 _FACT_FIELDS = {
-    "incident_time", "incident_location", "parties", "behavior_sequence", "consequence",
-    "evidence_mentioned", "arrest_status", "surrender", "victim_forgiveness", "prior_record",
+    "incident_time",
+    "incident_location",
+    "parties",
+    "behavior_sequence",
+    "consequence",
+    "evidence_mentioned",
+    "arrest_status",
+    "surrender",
+    "victim_forgiveness",
+    "prior_record",
 }
 _ROUTE_REASONS = {
-    "consent_given", "consent_missing", "alert_triggered", "facts_accepted",
-    "dependency_degraded", "max_loop_reached", "coverage_sufficient", "coverage_insufficient",
-    "risk_artifact_degraded", "risk_artifact_valid", "lawyer_revise_facts",
-    "lawyer_revise_risk", "lawyer_approved", "lawyer_decision_missing",
+    "consent_given",
+    "consent_missing",
+    "alert_triggered",
+    "facts_accepted",
+    "dependency_degraded",
+    "max_loop_reached",
+    "coverage_sufficient",
+    "coverage_insufficient",
+    "risk_artifact_degraded",
+    "risk_artifact_valid",
+    "lawyer_revise_facts",
+    "lawyer_revise_risk",
+    "lawyer_approved",
+    "lawyer_decision_missing",
 }
-_LAW_NUMBER = re.compile(r"^第(?:[0-9]{1,4}|[一二三四五六七八九十百千零〇]{1,8})条(?:之(?:[0-9]{1,2}|[一二三四五六七八九十]{1,4}))?$")
+_LAW_NUMBER = re.compile(
+    r"^第(?:[0-9]{1,4}|[一二三四五六七八九十百千零〇]{1,8})条(?:之(?:[0-9]{1,2}|[一二三四五六七八九十]{1,4}))?$"
+)
 _ERROR_TYPES = {
-    "RuntimeError", "TimeoutError", "ValueError", "KeyError", "TypeError",
-    "ConnectionError", "OSError", "LLMServiceException", "LLMTimeoutException",
+    "RuntimeError",
+    "TimeoutError",
+    "ValueError",
+    "KeyError",
+    "TypeError",
+    "ConnectionError",
+    "OSError",
+    "LLMServiceException",
+    "LLMTimeoutException",
     "SessionBudgetExceeded",
 }
 
@@ -122,8 +148,14 @@ def _ollama_tags(base_url: str) -> dict[str, Any]:
 
 
 def preflight(
-    *, base_url: str, model: str, embedding_model: str, index_dir: Path,
-    reranker_path: Path, law_path: Path, collection: str = "rag_collection",
+    *,
+    base_url: str,
+    model: str,
+    embedding_model: str,
+    index_dir: Path,
+    reranker_path: Path,
+    law_path: Path,
+    collection: str = "rag_collection",
     fetch_tags: Callable[[str], dict[str, Any]] = _ollama_tags,
 ) -> dict[str, Any]:
     """核验真实运行的模型和索引条件，不创建空 Chroma 库。"""
@@ -136,7 +168,11 @@ def preflight(
     except ValueError:
         port = None
         issues.append("ollama_url_invalid_port")
-    safe_base_url = f"http://{display_host}:{port or 11434}" if parsed.scheme == "http" and host in {"localhost", "127.0.0.1", "::1"} else None
+    safe_base_url = (
+        f"http://{display_host}:{port or 11434}"
+        if parsed.scheme == "http" and host in {"localhost", "127.0.0.1", "::1"}
+        else None
+    )
     if not safe_base_url:
         issues.append("non_loopback_ollama")
         tags: dict[str, Any] = {}
@@ -198,8 +234,7 @@ def preflight(
                 or candidate["embedding_model"] != embedding_model
                 or candidate["embedding_model_digest"] != models.get(embedding_model)
                 or not all(
-                    isinstance(candidate[key], str)
-                    and re.fullmatch(r"sha256:[a-f0-9]{64}", candidate[key])
+                    isinstance(candidate[key], str) and re.fullmatch(r"sha256:[a-f0-9]{64}", candidate[key])
                     for key in ("documents_sha256", "embeddings_sha256")
                 )
             ):
@@ -240,26 +275,41 @@ def summarize_events(events: list[dict[str, Any]]) -> dict[str, Any]:
         digest = content.get("sha256") if isinstance(content, dict) else None
         origin = event.get("metadata", {}).get("origin", {})
         origin_digest = origin.get("sha256") if isinstance(origin, dict) else None
-        if isinstance(rank, int) and rank > 0 and isinstance(digest, str) and re.fullmatch(r"sha256:[a-f0-9]{64}", digest):
-            ranked.append({
-                "rank": rank,
-                "document_id": digest,
-                "source": "rag_returned_content",
-                "source_id": origin_digest if isinstance(origin_digest, str) and re.fullmatch(r"sha256:[a-f0-9]{64}", origin_digest) else None,
-            })
+        if (
+            isinstance(rank, int)
+            and rank > 0
+            and isinstance(digest, str)
+            and re.fullmatch(r"sha256:[a-f0-9]{64}", digest)
+        ):
+            ranked.append(
+                {
+                    "rank": rank,
+                    "document_id": digest,
+                    "source": "rag_returned_content",
+                    "source_id": origin_digest
+                    if isinstance(origin_digest, str) and re.fullmatch(r"sha256:[a-f0-9]{64}", origin_digest)
+                    else None,
+                }
+            )
     observed = any(event.get("event_type") == "rag_ranked_result_set" for event in events)
     return {
         "llm_attempts": sum(event.get("event_type") == "llm" for event in events),
         "rag_calls": sum(event.get("event_type") == "rag" for event in events),
-        "route_reasons": [reason for event in events if (reason := _safe_choice(event.get("route_reason"), _ROUTE_REASONS))],
+        "route_reasons": [
+            reason for event in events if (reason := _safe_choice(event.get("route_reason"), _ROUTE_REASONS))
+        ],
         "retrieval_top_k_status": "observed" if observed else "unavailable",
         "retrieval_top_k": sorted(ranked, key=lambda item: item["rank"]),
     }
 
 
 async def run_cases(
-    cases: list[dict[str, str]], execute: Callable[[dict[str, str]], Awaitable[dict[str, Any]]],
-    output: Path, *, metadata: dict[str, Any] | None = None, mode: str = "contract-test",
+    cases: list[dict[str, str]],
+    execute: Callable[[dict[str, str]], Awaitable[dict[str, Any]]],
+    output: Path,
+    *,
+    metadata: dict[str, Any] | None = None,
+    mode: str = "contract-test",
 ) -> dict[str, Any]:
     """逐例落盘，异常样例也保留在原位并继续执行。"""
     result: dict[str, Any] = {
@@ -277,9 +327,11 @@ async def run_cases(
             row = await execute(case)
         except Exception as exc:
             row = _safe_failure(exc, "execute_case")
-        result["cases"].append({"id": _safe_case_id(case["id"]), **row, "duration_ms": round((time.monotonic() - started) * 1000, 3)})
+        result["cases"].append(
+            {"id": _safe_case_id(case["id"]), **row, "duration_ms": round((time.monotonic() - started) * 1000, 3)}
+        )
         output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    result["aggregate"] = {
+    aggregate: dict[str, Any] = {
         "completed": len(result["cases"]),
         "errors": sum(row["status"] == "error" for row in result["cases"]),
         "degraded": sum(row.get("workflow_status") == "degraded" for row in result["cases"]),
@@ -289,7 +341,8 @@ async def run_cases(
         "rag_calls": sum(row.get("rag_calls", 0) for row in result["cases"]),
         "latency_ms_total": round(sum(row["duration_ms"] for row in result["cases"]), 3),
     }
-    result["aggregate"]["degraded_rate"] = result["aggregate"]["degraded"] / len(cases) if cases else None
+    aggregate["degraded_rate"] = aggregate["degraded"] / len(cases) if cases else None
+    result["aggregate"] = aggregate
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
 
@@ -304,7 +357,7 @@ def _load_cases() -> list[dict[str, str]]:
 
 
 def _metadata(pre: dict[str, Any], cases: list[dict[str, str]]) -> dict[str, Any]:
-    from app.utils.llm_gateway import LLMCallPolicy
+    from app.infrastructure.llm.gateway import LLMCallPolicy
 
     policy = LLMCallPolicy.from_env()
     prompt_dir = BACKEND / "app/prompts"
@@ -326,16 +379,23 @@ def _metadata(pre: dict[str, Any], cases: list[dict[str, str]]) -> dict[str, Any
 
 
 async def _execute_chain(case: dict[str, str]) -> dict[str, Any]:
-    from app.observability.tracing import trace_store
-    from app.orchestrator.workflow import ConsultationOrchestrator
+    from app.consultation.state import ConsultationState
+    from app.consultation.workflow import ConsultationOrchestrator
+    from app.infrastructure.observability.tracing import trace_store
 
     session_id = f"live-eval-{uuid.uuid4().hex}"
-    state = {
-        "session_id": session_id, "consultation_id": session_id,
-        "user_id": "live-eval-public", "user_role": "client", "user_type": "suspect",
-        "consent_given": True, "facts_raw": [], "current_input": None,
+    state: ConsultationState = {
+        "session_id": session_id,
+        "consultation_id": session_id,
+        "user_id": "live-eval-public",
+        "user_role": "client",
+        "user_type": "suspect",
+        "consent_given": True,
+        "facts_raw": [],
+        "current_input": None,
         "conversation_history": [{"agent": "Receptionist", "case_city": "上海"}],
-        "fact_law_loop_count": 0, "fact_law_failure_streak": 0,
+        "fact_law_loop_count": 0,
+        "fact_law_failure_streak": 0,
     }
     orchestrator = ConsultationOrchestrator()
     try:
@@ -357,18 +417,50 @@ async def _execute_chain(case: dict[str, str]) -> dict[str, Any]:
     elif next_node == "fact_intake":
         status = "wait_for_user"
     else:
-        status = _safe_choice(next_node, {"receptionist", "fact_intake", "law_ref", "fact_digger", "risk_assessor", "service_planner", "human_review", "human_alert", "wait_for_user"}) or "end"
+        status = (
+            _safe_choice(
+                next_node,
+                {
+                    "receptionist",
+                    "fact_intake",
+                    "law_ref",
+                    "fact_digger",
+                    "risk_assessor",
+                    "service_planner",
+                    "human_review",
+                    "human_alert",
+                    "wait_for_user",
+                },
+            )
+            or "end"
+        )
     return {
         "status": status,
-        "workflow_status": _safe_choice(final.get("workflow_status"), {"degraded", "closed", "completed", "repair_required"}),
-        "law_search_status": _safe_choice(final.get("law_search_status"), {"success", "missing_facts", "no_law_match", "dependency_failure"}),
+        "workflow_status": _safe_choice(
+            final.get("workflow_status"), {"degraded", "closed", "completed", "repair_required"}
+        ),
+        "law_search_status": _safe_choice(
+            final.get("law_search_status"), {"success", "missing_facts", "no_law_match", "dependency_failure"}
+        ),
         "facts_fields": sorted(key for key in (final.get("facts_structured") or {}) if key in _FACT_FIELDS),
-        "laws": [{"article_number": number if isinstance(number, str) and _LAW_NUMBER.fullmatch(number) else None,
-                  "data_source": _safe_choice(law.get("data_source"), {"rag_unverified", "llm_extracted", "rag_verified", "json_keyword"})}
-                 for law in final.get("applied_laws", []) if isinstance(law, dict)
-                 for number in [law.get("article_number")]],
-        "coverage": final.get("facts_coverage_rate") if isinstance(final.get("facts_coverage_rate"), (int, float)) and not isinstance(final.get("facts_coverage_rate"), bool) else None,
-        "awaiting_lawyer_review": final.get("awaiting_lawyer_review") if isinstance(final.get("awaiting_lawyer_review"), bool) else None,
+        "laws": [
+            {
+                "article_number": number if isinstance(number, str) and _LAW_NUMBER.fullmatch(number) else None,
+                "data_source": _safe_choice(
+                    law.get("data_source"), {"rag_unverified", "llm_extracted", "rag_verified", "json_keyword"}
+                ),
+            }
+            for law in final.get("applied_laws", [])
+            if isinstance(law, dict)
+            for number in [law.get("article_number")]
+        ],
+        "coverage": final.get("facts_coverage_rate")
+        if isinstance(final.get("facts_coverage_rate"), (int, float))
+        and not isinstance(final.get("facts_coverage_rate"), bool)
+        else None,
+        "awaiting_lawyer_review": final.get("awaiting_lawyer_review")
+        if isinstance(final.get("awaiting_lawyer_review"), bool)
+        else None,
         "alert_triggered": final.get("alert_triggered") if isinstance(final.get("alert_triggered"), bool) else None,
         "artifact_results": _safe_artifact_results(final.get("artifact_results")),
         **summary,
@@ -376,8 +468,9 @@ async def _execute_chain(case: dict[str, str]) -> dict[str, Any]:
 
 
 async def _run_ablation(cases: list[dict[str, str]], output: Path, metadata: dict[str, Any]) -> dict[str, Any]:
-    from app.agents.receptionist import _confirm_identity
-    from app.observability.tracing import trace_span, trace_store
+    from app.consultation.agents.receptionist import _confirm_identity
+    from app.consultation.state import ConsultationState
+    from app.infrastructure.observability.tracing import trace_span, trace_store
     from app.security.disclaimer import DISCLAIMER_PREFIX, disclaimer
 
     async def execute(case: dict[str, str]) -> dict[str, Any]:
@@ -385,10 +478,10 @@ async def _run_ablation(cases: list[dict[str, str]], output: Path, metadata: dic
         template = disclaimer.inject("请选择您的身份类型：当事人、被害人或家属。")
         template_ms = round((time.monotonic() - template_start) * 1000, 3)
         session_id = f"reception-ablation-{uuid.uuid4().hex}"
-        state = {"session_id": session_id, "facts_raw": [case["input"]], "consent_given": True}
+        state: ConsultationState = {"session_id": session_id, "facts_raw": [case["input"]], "consent_given": True}
         llm_start = time.monotonic()
         failure: Exception | None = None
-        response: dict[str, Any] = {}
+        response: ConsultationState = {}
         try:
             with trace_span(trace_store, event_type="ablation", name="receptionist_identity", session_id=session_id):
                 response = await _confirm_identity(state)
@@ -398,24 +491,34 @@ async def _run_ablation(cases: list[dict[str, str]], output: Path, metadata: dic
         events = [event.to_dict() for event in trace_store.events() if event.session_id == session_id]
         if failure is not None:
             return {
-                **_safe_failure(failure, "receptionist_llm"), "template_latency_ms": template_ms,
-                "llm_latency_ms": llm_ms, "template_chars": len(template),
+                **_safe_failure(failure, "receptionist_llm"),
+                "template_latency_ms": template_ms,
+                "llm_latency_ms": llm_ms,
+                "template_chars": len(template),
                 "template_disclaimer": DISCLAIMER_PREFIX in template,
                 "template_llm_attempts": 0,
                 "llm_attempts": summarize_events(events)["llm_attempts"],
             }
+        if "final_output" not in response:
+            raise KeyError("final_output")
+        final_output = response["final_output"]
         return {
-            "status": "success", "template_latency_ms": template_ms,
-            "llm_latency_ms": llm_ms, "template_chars": len(template),
-            "llm_chars": len(response["final_output"]),
+            "status": "success",
+            "template_latency_ms": template_ms,
+            "llm_latency_ms": llm_ms,
+            "template_chars": len(template),
+            "llm_chars": len(final_output),
             "template_disclaimer": DISCLAIMER_PREFIX in template,
-            "llm_disclaimer": DISCLAIMER_PREFIX in response["final_output"],
-            "template_llm_attempts": 0, "llm_attempts": summarize_events(events)["llm_attempts"],
-            "llm_output_sha256": f"sha256:{hashlib.sha256(response['final_output'].encode()).hexdigest()}",
+            "llm_disclaimer": DISCLAIMER_PREFIX in final_output,
+            "template_llm_attempts": 0,
+            "llm_attempts": summarize_events(events)["llm_attempts"],
+            "llm_output_sha256": f"sha256:{hashlib.sha256(final_output.encode()).hexdigest()}",
         }
 
     return await run_cases(
-        cases, execute, output,
+        cases,
+        execute,
+        output,
         metadata={**metadata, "ablation": "Receptionist identity prompt: template vs production LLM"},
         mode="component-ablation",
     )
@@ -445,7 +548,8 @@ def main() -> int:
     paths = configure_runtime()
     base_url = os.environ["OLLAMA_BASE_URL"]
     pre = preflight(
-        base_url=base_url, model=os.environ["OLLAMA_MODEL_NAME"],
+        base_url=base_url,
+        model=os.environ["OLLAMA_MODEL_NAME"],
         embedding_model=os.environ["TEXT_EMBEDDING_MODEL_NAME"],
         index_dir=paths["index_dir"],
         reranker_path=paths["reranker_path"],
@@ -457,7 +561,13 @@ def main() -> int:
     if args.mode == "preflight":
         print(json.dumps(metadata, ensure_ascii=False, indent=2))
         return 0 if pre["ready"] else 2
-    required = [] if args.mode == "run" else [issue for issue in pre["issues"] if issue in {"ollama_unavailable", "model_missing", "non_loopback_ollama"}]
+    required = (
+        []
+        if args.mode == "run"
+        else [
+            issue for issue in pre["issues"] if issue in {"ollama_unavailable", "model_missing", "non_loopback_ollama"}
+        ]
+    )
     if args.mode == "run" and not pre["ready"]:
         required = pre["issues"]
     if required:

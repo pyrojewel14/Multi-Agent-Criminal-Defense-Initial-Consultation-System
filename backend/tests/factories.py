@@ -7,13 +7,13 @@ with sensible defaults that can be selectively overridden via ``**overrides``.
 import uuid
 from typing import Any, Dict
 
-from app.state.consultation_state import ConsultationState, validate_consultation_state
+from app.consultation.state import ConsultationState, validate_consultation_state
 
 
 def make_consultation_state(**overrides: Any) -> ConsultationState:
     """Build a ``ConsultationState`` dict with defaults, merged with overrides.
 
-    The keys and types mirror ``app.state.consultation_state.ConsultationState``.
+    The keys and types mirror ``app.consultation.state.ConsultationState``.
     """
     defaults = {
         "consultation_id": str(uuid.uuid4()),

@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models.user import Base, User, UserRole
+from app.models import Base, User, UserRole
 from app.security.jwt import verify_password
 from examples.phase9_demo_admin import (
     build_parser,
@@ -72,9 +72,7 @@ def test_parser_rejects_password_like_abbreviations(unsafe_option):
 
 
 def test_parser_accepts_explicit_password_environment_option():
-    args = build_parser().parse_args(
-        ["--confirm-local-demo", "--password-env", "PHASE9_ADMIN_PASSWORD"]
-    )
+    args = build_parser().parse_args(["--confirm-local-demo", "--password-env", "PHASE9_ADMIN_PASSWORD"])
 
     assert args.password_env == "PHASE9_ADMIN_PASSWORD"
 

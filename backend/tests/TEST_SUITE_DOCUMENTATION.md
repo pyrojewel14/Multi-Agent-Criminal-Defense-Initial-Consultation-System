@@ -4,19 +4,17 @@
 
 ```text
 tests/
-├── agents/
-├── core/
-├── db/
+├── api/
+├── consultation/
 ├── demo/
 ├── errors/
+├── evaluation/
+├── examples/
+├── infrastructure/
 ├── integration/
+├── knowledge/
 ├── models/
-├── orchestrator/
-├── rag/
 ├── security/
-├── tools/
-├── utils/
-├── v1/
 ├── conftest.py
 └── factories.py
 ```
@@ -28,12 +26,12 @@ tests/
 ```bash
 cd backend
 .venv/bin/python -m pytest -q \
-  tests/agents/test_fact_digger.py \
-  tests/agents/test_law_ref.py \
-  tests/orchestrator/test_workflow.py \
-  tests/orchestrator/test_workflow_degraded.py \
-  tests/orchestrator/test_workflow_example.py \
-  tests/orchestrator/test_workflow_minimal.py \
+  tests/consultation/agents/test_fact_digger.py \
+  tests/consultation/agents/test_law_ref.py \
+  tests/consultation/test_workflow.py \
+  tests/consultation/test_workflow_degraded.py \
+  tests/consultation/test_workflow_example.py \
+  tests/consultation/test_workflow_minimal.py \
   tests/integration/test_data_flow.py \
   tests/demo/test_demo_complete.py
 ```

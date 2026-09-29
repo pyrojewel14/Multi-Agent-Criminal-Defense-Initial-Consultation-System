@@ -36,15 +36,9 @@ async def test_registered_handlers_keep_a_stable_error_envelope():
         unexpected_error = await client.get("/unexpected")
 
     assert app_error.status_code == 401
-    assert app_error.json() == {
-        "error": {"code": "UNAUTHORIZED", "message": "身份验证失败，请重新登录"}
-    }
+    assert app_error.json() == {"error": {"code": "UNAUTHORIZED", "message": "身份验证失败，请重新登录"}}
     assert validation_error.status_code == 422
-    assert validation_error.json() == {
-        "error": {"code": "VALIDATION_ERROR", "message": "请求参数校验失败"}
-    }
+    assert validation_error.json() == {"error": {"code": "VALIDATION_ERROR", "message": "请求参数校验失败"}}
     assert unexpected_error.status_code == 500
-    assert unexpected_error.json() == {
-        "error": {"code": "INTERNAL_ERROR", "message": "系统内部错误，请稍后重试"}
-    }
+    assert unexpected_error.json() == {"error": {"code": "INTERNAL_ERROR", "message": "系统内部错误，请稍后重试"}}
     assert "internal detail" not in unexpected_error.text

@@ -3,9 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from examples.demo_complete import REQUIRED_CASE_KEYS, run_case
 from app.security.sensitive_filter import detect_high_risk
-
+from examples.demo_complete import REQUIRED_CASE_KEYS, run_case
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CASE_DIR = PROJECT_ROOT / "demos" / "consultation" / "cases"
