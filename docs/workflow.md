@@ -1,6 +1,6 @@
 # LangGraph 多 Agent 工作流
 
-本文以 `backend/app/orchestrator/workflow.py`、`backend/app/agents/fact_digger.py`、`backend/app/agents/law_ref.py` 和相应定向测试为准。它描述控制流与状态契约，不证明外部模型、RAG 质量、法律结论或生产级恢复能力。
+本文以 `backend/app/consultation/workflow.py`、`backend/app/consultation/agents/fact_digger.py`、`backend/app/consultation/agents/law_ref.py` 和相应定向测试为准。它描述控制流与状态契约，不证明外部模型、RAG 质量、法律结论或生产级恢复能力。
 
 ## 角色与执行节点
 
@@ -108,13 +108,13 @@ approve/reject/close 通过同一个 application command 写路径推进 checkpo
 
 ```bash
 PYTHONNOUSERSITE=1 conda run -n Agent_dev pytest -q \
-  tests/agents/test_fact_digger.py \
-  tests/agents/test_law_ref.py \
-  tests/agents/test_legal_research.py \
-  tests/orchestrator/test_workflow.py \
-  tests/orchestrator/test_workflow_degraded.py \
-  tests/orchestrator/test_workflow_example.py \
-  tests/orchestrator/test_workflow_minimal.py \
+  tests/consultation/agents/test_fact_digger.py \
+  tests/consultation/agents/test_law_ref.py \
+  tests/consultation/agents/test_legal_research.py \
+  tests/consultation/test_workflow.py \
+  tests/consultation/test_workflow_degraded.py \
+  tests/consultation/test_workflow_example.py \
+  tests/consultation/test_workflow_minimal.py \
   tests/integration/test_data_flow.py
 ```
 

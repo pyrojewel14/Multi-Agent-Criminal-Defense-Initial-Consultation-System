@@ -48,8 +48,8 @@ wait_for_user -> fact_intake -> law_ref -> fact_digger
 cd backend
 .venv/bin/python -m pytest -q \
   tests/demo/test_demo_complete.py \
-  tests/orchestrator/test_workflow_example.py \
-  tests/orchestrator/test_workflow_minimal.py
+  tests/consultation/test_workflow_example.py \
+  tests/consultation/test_workflow_minimal.py
 ```
 
 ## 真实服务边界
