@@ -23,7 +23,7 @@
 
 三例生产 LangGraph/Ollama/RAG 试跑均逐例保存结果：[默认 deadline 的首轮](../evaluation/evidence/live_chain_default_timeout_initial_2026-09-23.json)有两例 `LLM_TIMEOUT`，一例 `wait_for_user`；[180/90 秒 deadline 的第二轮](../evaluation/evidence/live_chain_long_timeout_initial_2026-09-23.json)有一例 `LLM_TIMEOUT`，两例 `wait_for_user`。两轮用初版索引，top-k 缺少可观测来源。补充 `source` metadata 并新建索引后，[30/15 秒试跑](../evaluation/evidence/live_chain_with_source_failed_2026-09-23.json)三例均 `LLM_TIMEOUT`；其中一例真实进入 RAG，观察到 5 条返回结果及 5 个来源指纹。[同配置 180/90 秒对照](../evaluation/evidence/live_chain_with_source_long_deadline_failed_2026-09-23.json)有两例 `wait_for_user`，一例在 RAG 后以 `TypeError` 失败。修正该确定性缺陷后的[单次真实链回归](../evaluation/evidence/live_chain_with_source_after_mapping_fix_2026-09-23.json)在同一索引、同一 180/90 秒配置下三例均为 `wait_for_user`、0 例执行错误；第三例 RAG 返回 5 条及 5 个来源指纹，`law_search_status=success`，随后因覆盖度不足等待补充事实。五轮均未完成法律咨询闭环，不能据此报告法律准确率、覆盖率或稳定的 degraded rate；不同 deadline 的耗时和调用数不可直接比较。后三轮结果的 `llm_policy` 明确记录运行配置；前两轮生成于该 metadata 字段加入之前，其 deadline 以本段执行环境记录为准。
 
-第四轮的 `TypeError: unhashable type: 'dict'` 定位于 LawRef 结构化提取失败后的确定性回退：六条快照的 `elements` 是含 `name` 的对象，而 `_build_element_to_law_mapping` 曾直接用对象作字典键。已用 RED/GREEN 回归将映射键规范化为要件名称，并以真实六条快照运行 LawRef 回退分支。修复后同配置真实链回归未再出现该错误，并到达 `wait_for_user`；其后的律师审核、风险评估和服务方案路径仍未触发，不能据此声称端到端完成。
+第四轮的 `TypeError: unhashable type: 'dict'` 定位于当时的 LawRef 结构化提取失败后的确定性回退：六条快照的 `elements` 是含 `name` 的对象，而 `_build_element_to_law_mapping` 曾直接用对象作字典键。已用 RED/GREEN 回归将映射键规范化为要件名称，并以真实六条快照运行当时的 LawRef 回退分支。修复后同配置真实链回归未再出现该错误，并到达 `wait_for_user`；其后的律师审核、风险评估和服务方案路径仍未触发，不能据此声称端到端完成。该回退分支已在后续版本移除，本段仅记录当时的验证结果。
 
 完整链入口将生产 RAG 返回的前 5 条内容按排名记录为稳定指纹，可用时另记来源指纹（不保存正文或文件名），与最终 `applied_laws` 分开。重排失败回退时，这一顺序可能是原检索顺序；如果检索未运行，逐例 `retrieval_top_k_status` 为 `unavailable`。本次 5 条指纹只证明一次有条件的返回顺序，不能推断召回或法律质量。
 

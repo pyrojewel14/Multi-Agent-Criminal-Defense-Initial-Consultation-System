@@ -793,33 +793,6 @@ def _build_applied_laws_from_structured(
     return applied_laws
 
 
-def _build_applied_laws_from_matched(matched_laws: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """从匹配结果构建 applied_laws（LLM 提取失败时的回退路径）。
-
-    Args:
-        matched_laws: 匹配的法条列表
-
-    Returns:
-        构建好的 applied_laws 列表
-    """
-    applied_laws = []
-    for law in matched_laws:
-        charge_name = law.get("title", "")
-        required_elements = list(law.get("required_elements") or law.get("elements") or [])
-        applied_laws.append(
-            {
-                "charge_name": charge_name,
-                "article_number": law.get("article_number", ""),
-                "required_elements": required_elements,
-                "elements": required_elements,
-                "base_sentence": law.get("base_sentence", ""),
-                "charge_tags": law.get("charge_tags", []),
-                "data_source": _validated_data_source(law.get("data_source")),
-            }
-        )
-    return applied_laws
-
-
 async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
     """在受控 workflow 节点内运行有限法律检索循环并适配下游契约。"""
     from app.agents.legal_research import LawResearchResult, run_legal_research

@@ -8,7 +8,6 @@ import pytest
 
 from app.agents import law_ref
 from app.agents.law_ref import (
-    _build_applied_laws_from_matched,
     _build_applied_laws_from_structured,
     _build_article_index,
     _build_element_to_law_mapping,
@@ -1155,29 +1154,6 @@ def test_build_applied_laws_from_structured_rejects_unknown_source():
 
     assert applied[0]["data_source"] == "llm_extracted"
     assert applied[0]["required_elements"] == []
-
-
-# ---------------------------------------------------------------------------
-# _build_applied_laws_from_matched
-# ---------------------------------------------------------------------------
-
-
-def test_build_applied_laws_from_matched_basic():
-    """_build_applied_laws_from_matched should mirror matched_laws structure."""
-    matched = [
-        {
-            "article_number": "第264条",
-            "title": "盗窃罪",
-            "elements": ["A", "B"],
-            "base_sentence": "三年以下",
-            "charge_tags": ["盗窃"],
-            "data_source": "json_keyword",
-        }
-    ]
-    applied = _build_applied_laws_from_matched(matched)
-    assert applied[0]["charge_name"] == "盗窃罪"
-    assert applied[0]["data_source"] == "json_keyword"
-    assert applied[0]["elements"] == ["A", "B"]
 
 
 # ---------------------------------------------------------------------------

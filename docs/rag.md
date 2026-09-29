@@ -13,8 +13,8 @@ facts_structured
        去重与 reranker（失败时保留原顺序）
   -> 结构化法条 JSON 编号验证
   -> JSON 关键词补召回
-  -> LLM 结构化候选或直接候选回退
-  -> applied_laws + data_source + required_elements
+  -> 法律研究最终答案与 LawArtifact 校验
+  -> 校验通过后生成 applied_laws + data_source + required_elements
 ```
 
 RAG 权限范围使用 `state.user_id`，不能用 `session_id` 代替用户身份。旧 checkpoint 缺少 `user_id` 时跳过私有 RAG，避免跨用户检索。
@@ -86,7 +86,7 @@ clean clone 和 Docker 镜像仍不包含预填充 Chroma collection、reranker 
 | reranker 失败 | 保留原顺序 | 排序质量未验证 |
 | JSON 快照缺失/解析或 schema 失败 | 启动 preflight 直接失败 | 不允许以空验证库提供服务 |
 | RAG 编号未匹配 JSON | 标为 `rag_unverified` | 只供人工复核，不参与覆盖 |
-| LLM 结构化失败 | 从已召回候选构造结果 | 不改变候选原始来源 |
+| 最终答案的 LawArtifact 校验失败 | `applied_laws` 置空，标记 `dependency_failure` | 不把候选法条当作成功结果 |
 
 ## 数据治理要求
 

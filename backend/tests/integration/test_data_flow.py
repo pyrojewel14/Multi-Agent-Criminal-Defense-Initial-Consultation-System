@@ -28,14 +28,14 @@ for law, expected, desc in test_cases:
     print(f"  [{status}] {desc}: _is_unverified_rag_result({law}) = {result}, 期望 {expected}")
 
 # ============================================================
-# 2. 测试 _build_applied_laws_from_matched (回退路径)
+# 2. 测试 _build_applied_laws_from_structured (主路径)
 # ============================================================
 print()
 print("=" * 60)
-print("2. 测试 _build_applied_laws_from_matched (回退路径)")
+print("2. 测试 _build_applied_laws_from_structured (主路径)")
 print("=" * 60)
 
-from app.agents.law_ref import _build_applied_laws_from_matched
+from app.agents.law_ref import _build_applied_laws_from_structured
 
 matched_laws = [
     {
@@ -69,31 +69,6 @@ matched_laws = [
         # 无 data_source 字段 — 未经来源 schema 验证
     },
 ]
-
-applied_laws = _build_applied_laws_from_matched(matched_laws)
-
-for i, law in enumerate(applied_laws):
-    ds = law.get("data_source", "<缺失>")
-    is_unverified = _is_unverified_rag_result(law)
-    print(f"  法条 {i+1}: article_number={law['article_number']}, "
-          f"charge_name={law['charge_name']}, data_source={ds}, "
-          f"is_unverified={is_unverified}")
-
-# 验证关键断言
-assert applied_laws[0]["data_source"] == "rag_verified", "rag_verified 未透传"
-assert applied_laws[1]["data_source"] == "rag_unverified", "rag_unverified 未透传"
-assert applied_laws[2]["data_source"] == "llm_extracted", "无 data_source 时未降级为 llm_extracted"
-print("  [PASS] 所有 data_source 透传正确")
-
-# ============================================================
-# 3. 测试 _build_applied_laws_from_structured (主路径)
-# ============================================================
-print()
-print("=" * 60)
-print("3. 测试 _build_applied_laws_from_structured (主路径)")
-print("=" * 60)
-
-from app.agents.law_ref import _build_applied_laws_from_structured
 
 structured_laws = [
     {
@@ -146,11 +121,11 @@ assert applied_laws[2]["required_elements"] == []
 print("  [PASS] 所有 data_source 回填正确")
 
 # ============================================================
-# 4. 测试 _analyze_coverage (fact_digger 覆盖率计算)
+# 3. 测试 _analyze_coverage (fact_digger 覆盖率计算)
 # ============================================================
 print()
 print("=" * 60)
-print("4. 测试 _analyze_coverage (覆盖率计算)")
+print("3. 测试 _analyze_coverage (覆盖率计算)")
 print("=" * 60)
 
 import asyncio
