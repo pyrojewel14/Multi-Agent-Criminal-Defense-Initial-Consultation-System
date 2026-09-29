@@ -3,8 +3,8 @@ from typing import List, Optional
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.infrastructure.logging import get_logger
 from app.security.jwt import decode_token
-from app.utils.logger import get_logger
 
 _logger = get_logger("RBAC")
 

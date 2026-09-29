@@ -1,8 +1,8 @@
 from app.errors.codes import ErrorCode
-from app.utils.logger import get_logger
+from app.infrastructure.logging import get_logger
 
 
-class AppException(Exception):
+class AppException(Exception):  # noqa: N818 - 保留现有公开异常类型名称
     """应用层异常的基类。
 
     在实例化时自动以 ERROR 级别记录日志。子类声明静态类属性

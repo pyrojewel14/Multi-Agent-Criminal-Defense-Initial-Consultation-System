@@ -1,12 +1,10 @@
-from app.utils.logger import get_logger
+from app.infrastructure.logging import get_logger
 
 
 class DisclaimerService:
     """注入法律免责声明前缀的服务。"""
 
-    DISCLAIMER_PREFIX = (
-        "本内容为智能辅助生成，仅供参考，待律师确认后生效。\n\n"
-    )
+    DISCLAIMER_PREFIX = "本内容为智能辅助生成，仅供参考，待律师确认后生效。\n\n"
 
     def __init__(self):
         """初始化免责声明服务。"""

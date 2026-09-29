@@ -4,8 +4,8 @@ from typing import Optional
 import bcrypt
 import jwt
 
+from app.infrastructure.logging import get_logger
 from app.security.config import get_jwt_config
-from app.utils.logger import get_logger
 
 _logger = get_logger("Security.JWT")
 

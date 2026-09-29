@@ -9,22 +9,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from app.law_knowledge import preflight_law_knowledge
-from app.db.db_config import close_db, init_db
-from app.db.redis_config import close_redis, init_redis
+from app.api.v1.routers.auth import auth_router
+from app.api.v1.routers.consultation import router as consultation_router
+from app.api.v1.routers.consultation_history import consultation_router as history_router
+from app.api.v1.routers.knowledge_router import knowledge_router
+from app.api.v1.routers.lawyer import lawyer_session_router
+from app.api.v1.routers.lawyers import lawyer_management_router
+from app.api.v1.routers.users import user_router
+from app.consultation.workflow import orchestrator
 from app.errors.register import register_exception_handlers
-from app.rag.reorder_service import reorder_service
+from app.infrastructure.database.db import close_db, init_db
+from app.infrastructure.database.redis import close_redis, init_redis
+from app.infrastructure.llm.factory import chat_model_factory, embed_model_factory
+from app.infrastructure.logging import get_logger
+from app.knowledge.law_knowledge import preflight_law_knowledge
+from app.knowledge.rag.reorder_service import reorder_service
 from app.security.rbac import attach_user_to_request
-from app.utils.factory import chat_model_factory, embed_model_factory
-from app.utils.logger import get_logger
-from app.v1.router.auth import auth_router
-from app.v1.router.consultation import router as consultation_router
-from app.v1.router.consultation_history import consultation_router as history_router
-from app.v1.router.knowledge_router import knowledge_router
-from app.v1.router.lawyer import lawyer_session_router
-from app.v1.router.lawyers import lawyer_management_router
-from app.v1.router.users import user_router
-from app.orchestrator.workflow import orchestrator
 
 load_dotenv()
 
@@ -41,9 +41,7 @@ async def lifespan(_app: FastAPI):
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(checkpoint_path) as connection:
         # checkpoint 包含咨询原文；只反序列化 LangGraph 内置安全类型。
-        checkpointer = AsyncSqliteSaver(
-            connection, serde=JsonPlusSerializer(allowed_msgpack_modules=None)
-        )
+        checkpointer = AsyncSqliteSaver(connection, serde=JsonPlusSerializer(allowed_msgpack_modules=None))
         await checkpointer.setup()
         orchestrator.configure_checkpointer(checkpointer, persistent=True)
         try:

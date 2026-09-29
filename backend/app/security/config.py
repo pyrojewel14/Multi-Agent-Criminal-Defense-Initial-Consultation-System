@@ -1,23 +1,22 @@
-import os
-import secrets
 from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.utils.logger import get_logger
+from app.infrastructure.logging import get_logger
 
 _logger = get_logger("Security.JWTConfig")
 
 
 class JWTConfigError(Exception):
     """JWT 配置异常。"""
+
     pass
 
 
 class JWTConfig(BaseSettings):
     """JWT 配置类，使用 pydantic-settings 管理配置。"""
-    
+
     model_config = SettingsConfigDict(
         env_prefix="JWT_",
         env_file=".env",
@@ -26,29 +25,13 @@ class JWTConfig(BaseSettings):
         extra="ignore",
     )
 
-    secret_key: str = Field(
-        default="CHANGE_ME_IN_PRODUCTION",
-        description="JWT 签名密钥"
-    )
-    
-    algorithm: str = Field(
-        default="HS256",
-        description="JWT 签名算法"
-    )
-    
-    access_token_expire_minutes: int = Field(
-        default=15,
-        ge=1,
-        le=1440,
-        description="访问令牌有效期（分钟）"
-    )
-    
-    refresh_token_expire_days: int = Field(
-        default=7,
-        ge=1,
-        le=90,
-        description="刷新令牌有效期（天）"
-    )
+    secret_key: str = Field(default="CHANGE_ME_IN_PRODUCTION", description="JWT 签名密钥")
+
+    algorithm: str = Field(default="HS256", description="JWT 签名算法")
+
+    access_token_expire_minutes: int = Field(default=15, ge=1, le=1440, description="访问令牌有效期（分钟）")
+
+    refresh_token_expire_days: int = Field(default=7, ge=1, le=90, description="刷新令牌有效期（天）")
 
     @field_validator("secret_key")
     @classmethod
@@ -68,12 +51,11 @@ class JWTConfig(BaseSettings):
             _logger.warning(
                 "[SECURITY WARNING] 使用默认 JWT 密钥在生产环境是危险的！"
                 "请设置 JWT_SECRET_KEY 环境变量，使用安全的随机字符串。"
-                "生成方法: python -c \"import secrets; print(secrets.token_hex(32))\""
+                '生成方法: python -c "import secrets; print(secrets.token_hex(32))"'
             )
         elif len(v) < 32:
             _logger.warning(
-                "[SECURITY WARNING] JWT 密钥长度不足（< 32 字符）。"
-                "这是不安全的，请使用更长的密钥（至少 32 个字符）。"
+                "[SECURITY WARNING] JWT 密钥长度不足（< 32 字符）。这是不安全的，请使用更长的密钥（至少 32 个字符）。"
             )
         return v
 
@@ -123,7 +105,7 @@ def get_jwt_config() -> JWTConfig:
         JWTConfigError: 配置加载失败时抛出。
     """
     global jwt_config
-    
+
     if jwt_config is None:
         try:
             jwt_config = JWTConfig()
@@ -131,7 +113,7 @@ def get_jwt_config() -> JWTConfig:
         except Exception as e:
             _logger.error("【get_jwt_config】JWT 配置加载失败: %s", e)
             raise JWTConfigError(f"JWT 配置加载失败: {e}") from e
-    
+
     return jwt_config
 
 

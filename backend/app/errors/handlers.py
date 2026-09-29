@@ -4,14 +4,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.errors.codes import ErrorCode
 from app.errors.exceptions import AppException
-from app.utils.logger import get_logger
+from app.infrastructure.logging import get_logger
 
 _logger = get_logger("Errors")
 
 
-async def app_exception_handler(
-    request: Request, exc: AppException
-) -> JSONResponse:
+async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     """处理所有 AppException 子类的标准化错误响应。
 
     将异常的 code 和 message 映射到格式：
@@ -44,9 +42,7 @@ async def app_exception_handler(
     )
 
 
-async def validation_exception_handler(
-    request: Request, exc: Exception
-) -> JSONResponse:
+async def validation_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """处理 Pydantic/FastAPI 请求验证错误（422）。
 
     注册用于 RequestValidationError，记录哪些字段验证失败。
@@ -86,9 +82,7 @@ _HTTP_ERROR_CODES = {
 }
 
 
-async def http_exception_handler(
-    request: Request, exc: StarletteHTTPException
-) -> JSONResponse:
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     """将 FastAPI/Starlette HTTPException 映射为统一错误响应。"""
     code = _HTTP_ERROR_CODES.get(exc.status_code)
     if code is None:
@@ -108,9 +102,7 @@ async def http_exception_handler(
     )
 
 
-async def fallback_exception_handler(
-    request: Request, exc: Exception
-) -> JSONResponse:
+async def fallback_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """未处理异常的兜底处理器。
 
     返回 500 和通用消息；完整的堆栈跟踪会被记录，
