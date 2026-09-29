@@ -18,6 +18,7 @@ from app.agents.receptionist import receptionist_node
 from app.agents.risk_assessor import risk_assessor_node
 from app.agents.service_planner import service_planner_node
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
+from app.fact_data import get_fact_value
 from app.observability.tracing import trace_span, trace_store
 from app.schemas.law_schemas import CoverageCandidateSchema, LawDataSource
 from app.security.disclaimer import disclaimer
@@ -395,7 +396,7 @@ def _calculate_coverage_rate(state: ConsultationState) -> float:
                 element_key = element.get("key", element.get("name", ""))
             else:
                 element_key = str(element)
-            fact_value = _get_fact_value(facts_structured, element_key)
+            fact_value = get_fact_value(facts_structured, element_key)
 
             # 与 _analyze_coverage 一致：空列表和 False 算作已覆盖（弱要素）
             if fact_value is not None and fact_value != "":
@@ -405,33 +406,6 @@ def _calculate_coverage_rate(state: ConsultationState) -> float:
         return 0.0
 
     return covered_elements / total_elements
-
-
-def _get_fact_value(facts_structured: Dict[str, Any], key: str) -> Any:
-    """从结构化事实中获取指定键的值。
-
-    Args:
-        facts_structured: 结构化事实数据
-        key: 要获取的键名
-
-    Returns:
-        键对应的值，如果不存在返回 None
-    """
-    key_mapping = {
-        "time": "incident_time",
-        "location": "incident_location",
-        "parties": "parties",
-        "behavior": "behavior_sequence",
-        "consequence": "consequence",
-        "evidence": "evidence_mentioned",
-        "arrest": "arrest_status",
-        "surrender": "surrender",
-        "forgiveness": "victim_forgiveness",
-        "record": "prior_record",
-    }
-
-    mapped_key = key_mapping.get(key, key)
-    return facts_structured.get(mapped_key)
 
 
 class ConsultationOrchestrator:

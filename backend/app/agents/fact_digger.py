@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, List
 
 from pydantic import ValidationError
 
+from app.fact_data import get_fact_value, is_mapped_fact_key
 from app.schemas.law_schemas import (
     CoverageCandidateSchema,
     CoverageSource,
@@ -31,19 +32,6 @@ _logger = get_logger("Agent.FactDigger")
 
 COVERAGE_THRESHOLD = 0.8
 NON_FACT_RETRY_LIMIT = 3
-
-_FACT_KEY_MAPPING = {
-    "time": "incident_time",
-    "location": "incident_location",
-    "parties": "parties",
-    "behavior": "behavior_sequence",
-    "consequence": "consequence",
-    "evidence": "evidence_mentioned",
-    "arrest": "arrest_status",
-    "surrender": "surrender",
-    "forgiveness": "victim_forgiveness",
-    "record": "prior_record",
-}
 
 _NEGATION_MARKERS = (
     "没有",
@@ -255,8 +243,8 @@ async def _analyze_coverage(facts_structured: Dict[str, Any], applied_laws: List
                 element_name = str(element)
                 element_key = str(element)
 
-            canonical_key = element_key in _FACT_KEY_MAPPING or element_key in facts_structured
-            fact_value = _get_fact_value(facts_structured, element_key) if canonical_key else None
+            canonical_key = is_mapped_fact_key(element_key) or element_key in facts_structured
+            fact_value = get_fact_value(facts_structured, element_key) if canonical_key else None
             is_covered = (
                 fact_value is not None and fact_value != ""
                 if canonical_key
@@ -304,20 +292,6 @@ async def _analyze_coverage(facts_structured: Dict[str, Any], applied_laws: List
         "invalid_source_count": invalid_source_count,
         "missing_required_elements_count": missing_required_elements_count,
     }
-
-
-def _get_fact_value(facts_structured: Dict[str, Any], key: str) -> Any:
-    """从结构化事实中获取指定键的值。
-
-    Args:
-        facts_structured: 结构化事实数据
-        key: 要获取的键名
-
-    Returns:
-        键对应的值，如果不存在返回 None
-    """
-    mapped_key = _FACT_KEY_MAPPING.get(key, key)
-    return facts_structured.get(mapped_key)
 
 
 def _flatten_fact_text(value: Any) -> str:
@@ -823,7 +797,7 @@ async def fact_intake_node(state: "ConsultationState") -> "ConsultationState":
         extracted_facts,
         source=artifact_source,
     )
-    record_artifact_result(state, "fact", artifact_result)
+    record_artifact_result(state, "fact", artifact_result) # type: ignore
     if fact_artifact is not None:
         facts_structured = fact_artifact.model_dump(mode="json")
         _logger.debug("【fact_intake_node】提取结构化事实完成")

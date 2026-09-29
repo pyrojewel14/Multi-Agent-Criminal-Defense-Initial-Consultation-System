@@ -3,12 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from app.agents.law_ref import (
-    _build_article_index,
-    _extract_article_number_from_text,
-    _normalize_article_number,
-    load_criminal_law_data,
-)
+from app.law_retrieval import _extract_article_number_from_text
+from app.law_knowledge import _build_article_index, _normalize_article_number, load_criminal_law_data
 from examples.rag_samples import load_queries, run_samples
 
 

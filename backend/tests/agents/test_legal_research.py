@@ -7,7 +7,9 @@ import pytest
 
 from app.agents.legal_research import run_legal_research
 from app.agents.fact_digger import fact_coverage_node
-from app.agents.law_ref import LawSearchResults, law_ref_node, load_criminal_law_data
+from app.agents.law_ref import law_ref_node
+from app.law_retrieval import LawSearchResults
+from app.law_knowledge import load_criminal_law_data
 from app.observability.tracing import trace_store
 from app.orchestrator.workflow import check_facts_sufficient
 from tests.factories import make_consultation_state
@@ -41,7 +43,7 @@ async def test_research_search_article_final_produces_workflow_contract():
     ]
     trace_before = len(trace_store.events())
     with patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=responses), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]):
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]):
         state = make_consultation_state(facts_structured=FACTS, applied_laws=[])
         result = await law_ref_node(state)
 
@@ -70,7 +72,7 @@ async def test_research_search_elements_then_final():
         final(),
     ]
     with patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=responses), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]):
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]):
         result = await run_legal_research(FACTS, "user-1", load_criminal_law_data())
 
     assert result.termination_reason == "final_answer"
@@ -86,7 +88,7 @@ async def test_keyword_candidate_keeps_partial_rag_failure_visible():
         final(),
     ]
     with patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=responses), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=LawSearchResults(dependency_failed=True)):
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=LawSearchResults(dependency_failed=True)):
         result = await run_legal_research(FACTS, "user-1", load_criminal_law_data())
 
     assert result.termination_reason == "final_answer"
@@ -99,7 +101,7 @@ async def test_keyword_candidate_keeps_partial_rag_failure_visible():
 async def test_research_stops_repeated_identical_call():
     repeated = decision("search_laws", {"query": " 盗窃 "})
     with patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[decision("search_laws", {"query": "盗窃"}), repeated, repeated]), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]):
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]):
         result = await run_legal_research(FACTS, "user-1", load_criminal_law_data())
 
     assert result.termination_reason == "duplicate_call"
@@ -112,7 +114,7 @@ async def test_research_stops_repeated_identical_call():
 async def test_research_max_steps_stops_without_false_success():
     responses = [decision("search_laws", {"query": "盗窃"}), decision("search_laws", {"query": "财物"}), final()]
     with patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=responses), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]):
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]):
         result = await run_legal_research(FACTS, "user-1", load_criminal_law_data(), max_steps=2)
 
     assert result.termination_reason == "max_steps"
@@ -139,7 +141,7 @@ async def test_research_rejects_invalid_tool_calls(call, status):
 @pytest.mark.parametrize("failure,reason", [(TimeoutError(), "tool_timeout"), (RuntimeError("offline"), "dependency_failure")])
 async def test_research_tool_failure_is_controlled(failure, reason):
     with patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, return_value=decision("search_laws", {"query": "盗窃"})), \
-         patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, side_effect=failure):
+         patch("app.law_retrieval.search_laws_by_keyword", new_callable=AsyncMock, side_effect=failure):
         result = await run_legal_research(FACTS, "user-1", load_criminal_law_data(), max_steps=2)
 
     assert result.termination_reason == reason
@@ -150,7 +152,7 @@ async def test_research_tool_failure_is_controlled(failure, reason):
 @pytest.mark.asyncio
 async def test_research_empty_search_is_observed_and_degraded():
     with patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, return_value=decision("search_laws", {"query": "不存在的罪名"})), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]):
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]):
         result = await run_legal_research(FACTS, "user-1", load_criminal_law_data(), max_steps=1)
 
     assert result.trajectory[0].tool_status == "empty"

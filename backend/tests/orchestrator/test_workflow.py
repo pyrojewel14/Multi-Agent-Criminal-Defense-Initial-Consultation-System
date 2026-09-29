@@ -5,7 +5,7 @@ Tests cover:
 2. check_facts_sufficient conditional edge
 3. lawyer_decision conditional edge
 4. _calculate_coverage_rate helper
-5. _get_fact_value helper
+5. get_fact_value 共享映射
 6. ConsultationOrchestrator session management and run_node
 """
 
@@ -15,11 +15,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.orchestrator.workflow import (
     ConsultationOrchestrator,
     _calculate_coverage_rate,
-    _get_fact_value,
     check_consent,
     check_facts_sufficient,
     lawyer_decision,
 )
+from app.fact_data import get_fact_value
 from tests.factories import make_consultation_state, make_applied_law
 
 
@@ -284,37 +284,37 @@ class TestCalculateCoverageRate:
 
 
 # ---------------------------------------------------------------------------
-# _get_fact_value
+# get_fact_value
 # ---------------------------------------------------------------------------
 
 
 class TestGetFactValue:
     def test_mapped_key_time(self):
-        result = _get_fact_value({"incident_time": "2026年3月"}, "time")
+        result = get_fact_value({"incident_time": "2026年3月"}, "time")
         assert result == "2026年3月"
 
     def test_mapped_key_location(self):
-        result = _get_fact_value({"incident_location": "北京"}, "location")
+        result = get_fact_value({"incident_location": "北京"}, "location")
         assert result == "北京"
 
     def test_mapped_key_behavior(self):
-        result = _get_fact_value({"behavior_sequence": ["推"]}, "behavior")
+        result = get_fact_value({"behavior_sequence": ["推"]}, "behavior")
         assert result == ["推"]
 
     def test_mapped_key_parties(self):
-        result = _get_fact_value({"parties": ["A", "B"]}, "parties")
+        result = get_fact_value({"parties": ["A", "B"]}, "parties")
         assert result == ["A", "B"]
 
     def test_mapped_key_consequence(self):
-        result = _get_fact_value({"consequence": "轻伤"}, "consequence")
+        result = get_fact_value({"consequence": "轻伤"}, "consequence")
         assert result == "轻伤"
 
     def test_unmapped_key_passes_through(self):
-        result = _get_fact_value({"custom_field": "value"}, "custom_field")
+        result = get_fact_value({"custom_field": "value"}, "custom_field")
         assert result == "value"
 
     def test_missing_key_returns_none(self):
-        result = _get_fact_value({}, "time")
+        result = get_fact_value({}, "time")
         assert result is None
 
     def test_all_mapped_keys(self):
@@ -343,7 +343,7 @@ class TestGetFactValue:
             "record": "prior_record",
         }
         for key, expected_field in key_mapping.items():
-            assert _get_fact_value(facts, key) == facts[expected_field]
+            assert get_fact_value(facts, key) == facts[expected_field]
 
 
 # ---------------------------------------------------------------------------

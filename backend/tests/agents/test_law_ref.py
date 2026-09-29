@@ -7,22 +7,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents import law_ref
-from app.agents.law_ref import (
-    _build_applied_laws_from_structured,
-    _build_article_index,
-    _build_element_to_law_mapping,
-    _cn_to_arabic,
+from app import law_knowledge
+from app.law_retrieval import (
+    LawSearchResults,
     _extract_article_number_from_text,
-    _is_unverified_rag_result,
-    _load_law_extract_prompt,
     _merge_and_deduplicate,
-    _normalize_article_number,
     _verify_and_enrich_with_json,
-    extract_structured_laws,
-    law_ref_node,
-    load_criminal_law_data,
     search_laws_by_keyword,
     search_laws_by_rag,
+)
+from app.law_knowledge import _build_article_index, _cn_to_arabic, _normalize_article_number, load_criminal_law_data
+from app.agents.law_ref import (
+    _build_applied_laws_from_structured,
+    _build_element_to_law_mapping,
+    _load_law_extract_prompt,
+    extract_structured_laws,
+    law_ref_node,
 )
 from tests.factories import make_consultation_state
 
@@ -175,23 +175,6 @@ def test_normalize_article_number_arabic():
 def test_normalize_article_number_empty():
     """Empty string should return empty."""
     assert _normalize_article_number("") == ""
-
-
-# ---------------------------------------------------------------------------
-# _is_unverified_rag_result
-# ---------------------------------------------------------------------------
-
-
-def test_is_unverified_rag_result_true():
-    assert _is_unverified_rag_result({"data_source": "rag_unverified"}) is True
-
-
-def test_is_unverified_rag_result_false_verified():
-    assert _is_unverified_rag_result({"data_source": "rag_verified"}) is False
-
-
-def test_is_unverified_rag_result_false_json():
-    assert _is_unverified_rag_result({"data_source": "json_keyword"}) is False
 
 
 # ---------------------------------------------------------------------------
@@ -432,8 +415,8 @@ async def test_law_ref_node_with_matching_facts():
 
     with patch("app.agents.law_ref.llm_gateway") as mock_llm, \
          patch("app.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]), \
-         patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock) as mock_keyword, \
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]), \
+         patch("app.law_retrieval.search_laws_by_keyword", new_callable=AsyncMock) as mock_keyword, \
          patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
 
         mock_keyword.return_value = [
@@ -468,8 +451,8 @@ async def test_law_ref_node_fallback_maps_real_snapshot_element_objects():
         applied_laws=[],
     )
     rag_result = [{"article_number": "第二百三十四条", "content": "故意伤害他人身体"}]
-    with patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=rag_result), \
-         patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]), \
+    with patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=rag_result), \
+         patch("app.law_retrieval.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]), \
          patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
         result = await law_ref_node(state)
 
@@ -549,8 +532,8 @@ async def test_law_ref_node_no_match():
     )
 
     with patch("app.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]), \
-         patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]), \
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]), \
+         patch("app.law_retrieval.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]), \
          patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
 
         result = await law_ref_node(state)
@@ -592,7 +575,7 @@ def test_load_criminal_law_data_caches_result(tmp_path, monkeypatch):
     law_file = tmp_path / "criminal_law_chapters.json"
     law_file.write_text(json.dumps(sample, ensure_ascii=False), encoding="utf-8")
 
-    monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", law_file)
+    monkeypatch.setattr(law_knowledge, "LAW_KNOWLEDGE_PATH", law_file)
 
     first = load_criminal_law_data()
     second = load_criminal_law_data()
@@ -610,7 +593,7 @@ def test_load_criminal_law_data_missing_file(monkeypatch):
     """Missing tracked data must stop startup instead of silently disabling validation."""
     load_criminal_law_data.cache_clear()
     missing = Path("/nonexistent/path/criminal_law_chapters.json")
-    monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", missing)
+    monkeypatch.setattr(law_knowledge, "LAW_KNOWLEDGE_PATH", missing)
     with pytest.raises(RuntimeError, match="法条验证数据文件不存在"):
         load_criminal_law_data()
     load_criminal_law_data.cache_clear()
@@ -622,7 +605,7 @@ def test_load_criminal_law_data_rejects_missing_metadata(monkeypatch, tmp_path):
     sample = {"chapters": [{"chapter": "X", "articles": []}]}
     law_file = tmp_path / "criminal_law_chapters.json"
     law_file.write_text(json.dumps(sample), encoding="utf-8")
-    monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", law_file)
+    monkeypatch.setattr(law_knowledge, "LAW_KNOWLEDGE_PATH", law_file)
     with pytest.raises(RuntimeError, match="metadata"):
         load_criminal_law_data()
     load_criminal_law_data.cache_clear()
@@ -633,7 +616,7 @@ def test_load_criminal_law_data_error(monkeypatch, tmp_path):
     load_criminal_law_data.cache_clear()
     bad = tmp_path / "criminal_law_chapters.json"
     bad.write_text("not valid json", encoding="utf-8")
-    monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", bad)
+    monkeypatch.setattr(law_knowledge, "LAW_KNOWLEDGE_PATH", bad)
     with pytest.raises(RuntimeError, match="法条验证数据不是有效 JSON"):
         load_criminal_law_data()
     load_criminal_law_data.cache_clear()
@@ -646,7 +629,7 @@ def test_load_criminal_law_data_rejects_incomplete_article(monkeypatch, tmp_path
     del dataset["chapters"][0]["articles"][0]["annotation_source"]
     law_file = tmp_path / "criminal_law_chapters.json"
     law_file.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
-    monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", law_file)
+    monkeypatch.setattr(law_knowledge, "LAW_KNOWLEDGE_PATH", law_file)
 
     with pytest.raises(RuntimeError, match="annotation_source"):
         load_criminal_law_data()
@@ -661,7 +644,7 @@ def test_load_criminal_law_data_rejects_duplicate_article_numbers(monkeypatch, t
     dataset = _make_valid_law_dataset(first, duplicate)
     law_file = tmp_path / "criminal_law_chapters.json"
     law_file.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
-    monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", law_file)
+    monkeypatch.setattr(law_knowledge, "LAW_KNOWLEDGE_PATH", law_file)
 
     with pytest.raises(RuntimeError, match="重复法条编号.*第234条"):
         load_criminal_law_data()
@@ -675,7 +658,7 @@ def test_load_criminal_law_data_rejects_unlinked_source_id(monkeypatch, tmp_path
     dataset["chapters"][0]["articles"][0]["official_text_source"] = "unknown-source"
     law_file = tmp_path / "criminal_law_chapters.json"
     law_file.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
-    monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", law_file)
+    monkeypatch.setattr(law_knowledge, "LAW_KNOWLEDGE_PATH", law_file)
 
     with pytest.raises(RuntimeError, match="official_text_source.*顶层来源不一致"):
         load_criminal_law_data()
@@ -689,7 +672,7 @@ def test_load_criminal_law_data_rejects_non_government_source_url(monkeypatch, t
     dataset["metadata"]["official_text"]["url"] = "https://example.com/law.pdf"
     law_file = tmp_path / "criminal_law_chapters.json"
     law_file.write_text(json.dumps(dataset, ensure_ascii=False), encoding="utf-8")
-    monkeypatch.setattr(law_ref, "LAW_KNOWLEDGE_PATH", law_file)
+    monkeypatch.setattr(law_knowledge, "LAW_KNOWLEDGE_PATH", law_file)
 
     with pytest.raises(RuntimeError, match="政府 HTTPS URL"):
         load_criminal_law_data()
@@ -699,7 +682,7 @@ def test_load_criminal_law_data_rejects_non_government_source_url(monkeypatch, t
 def test_tracked_law_snapshot_preflight_exposes_source_and_annotation_boundary():
     """The shipped snapshot must identify official text and non-official annotations."""
     load_criminal_law_data.cache_clear()
-    data = law_ref.preflight_law_knowledge()
+    data = law_knowledge.preflight_law_knowledge()
 
     metadata = data["metadata"]
     assert metadata["official_text"]["consolidated_through"] == "中华人民共和国刑法修正案（十二）"
@@ -1256,8 +1239,8 @@ async def test_law_ref_node_rag_verified_with_json():
     ]
 
     with patch("app.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=rag_results), \
-         patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]), \
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=rag_results), \
+         patch("app.law_retrieval.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]), \
          patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=structured_laws):
 
         result = await law_ref_node(state)
@@ -1299,8 +1282,8 @@ async def test_law_ref_node_rag_unverified_only():
     ]
 
     with patch("app.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=rag_results), \
-         patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]), \
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=rag_results), \
+         patch("app.law_retrieval.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]), \
          patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
 
         result = await law_ref_node(state)
@@ -1326,8 +1309,8 @@ async def test_law_ref_node_no_existing_conversation_history():
     state.pop("conversation_history", None)
 
     with patch("app.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]), \
-         patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]), \
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]), \
+         patch("app.law_retrieval.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]), \
          patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
 
         result = await law_ref_node(state)
@@ -1346,7 +1329,7 @@ async def test_law_ref_node_uses_user_id_for_rag_filter():
     )
 
     with patch("app.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]) as rag_search, \
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]) as rag_search, \
          patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
         result = await law_ref_node(state)
 
@@ -1363,7 +1346,7 @@ async def test_law_ref_node_missing_user_id_does_not_use_session_id():
     state.pop("user_id", None)
 
     with patch("app.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()), \
-         patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]) as rag_search, \
+         patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]) as rag_search, \
          patch("app.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]):
         await law_ref_node(state)
 

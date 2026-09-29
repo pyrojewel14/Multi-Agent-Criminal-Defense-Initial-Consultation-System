@@ -2,16 +2,15 @@
 
 import pytest
 
-from app.agents.law_ref import (
-    _build_article_index,
-    _build_element_to_law_mapping,
-    _cn_to_arabic,
+from app.law_retrieval import (
     _extract_article_number_from_text,
-    _is_unverified_rag_result,
     _merge_and_deduplicate,
-    _normalize_article_number,
     _verify_and_enrich_with_json,
 )
+from app.agents.law_ref import (
+    _build_element_to_law_mapping,
+)
+from app.law_knowledge import _build_article_index, _cn_to_arabic, _normalize_article_number
 
 
 # ──────────────────────────── _cn_to_arabic ──────────────────────────────────
@@ -337,29 +336,6 @@ class TestMergeAndDeduplicate:
         result = _merge_and_deduplicate(primary, secondary)
         assert len(result) == 1
         assert result[0]["title"] == "A"
-
-
-# ──────────────────────────── _is_unverified_rag_result ──────────────────────
-
-
-class TestIsUnverifiedRagResult:
-    """_is_unverified_rag_result 测试。"""
-
-    def test_unverified_returns_true(self):
-        law = {"data_source": "rag_unverified"}
-        assert _is_unverified_rag_result(law) is True
-
-    def test_verified_returns_false(self):
-        law = {"data_source": "rag_verified"}
-        assert _is_unverified_rag_result(law) is False
-
-    def test_json_keyword_returns_false(self):
-        law = {"data_source": "json_keyword"}
-        assert _is_unverified_rag_result(law) is False
-
-    def test_no_data_source_returns_false(self):
-        law = {}
-        assert _is_unverified_rag_result(law) is False
 
 
 # ──────────────────────────── _build_element_to_law_mapping ──────────────────

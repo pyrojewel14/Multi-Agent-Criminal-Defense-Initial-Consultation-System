@@ -15,13 +15,15 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from app.agents.law_ref import (
-    _build_article_index,
+from app.law_retrieval import (
     _extract_article_number_from_text,
-    _normalize_article_number,
     _verify_and_enrich_with_json,
-    load_criminal_law_data,
     search_laws_by_keyword,
+)
+from app.law_knowledge import (
+    _build_article_index,
+    _normalize_article_number,
+    load_criminal_law_data,
 )
 
 

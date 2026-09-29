@@ -13,7 +13,6 @@ from app.agents.fact_digger import (
     _analyze_coverage,
     _generate_fact_summary,
     _generate_follow_up_questions,
-    _get_fact_value,
     _handle_first_interaction,
     _handle_high_risk_input,
     _handle_insufficient_coverage,
@@ -24,6 +23,7 @@ from app.agents.fact_digger import (
     _load_summary_prompt,
     fact_digger_node,
 )
+from app.fact_data import get_fact_value
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
 from app.schemas.llm_artifacts import ArtifactSource
 from tests.factories import make_applied_law, make_consultation_state
@@ -897,7 +897,7 @@ async def test_analyze_coverage_weak_false_bool():
 
 
 # ---------------------------------------------------------------------------
-# _get_fact_value
+# get_fact_value
 # ---------------------------------------------------------------------------
 
 
@@ -915,17 +915,17 @@ def test_get_fact_value_known_mappings():
         "victim_forgiveness": False,
         "prior_record": False,
     }
-    assert _get_fact_value(facts, "time") == "2024-01-01"
-    assert _get_fact_value(facts, "location") == "北京"
-    assert _get_fact_value(facts, "behavior") == ["x"]
-    assert _get_fact_value(facts, "surrender") is True
+    assert get_fact_value(facts, "time") == "2024-01-01"
+    assert get_fact_value(facts, "location") == "北京"
+    assert get_fact_value(facts, "behavior") == ["x"]
+    assert get_fact_value(facts, "surrender") is True
 
 
 def test_get_fact_value_unknown_key():
     """Unknown keys should be looked up directly in the dict."""
     facts = {"custom_key": "value"}
-    assert _get_fact_value(facts, "custom_key") == "value"
-    assert _get_fact_value(facts, "missing") is None
+    assert get_fact_value(facts, "custom_key") == "value"
+    assert get_fact_value(facts, "missing") is None
 
 
 # ---------------------------------------------------------------------------

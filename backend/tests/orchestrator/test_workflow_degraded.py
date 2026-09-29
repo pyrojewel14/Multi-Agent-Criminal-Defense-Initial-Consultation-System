@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agents.fact_digger import fact_coverage_node, fact_digger_node
-from app.agents.law_ref import LawSearchResults, law_ref_node
+from app.agents.law_ref import law_ref_node
+from app.law_retrieval import LawSearchResults
 from app.orchestrator.workflow import (
     ConsultationOrchestrator,
     _fact_digger_workflow_node,
@@ -48,16 +49,16 @@ async def test_law_ref_distinguishes_no_match_from_dependency_failure():
             "app.agents.law_ref.load_criminal_law_data",
             return_value={"chapters": [{"chapter": "测试", "articles": []}]},
         ),
-        patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
-        patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]),
+        patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+        patch("app.law_retrieval.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]),
         patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[search_decision, invalid_final, invalid_final, invalid_final]),
     ):
         no_match_result = await law_ref_node(no_match_state)
 
     with (
         patch("app.agents.law_ref.load_criminal_law_data", return_value={"chapters": []}),
-        patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
-        patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]),
+        patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+        patch("app.law_retrieval.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]),
         patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[search_decision, invalid_final, invalid_final, invalid_final]),
     ):
         dependency_result = await law_ref_node(dependency_state)
@@ -68,11 +69,11 @@ async def test_law_ref_distinguishes_no_match_from_dependency_failure():
             return_value={"chapters": [{"chapter": "测试", "articles": []}]},
         ),
         patch(
-            "app.agents.law_ref.search_laws_by_rag",
+            "app.law_retrieval.search_laws_by_rag",
             new_callable=AsyncMock,
             return_value=LawSearchResults(dependency_failed=True),
         ),
-        patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]),
+        patch("app.law_retrieval.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]),
         patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[search_decision]),
     ):
         rag_failure_result = await law_ref_node(rag_failure_state)
@@ -185,8 +186,8 @@ async def test_eleven_resumes_exit_wait_for_user_with_auditable_degraded_state()
         patch("app.orchestrator.workflow.receptionist_node", receptionist),
         patch("app.agents.fact_digger._extract_structured_facts", side_effect=_fixed_facts),
         patch("app.agents.law_ref.load_criminal_law_data", return_value={"chapters": []}),
-        patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
-        patch("app.agents.law_ref.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]),
+        patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+        patch("app.law_retrieval.search_laws_by_keyword", new_callable=AsyncMock, return_value=[]),
     ):
         orchestrator = ConsultationOrchestrator()
         await orchestrator.start_workflow(initial_state)

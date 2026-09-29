@@ -14,6 +14,8 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.errors.exceptions import LLMTimeoutException
+from app import law_retrieval
+from app.law_knowledge import _build_article_index, _element_name, _normalize_article_number
 from app.observability.tracing import SessionBudgetExceeded, current_trace_context, session_budget, trace_span, trace_store
 from app.security.sensitive_filter import mask_pii
 from app.utils.llm_gateway import llm_gateway
@@ -133,20 +135,18 @@ class LegalToolRegistry:
 
     async def _search_laws(self, query: str) -> dict[str, Any]:
         """复用原有 RAG、快照验证和关键词召回，不重复实现索引。"""
-        from app.agents import law_ref
-
         query_facts = {"behavior_sequence": [query.strip()], "consequence": ""}
-        rag_results = await law_ref.search_laws_by_rag(query_facts, self.user_id)
+        rag_results = await law_retrieval.search_laws_by_rag(query_facts, self.user_id)
         self.rag_dependency_failed = bool(getattr(rag_results, "dependency_failed", False))
-        index = law_ref._build_article_index(self.law_data)
-        verified_rag = law_ref._verify_and_enrich_with_json(rag_results, index)
-        keyword = await law_ref.search_laws_by_keyword(query_facts, self.law_data)
-        merged = law_ref._merge_and_deduplicate(verified_rag, keyword)
+        index = _build_article_index(self.law_data)
+        verified_rag = law_retrieval._verify_and_enrich_with_json(rag_results, index)
+        keyword = await law_retrieval.search_laws_by_keyword(query_facts, self.law_data)
+        merged = law_retrieval._merge_and_deduplicate(verified_rag, keyword)
         merged.sort(key=lambda law: law.get("data_source") not in {"rag_verified", "json_keyword"})
         merged = merged[:5]
         candidates = []
         for law in merged:
-            article_id = law_ref._normalize_article_number(law.get("article_number", ""))
+            article_id = _normalize_article_number(law.get("article_number", ""))
             if not article_id:
                 continue
             source = law.get("data_source", "rag_unverified")
@@ -163,8 +163,6 @@ class LegalToolRegistry:
         return {"candidates": candidates, "rag_dependency_failed": self.rag_dependency_failed}
 
     def _verified_article(self, article_id: str) -> tuple[str, dict[str, Any] | None]:
-        from app.agents.law_ref import _normalize_article_number
-
         normalized = _normalize_article_number(article_id.strip())
         return normalized, self.searched.get(normalized)
 
@@ -251,8 +249,6 @@ async def run_legal_research(
     timeout_seconds: float | None = None,
 ) -> LawResearchResult:
     """执行单次局部工具循环；所有失败均以可审计结果返回。"""
-    from app.agents.law_ref import _element_name, _normalize_article_number
-
     steps_limit = max_steps if max_steps is not None else int(os.getenv("LAW_AGENT_MAX_STEPS", "4"))
     tool_timeout = tool_timeout_seconds if tool_timeout_seconds is not None else float(os.getenv("LAW_AGENT_TOOL_TIMEOUT_SECONDS", "90"))
     total_timeout = timeout_seconds if timeout_seconds is not None else float(os.getenv("LAW_AGENT_TIMEOUT_SECONDS", "240"))

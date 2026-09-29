@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from app.agents.law_ref import preflight_law_knowledge
+from app.law_knowledge import preflight_law_knowledge
 from app.db.db_config import close_db, init_db
 from app.db.redis_config import close_redis, init_redis
 from app.errors.register import register_exception_handlers

@@ -6,29 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 # ============================================================
-# 1. 测试 _is_unverified_rag_result
-# ============================================================
-print("=" * 60)
-print("1. 测试 _is_unverified_rag_result")
-print("=" * 60)
-
-from app.agents.law_ref import _is_unverified_rag_result
-
-test_cases = [
-    ({"data_source": "rag_unverified"}, True, "未验证 RAG 结果"),
-    ({"data_source": "rag_verified"}, False, "已验证 RAG 结果"),
-    ({"data_source": "json_keyword"}, False, "JSON 关键词结果"),
-    ({"data_source": "llm_extracted"}, False, "LLM 提取结果"),
-    ({}, False, "无 data_source 字段"),
-]
-
-for law, expected, desc in test_cases:
-    result = _is_unverified_rag_result(law)
-    status = "PASS" if result == expected else "FAIL"
-    print(f"  [{status}] {desc}: _is_unverified_rag_result({law}) = {result}, 期望 {expected}")
-
-# ============================================================
-# 2. 测试 _build_applied_laws_from_structured (主路径)
+# 1. 测试 _build_applied_laws_from_structured (主路径)
 # ============================================================
 print()
 print("=" * 60)
@@ -101,7 +79,7 @@ applied_laws = _build_applied_laws_from_structured(structured_laws, matched_laws
 
 for i, law in enumerate(applied_laws):
     ds = law.get("data_source", "<缺失>")
-    is_unverified = _is_unverified_rag_result(law)
+    is_unverified = law.get("data_source") == "rag_unverified"
     print(f"  法条 {i+1}: charge_name={law['charge_name']}, "
           f"article_number={law['article_number']}, data_source={ds}, "
           f"is_unverified={is_unverified}")

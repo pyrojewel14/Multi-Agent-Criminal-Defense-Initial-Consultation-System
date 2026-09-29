@@ -124,7 +124,7 @@ async def test_law_valid_content_json_records_content_json_source():
         {"content": json.dumps({"article_ids": ["第234条"], "matched_elements": {"第234条": ["故意伤害他人身体"]}, "confidence": "medium"}, ensure_ascii=False), "tool_calls": [], "has_tool_call": False},
     ]
     with (
-        patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+        patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
         patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=decisions),
     ):
         result = await law_ref_node(state)
@@ -141,7 +141,7 @@ async def test_law_invalid_final_degrades_without_success_candidate():
     get = {"content": "", "tool_calls": [{"name": "get_article", "args": {"article_id": "第234条"}}], "has_tool_call": True}
     invalid = {"content": '{"article_ids":["第234条"]}', "tool_calls": [], "has_tool_call": False}
     with (
-        patch("app.agents.law_ref.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+        patch("app.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
         patch("app.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[search, get, invalid, invalid]),
     ):
         result = await law_ref_node(state)

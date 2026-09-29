@@ -9,36 +9,10 @@ from app.agents import risk_assessor
 from app.agents.risk_assessor import (
     _extract_key_risks,
     _load_prompt,
-    _parse_fallback_assessment,
-    format_risk_assessment_report,
     risk_assessor_node,
 )
 from app.errors.exceptions import LLMServiceException
 from tests.factories import make_applied_law, make_consultation_state
-
-
-# ---------------------------------------------------------------------------
-# _parse_fallback_assessment
-# ---------------------------------------------------------------------------
-
-
-def test_parse_fallback_assessment_structure():
-    """Fallback assessment should have the correct nested structure."""
-    result = _parse_fallback_assessment("some non-JSON text")
-
-    assert "predicted_sentence_range" in result
-    assert "mitigating_factors" in result
-    assert "aggravating_factors" in result
-    assert "compulsory_measure_risk" in result
-    assert "evidence_risk_points" in result
-    assert "procedure_risks" in result
-
-    # compulsory_measure_risk is a nested dict, not a string
-    assert isinstance(result["compulsory_measure_risk"], dict)
-    assert "detention_status" in result["compulsory_measure_risk"]
-    assert "bail_possibility" in result["compulsory_measure_risk"]
-    assert "measure_change_space" in result["compulsory_measure_risk"]
-    assert "prolonged_detention_risk" in result["compulsory_measure_risk"]
 
 
 # ---------------------------------------------------------------------------
@@ -233,55 +207,3 @@ def test_extract_key_risks_procedure_high():
     }
     risks = _extract_key_risks(assessment)
     assert any("诉讼时效" in r for r in risks)
-
-
-# ---------------------------------------------------------------------------
-# format_risk_assessment_report
-# ---------------------------------------------------------------------------
-
-
-def test_format_risk_assessment_report_full():
-    """format_risk_assessment_report should produce a non-empty structured report."""
-    assessment = {
-        "predicted_sentence_range": "三年以下",
-        "mitigating_factors": ["自首"],
-        "aggravating_factors": ["累犯"],
-        "compulsory_measure_risk": {
-            "detention_status": "已羁押",
-            "bail_possibility": "中等",
-            "measure_change_space": "有空间",
-            "prolonged_detention_risk": "low",
-        },
-        "evidence_risk_points": [
-            {"gap": "证据缺口", "exclusion_possibility": "中"},
-        ],
-        "procedure_risks": [
-            {"type": "诉讼时效", "description": "接近时效", "severity": "medium"},
-        ],
-    }
-    report = format_risk_assessment_report(assessment)
-    assert "三年以下" in report
-    assert "自首" in report
-    assert "证据缺口" in report
-    assert "MEDIUM" in report.upper() or "medium" in report
-
-
-def test_format_risk_assessment_report_empty_lists():
-    """Empty factor and risk lists should show fallback messages."""
-    assessment = {
-        "predicted_sentence_range": "待评估",
-        "mitigating_factors": [],
-        "aggravating_factors": [],
-        "compulsory_measure_risk": {
-            "detention_status": "待确认",
-            "bail_possibility": "待评估",
-            "measure_change_space": "待评估",
-            "prolonged_detention_risk": "待评估",
-        },
-        "evidence_risk_points": [],
-        "procedure_risks": [],
-    }
-    report = format_risk_assessment_report(assessment)
-    assert "无" in report
-    assert "未发现明显证据风险点" in report
-    assert "未发现明显程序风险" in report

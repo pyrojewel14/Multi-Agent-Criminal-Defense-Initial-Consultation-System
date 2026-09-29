@@ -9,7 +9,6 @@ from app.schemas.llm_artifacts import (
     parse_json_object,
     validate_artifact,
 )
-from app.security.disclaimer import disclaimer
 from app.security.sensitive_filter import mask_pii
 from app.utils.llm_gateway import llm_gateway
 from app.utils.logger import get_logger
@@ -142,30 +141,6 @@ async def _generate_risk_assessment(facts_structured: Dict[str, Any], applied_la
     return assessment
 
 
-def _parse_fallback_assessment(raw_response: str) -> Dict[str, Any]:
-    """解析非JSON格式的评估响应作为后备方案
-
-    Args:
-        raw_response: LLM返回的原始文本
-
-    Returns:
-        结构化的风险评估字典
-    """
-    return {
-        "predicted_sentence_range": "待评估",
-        "mitigating_factors": [],
-        "aggravating_factors": [],
-        "compulsory_measure_risk": {
-            "detention_status": "待确认",
-            "bail_possibility": "待评估",
-            "measure_change_space": "待评估",
-            "prolonged_detention_risk": "待评估",
-        },
-        "evidence_risk_points": [],
-        "procedure_risks": [],
-    }
-
-
 def _add_to_conversation_history(state: "ConsultationState", agent: str, assessment: Dict[str, Any]) -> None:
     """更新对话历史记录
 
@@ -215,89 +190,3 @@ def _extract_key_risks(assessment: Dict[str, Any]) -> List[str]:
             key_risks.append(f"高风险: {risk.get('type', '未知')}")
 
     return key_risks
-
-
-def format_risk_assessment_report(risk_assessment: Dict[str, Any]) -> str:
-    """格式化风险评估报告
-
-    Args:
-        risk_assessment: 风险评估结果
-
-    Returns:
-        格式化的报告文本
-    """
-    report_lines = [
-        "【风险评估报告】",
-        "",
-        "一、量刑预测",
-        f"  量刑区间: {risk_assessment.get('predicted_sentence_range', '待评估')}",
-        "",
-        "  从轻/减轻情节:",
-        _format_factor_list(risk_assessment.get("mitigating_factors", [])),
-        "",
-        "  从重情节:",
-        _format_factor_list(risk_assessment.get("aggravating_factors", [])),
-        "",
-        "二、强制措施风险",
-    ]
-
-    compulsory_measure = risk_assessment.get("compulsory_measure_risk", {})
-    report_lines.extend(
-        [
-            f"  羁押状态: {compulsory_measure.get('detention_status', '待确认')}",
-            f"  取保候审可能性: {compulsory_measure.get('bail_possibility', '待评估')}",
-            f"  变更强制措施空间: {compulsory_measure.get('measure_change_space', '待评估')}",
-            f"  超期羁押风险: {compulsory_measure.get('prolonged_detention_risk', '待评估')}",
-        ]
-    )
-
-    report_lines.extend(
-        [
-            "",
-            "三、证据风险点",
-        ]
-    )
-    evidence_risks = risk_assessment.get("evidence_risk_points", [])
-    if evidence_risks:
-        for i, risk in enumerate(evidence_risks, 1):
-            report_lines.extend(
-                [
-                    f"  {i}. {risk.get('gap', '证据缺口')}",
-                    f"     非法证据排除可能性: {risk.get('exclusion_possibility', '待评估')}",
-                ]
-            )
-    else:
-        report_lines.append("  未发现明显证据风险点")
-
-    report_lines.extend(
-        [
-            "",
-            "四、程序风险",
-        ]
-    )
-    procedure_risks = risk_assessment.get("procedure_risks", [])
-    if procedure_risks:
-        for risk in procedure_risks:
-            report_lines.append(
-                f"  [{risk.get('severity', 'unknown').upper()}] {risk.get('type', '未知')}: "
-                f"{risk.get('description', '')}"
-            )
-    else:
-        report_lines.append("  未发现明显程序风险")
-
-    report_content = "\n".join(report_lines)
-    return disclaimer.inject(report_content)
-
-
-def _format_factor_list(factors: List[str]) -> str:
-    """格式化情节列表
-
-    Args:
-        factors: 情节列表
-
-    Returns:
-        格式化后的文本
-    """
-    if not factors:
-        return "    无"
-    return "    " + "\n    ".join(f"- {factor}" for factor in factors)
