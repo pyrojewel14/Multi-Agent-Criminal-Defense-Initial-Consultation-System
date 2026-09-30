@@ -80,7 +80,7 @@ clean clone 和镜像都包含 tracked 的 `backend/data/law_knowledge/criminal_
 
 ```bash
 cd backend
-.venv/bin/python -c "from app.law_knowledge import preflight_law_knowledge; preflight_law_knowledge()"
+.venv/bin/python -c "from app.knowledge.law_knowledge import preflight_law_knowledge; preflight_law_knowledge()"
 ```
 
 Git 与 Docker build context 对 `backend/data/` 采用精确 allowlist；除该快照外仍不包含：
