@@ -23,7 +23,7 @@ LangGraph StateGraph
   risk_assessor -> service_planner -> human_review
         |
         +--> AsyncSqliteSaver -> checkpoint SQLite（执行状态）
-        +--> Redis optional projection/cache
+        +--> Redis projection/cache（当前启动必需）
         +--> SQLite users / consultations / messages（业务审计）
         +--> LLM / embedding / Chroma / reranker（外部或本地依赖）
 ```
@@ -115,7 +115,7 @@ LawRef 的 `law_research` 字段补充工具调用数、成功/失败/重复数�
 | 存储 | 当前用途 | 不能保证的内容 |
 | --- | --- | --- |
 | LangGraph checkpoint SQLite | `AsyncSqliteSaver` 保存完整 workflow state 与 pending node；单实例进程重启可恢复 | 多 worker 分布式一致性、共享锁与 exactly-once |
-| Redis | 可选缓存/观测投影 | pending node 推断、完整图恢复、与 SQLite 强一致 |
+| Redis | 缓存/观测投影；当前 lifespan 强制连接 | pending node 推断、完整图恢复、与 SQLite 强一致 |
 | 业务 SQLite | 用户、咨询、生命周期与消息审计关系 | LangGraph pending node 推断 |
 | Chroma | 文档向量索引 | clean clone 自带语料、法律正确性 |
 | 进程内 trace/budget | 最近的有界事件、单会话调用/token 用量 | 跨进程共享、重启恢复、多 worker 全局预算 |

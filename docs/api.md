@@ -25,7 +25,7 @@
 | 知情同意 | `POST /api/v1/sessions/{session_id}/confirm-consent` | 会话所有者 | LangGraph checkpoint；`consent_given` 同步 SQLite |
 | 发送消息 | `POST /api/v1/sessions/{session_id}/message` | 会话所有者 | workflow；HTTP 用户/Agent 消息写入 SQLite |
 | 查询实时状态 | `GET /api/v1/sessions/{session_id}/state` | 所有者、已分配律师、管理员 | LangGraph checkpoint；不从 Redis/内存猜测 pending node |
-| 获取报告草案 | `GET /api/v1/sessions/{session_id}/report-draft` | 已分配律师、管理员 | 实时 workflow state，不从 SQLite 恢复 |
+| 获取报告草案 | `GET /api/v1/sessions/{session_id}/report-draft` | 已分配律师、管理员 | LangGraph checkpoint state，不从业务 SQLite 的报告列恢复 |
 | workflow 律师审核 | `PUT /api/v1/sessions/{session_id}/review` | 已分配律师、管理员 | application command；checkpoint + SQLite 审计 |
 | 活跃会话列表 / 关闭 | `GET /api/v1/sessions`、`POST /api/v1/sessions/{session_id}/close` | 按角色和资源过滤 | application command；checkpoint + SQLite `cancelled` 审计 |
 | 历史记录 | `GET /api/v1/consultations/list`、`GET /api/v1/consultations/{id}`、`GET /api/v1/consultations/{id}/messages` | client 仅本人；lawyer 仅已分配；admin 全部 | SQLite |
@@ -180,10 +180,10 @@ curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/review" \
 ## Redis 与 SQLAlchemy 边界
 
 - 应用 lifespan 依次执行 `init_db()` 和 `init_redis()`。Redis 在启动时是硬依赖，连接失败会阻断应用启动。
-- Redis 仍可作为可选缓存/观测依赖，但不会作为执行状态回退；API 查询和恢复只读取 LangGraph checkpoint。
+- Redis 的职责是缓存/观测投影，不是执行状态源；当前 lifespan 仍强制初始化 Redis，不能按可选启动依赖理解。API 查询和恢复只读取 LangGraph checkpoint。
 - `persist_state()` 对 LangGraph 已写入的完整 state 只刷新进程内兼容投影；只有调用方明确给出新增投影字段时才最小更新 checkpoint，且不能据此推断 pending node。
 - SQLite 持久化用户、咨询记录和 HTTP 消息，并作为 approve/reject/close 的业务审计源；定向测试使用内存 SQLite 验证相关落库契约。
-- 完整 workflow state 不从 SQLite 恢复。`facts_structured`、`applied_laws`、`risk_assessment`、`service_plan`、`report_draft` 等虽在 `Consultation` 模型定义，但当前自然 workflow 尚未统一回写这些列。新增报告草案接口因此明确读取实时 state，而不是宣称数据库已完整持久化。
+- 完整 workflow state 从独立的 LangGraph checkpoint SQLite 恢复，不从业务 SQLite 的 `Consultation` 表恢复。`facts_structured`、`applied_laws`、`risk_assessment`、`service_plan`、`report_draft` 等虽在 `Consultation` 模型定义，但当前自然 workflow 尚未统一回写这些列。新增报告草案接口因此明确读取实时 state，而不是宣称数据库已完整持久化。
 - HTTP 与 WebSocket 消息都接受 `idempotency_key`；WebSocket 也兼容把 `message_id` 作为该键。HTTP 的 workflow 推进、checkpoint history 与 `consultation_messages` 写入位于同一 service 命令边界；WebSocket 仍不写 `consultation_messages`。生命周期命令先推进 checkpoint，再提交 SQLite；SQLite 失败时保留真实执行位置并标记 `repair_required`，503 会要求使用相同操作和相同 key 重试修复，普通 resume 在修复前被阻断。
 - 幂等键最长 128 字符，作用域为 `(session_id, command_type, idempotency_key)`。同 key 不同载荷返回 409。可安全重放结果只在当前进程缓存一小时且总量最多 2048 条；消息若已推进 workflow、但随后 SQLite 写入失败，同 key 会重放原错误而不再次 resume，也不会自动补写缺失消息。重启或多 worker 不共享，跨进程部署必须增加持久化幂等表和共享并发控制。
 - 首次 approve/reject 仅接受处于 `human_review` 断点的工作流；其他执行位置返回 409，不推进工作流也不写 SQLite。该限制不阻止已标记 `repair_required` 的同 action 审计修复。

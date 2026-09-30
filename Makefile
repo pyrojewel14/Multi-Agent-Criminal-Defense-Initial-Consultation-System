@@ -34,12 +34,12 @@ test: test-backend test-frontend
 
 test-backend:
 	cd backend && $(PYTHON) -m pytest -q \
-		tests/utils/test_deployment_config.py \
+		tests/infrastructure/config/test_deployment_config.py \
 		tests/security/test_jwt.py \
-		tests/db/test_db_config.py \
-		tests/db/test_redis_config.py \
-		tests/test_main_startup.py \
-		tests/v1/router/test_phase6_api_contract.py
+		tests/infrastructure/database/test_db_config.py \
+		tests/infrastructure/database/test_redis_config.py \
+		tests/integration/test_main_startup.py \
+		tests/api/v1/routers/test_phase6_api_contract.py
 
 test-frontend:
 	npm --prefix frontend test -- --run

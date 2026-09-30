@@ -20,7 +20,7 @@ npm run build
 - `src/api/`：FastAPI 类型、成功/错误 envelope、JWT refresh。
 - `src/auth/`：登录和公开 client 注册。
 - `src/pages/ClientWorkspace.tsx`：workflow session 咨询主线。
-- `src/pages/LawyerWorkspace.tsx`：assigned lawyer 数据库审核与 admin workflow 审核。
+- `src/pages/LawyerWorkspace.tsx`：已分配律师与管理员的 workflow 审核；律师队列按数据库分配记录关联 workflow，缺少可关联 workflow 的记录只读展示。
 - `src/components/`：ID、状态、错误、结构化数据与空状态组件。
 
-`session_id` 用于 LangGraph/Redis workflow；`consultation_id` 是 SQLite 咨询记录主键。两者不能混用。公开注册只创建 client，律师/admin 账号与案件分配依赖后端受信任初始化或管理接口。
+`session_id` 标识 LangGraph workflow，执行状态保存于独立 checkpoint SQLite，Redis 仅用于缓存/投影；`consultation_id` 是业务 SQLite 咨询记录主键。两者不能混用。公开注册只创建 client，律师/admin 账号与案件分配依赖后端受信任初始化或管理接口。

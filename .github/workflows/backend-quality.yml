@@ -58,34 +58,34 @@ jobs:
         working-directory: backend
         run: >-
           python -m pytest -q
-          tests/agents/test_fact_digger.py
-          tests/agents/test_law_ref.py
-          tests/agents/test_law_ref_pure.py
-          tests/agents/test_risk_assessor.py
-          tests/agents/test_risk_assessor_pure.py
-          tests/test_main_startup.py
+          tests/consultation/agents/test_fact_digger.py
+          tests/consultation/agents/test_law_ref.py
+          tests/consultation/agents/test_law_ref_pure.py
+          tests/consultation/agents/test_risk_assessor.py
+          tests/consultation/agents/test_risk_assessor_pure.py
+          tests/integration/test_main_startup.py
           tests/security/test_sensitive_filter.py
       - name: Workflow, errors, and LLM contracts
         shell: bash -el {0}
         working-directory: backend
         run: >-
           python -m pytest -q
-          tests/orchestrator/test_workflow.py
-          tests/orchestrator/test_workflow_example.py
-          tests/orchestrator/test_workflow_minimal.py
+          tests/consultation/test_workflow.py
+          tests/consultation/test_workflow_example.py
+          tests/consultation/test_workflow_minimal.py
           tests/errors/test_errors.py
           tests/errors/test_exception_integration.py
-          tests/utils/test_llm_gateway.py
-          tests/schemas/test_llm_artifacts.py
-          tests/agents/test_llm_artifact_integration.py
-          tests/agents/test_service_planner.py
-          tests/orchestrator/test_workflow_degraded.py
+          tests/infrastructure/llm/test_llm_gateway.py
+          tests/consultation/schemas/test_llm_artifacts.py
+          tests/consultation/agents/test_llm_artifact_integration.py
+          tests/consultation/agents/test_service_planner.py
+          tests/consultation/test_workflow_degraded.py
       - name: HTTP, WebSocket, and service contracts
         shell: bash -el {0}
         working-directory: backend
         run: >-
           python -m pytest -q
-          tests/v1/service/test_consultation_service.py
-          tests/v1/service/test_p1_004_idempotency.py
-          tests/v1/router/consultation/test_routes.py
-          tests/v1/router/consultation/test_websocket.py
+          tests/consultation/test_consultation_service.py
+          tests/consultation/test_p1_004_idempotency.py
+          tests/api/v1/routers/consultation/test_routes.py
+          tests/api/v1/routers/consultation/test_websocket.py
