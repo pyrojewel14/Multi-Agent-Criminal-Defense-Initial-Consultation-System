@@ -1,0 +1,85 @@
+{
+  "status": "WIP-awaiting-main-thread-acceptance",
+  "date": "2026-09-30",
+  "corpus_version": "2026-09-30.2.integration1",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "records": 505,
+  "indexed_active_records": 504,
+  "regression_snapshot_byte_unchanged": true,
+  "legal_review_completed": false,
+  "default_profile": "snapshot",
+  "default_switch_performed": false,
+  "commit_push_merge_deployment_performed": false,
+  "targeted_regression": {
+    "passed": 895,
+    "failed": 0,
+    "command": "PYTHONNOUSERSITE=1 conda run -n Agent_dev pytest -q backend/tests/consultation backend/tests/knowledge evaluation"
+  },
+  "backend_full_suite": {
+    "passed": 1371,
+    "failed": 2,
+    "command": "cd backend && PYTHONNOUSERSITE=1 conda run -n Agent_dev pytest",
+    "failures": [
+      "tests/integration/test_concurrent_consistency.py::test_rate_limiter_concurrency",
+      "tests/integration/test_concurrent_consistency.py::test_redis_connection_pool_stress"
+    ],
+    "failure_boundary": "sandbox refused 127.0.0.1:6379 with Operation not permitted; not a passing full-suite claim"
+  },
+  "modified_code_checks": {
+    "ruff": "passed",
+    "pyright_errors": 0,
+    "diff_whitespace": "passed"
+  },
+  "public_asset_portability": {
+    "copied_backend_and_public_json_load_test": "passed",
+    "git_ignore_whitelists": "verified root and backend",
+    "git_tracking_state": "new files remain untracked pending authorized main-thread commit",
+    "docker_evidence": "source COPY and ignore-path inspection only; no Docker build/up/health"
+  },
+  "offline_public_tools": {
+    "passed": 8,
+    "total": 8,
+    "llm": false,
+    "rag": false
+  },
+  "real_retrieval": {
+    "chroma_exact": {
+      "passed": 8,
+      "total": 8,
+      "latency_min_ms": 271.297,
+      "latency_median_ms": 275.9835,
+      "latency_max_ms": 638.408,
+      "scope": "8 fixed public cases; sequential component timings, includes manifest consistency check and warm-up; not production/performance acceptance"
+    },
+    "chroma_vector": {
+      "passed": 8,
+      "total": 8,
+      "latency_min_ms": 326.931,
+      "latency_median_ms": 336.5,
+      "latency_max_ms": 2210.13,
+      "scope": "8 fixed public cases; sequential component timings, includes manifest consistency check and warm-up; not production/performance acceptance"
+    }
+  },
+  "real_lawref": {
+    "passed": 0,
+    "total": 2,
+    "chat_model": "qwen3.5:0.8b",
+    "termination_reason": "duplicate_call",
+    "coverage_elements_produced": 0,
+    "evidence": "evaluation/evidence/full_live_lawref_2026-09-30.json"
+  },
+  "pdf_text_check": {
+    "matched": 505,
+    "records": 505,
+    "source_refresh_http_status": 403,
+    "byte_source": "provided PDF; current remote PDF bytes not refreshed"
+  },
+  "remaining": [
+    "505-article human legal review",
+    "499-article annotation and branch review",
+    "case-time law selection",
+    "stable real model final answers",
+    "main-thread acceptance and default switch",
+    "Docker runtime and production deployment"
+  ]
+}

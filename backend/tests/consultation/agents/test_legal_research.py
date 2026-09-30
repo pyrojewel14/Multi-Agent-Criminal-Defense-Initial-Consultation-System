@@ -37,6 +37,50 @@ def final(article_id="第264条"):
 
 
 @pytest.mark.asyncio
+async def test_unreviewed_full_corpus_article_cannot_enter_applied_laws():
+    article = {
+        "article_number": "第一百三十三条之一",
+        "title": "危险驾驶罪",
+        "content": "在道路上驾驶机动车，追逐竞驶，情节恶劣的。",
+        "elements": [{"key": "circumstances_vicious", "name": "情节恶劣"}],
+        "base_sentence": "处拘役",
+        "charge_tags": ["危险驾驶"],
+        "common_keywords": ["醉驾"],
+        "annotation_source": "manual-title-v1",
+        "annotation_layer": "manual-title-v1",
+    }
+    law_data = {"chapters": [{"chapter": "第二章", "articles": [article]}]}
+    rag_hit = {"article_number": "第133条之一", "content": article["content"], "data_source": "rag_unverified"}
+    responses = [
+        decision("search_laws", {"query": "危险驾驶"}),
+        decision("get_article", {"article_id": "第133条之一"}),
+        {
+            "content": json.dumps(
+                {"article_ids": ["第133条之一"], "matched_elements": {"第133条之一": ["情节恶劣"]}, "confidence": "high"},
+                ensure_ascii=False,
+            ),
+            "tool_calls": [],
+            "has_tool_call": False,
+        },
+    ]
+    with (
+        patch(
+            "app.consultation.agents.legal_research.llm_gateway.generate_with_tools",
+            new_callable=AsyncMock,
+            side_effect=responses,
+        ),
+        patch("app.consultation.agents.law_ref.load_criminal_law_data", return_value=law_data),
+        patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[rag_hit]),
+    ):
+        state = make_consultation_state(facts_structured={"behavior_sequence": ["危险驾驶"]}, applied_laws=[])
+        result = await law_ref_node(state)
+
+    assert "applied_laws" in result and "law_search_status" in result
+    assert result["applied_laws"] == []
+    assert result["law_search_status"] != "success"
+
+
+@pytest.mark.asyncio
 async def test_research_search_article_final_produces_workflow_contract():
     responses = [
         decision("search_laws", {"query": "盗窃"}),

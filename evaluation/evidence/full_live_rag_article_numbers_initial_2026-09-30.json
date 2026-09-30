@@ -1,0 +1,129 @@
+{
+  "evidence_kind": "real-ollama-public-chroma",
+  "corpus_version": "2026-09-30.2.integration1",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "llm_executed": false,
+  "rag_executed": true,
+  "embedding_model": "qwen3-embedding:0.6b",
+  "embedding_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+  "chat_model": null,
+  "legal_review_completed": false,
+  "production_deployment_verified": false,
+  "passed": 2,
+  "total": 8,
+  "cases": [
+    {
+      "id": "general-purpose",
+      "passed": true,
+      "retrieved_article_ids": [
+        "第101条",
+        "第99条",
+        "第1条",
+        "第4条",
+        "第91条"
+      ],
+      "body_readable": true,
+      "required_element_count": 0,
+      "latency_ms": 1989.235
+    },
+    {
+      "id": "dangerous-driving-derived",
+      "passed": false,
+      "retrieved_article_ids": [
+        "第101条",
+        "第31条",
+        "第231条",
+        "第220条",
+        "第346条"
+      ],
+      "body_readable": false,
+      "required_element_count": 0,
+      "latency_ms": 466.819
+    },
+    {
+      "id": "penalty-cross-reference",
+      "passed": false,
+      "retrieved_article_ids": [
+        "第101条",
+        "第211条",
+        "第61条",
+        "第346条",
+        "第403条"
+      ],
+      "body_readable": false,
+      "required_element_count": 0,
+      "latency_ms": 316.912
+    },
+    {
+      "id": "corrected-charge-title",
+      "passed": false,
+      "retrieved_article_ids": [
+        "第101条",
+        "第61条",
+        "第200条",
+        "第211条",
+        "第346条"
+      ],
+      "body_readable": false,
+      "required_element_count": 0,
+      "latency_ms": 314.471
+    },
+    {
+      "id": "repealed-199",
+      "passed": true,
+      "retrieved_article_ids": [
+        "第101条",
+        "第200条",
+        "第39条",
+        "第149条",
+        "第61条"
+      ],
+      "body_readable": false,
+      "required_element_count": 0,
+      "latency_ms": 300.607
+    },
+    {
+      "id": "multiple-charges-277",
+      "passed": false,
+      "retrieved_article_ids": [
+        "第101条",
+        "第71条",
+        "第211条",
+        "第61条",
+        "第220条"
+      ],
+      "body_readable": false,
+      "required_element_count": 0,
+      "latency_ms": 368.982
+    },
+    {
+      "id": "core-theft",
+      "passed": false,
+      "retrieved_article_ids": [
+        "第61条",
+        "第220条",
+        "第211条",
+        "第101条",
+        "第231条"
+      ],
+      "body_readable": false,
+      "required_element_count": 0,
+      "latency_ms": 333.411
+    },
+    {
+      "id": "core-alternative-293",
+      "passed": false,
+      "retrieved_article_ids": [
+        "第231条",
+        "第220条",
+        "第291条之二",
+        "第200条",
+        "第101条"
+      ],
+      "body_readable": false,
+      "required_element_count": 0,
+      "latency_ms": 312.395
+    }
+  ],
+  "latency_scope": "本机顺序组件调用，包含核验与模型预热；不是并发或生产性能测试"
+}

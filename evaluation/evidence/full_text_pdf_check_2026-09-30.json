@@ -1,0 +1,13 @@
+{
+  "records": 505,
+  "content_matched": 505,
+  "unmatched": [],
+  "legal_review_completed": false,
+  "evidence_kind": "supplied-pdf-programmatic-substring-check",
+  "official_url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+  "pdf_sha256": "sha256:08ea3900348273c96536c651b477d2583351b330abb29fd8c0c88f78c85249dc",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "pages": 154,
+  "source_refresh_http_status": 403,
+  "limitations": "使用提供的PDF，未验证当前远端PDF字节hash。子串核验不代表逐条法律人工审查。"
+}

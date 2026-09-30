@@ -1,0 +1,8 @@
+{"id": "general-purpose", "query": "第1条", "article_id": "第1条", "contains": "为了惩罚犯罪", "coverage_eligible": false, "semantic_query": "为了惩罚犯罪，保护人民，根据宪法制定本法"}
+{"id": "dangerous-driving-derived", "query": "第133条之1", "article_id": "第133条之一", "contains": "醉酒驾驶机动车", "coverage_eligible": false, "semantic_query": "在道路上醉酒驾驶机动车，追逐竞驶，处拘役并处罚金", "demo_coverage_eligible": true}
+{"id": "penalty-cross-reference", "query": "第149条", "article_id": "第149条", "contains": "第一百四十条", "coverage_eligible": false, "semantic_query": "生产销售伪劣商品，同时构成其他犯罪，依照处罚较重的规定定罪处罚"}
+{"id": "corrected-charge-title", "query": "第169条", "article_id": "第169条", "contains": "其他公司、企业", "coverage_eligible": false, "semantic_query": "公司企业主管人员徇私舞弊，将公司企业资产低价折股或者低价出售，造成重大损失", "demo_coverage_eligible": true}
+{"id": "repealed-199", "query": "第199条", "article_id": "第199条", "absent": true, "semantic_query": "已删去条文"}
+{"id": "multiple-charges-277", "query": "第277条", "article_id": "第277条", "contains": "人民警察", "coverage_eligible": false, "semantic_query": "暴力威胁阻碍国家机关工作人员依法执行职务，暴力袭击正在依法执行职务的人民警察", "demo_coverage_eligible": true}
+{"id": "core-theft", "query": "第264条", "article_id": "第264条", "contains": "盗窃公私财物", "coverage_eligible": true, "semantic_query": "盗窃公私财物，数额较大，多次盗窃，入户盗窃，携带凶器盗窃，扒窃"}
+{"id": "core-alternative-293", "query": "第293条", "article_id": "第293条", "contains": "行为之一", "coverage_eligible": true, "semantic_query": "随意殴打他人，强拿硬要，起哄闹事，破坏社会秩序"}

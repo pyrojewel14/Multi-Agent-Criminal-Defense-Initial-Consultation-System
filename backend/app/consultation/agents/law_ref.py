@@ -18,6 +18,7 @@ from app.knowledge.law_knowledge import (
     LawKnowledgeDataError,
     _element_name,
     _normalize_article_number,
+    is_lawref_eligible,
     load_criminal_law_data,
 )
 from app.security.sensitive_filter import mask_pii
@@ -231,6 +232,8 @@ def _build_applied_laws_from_structured(
                 "base_sentence": law.get("base_sentence", ""),
                 "probability": law.get("probability", "medium"),
                 "data_source": data_source,
+                "annotation_usage": matched_law.get("annotation_usage", "project_regression") if matched_law else "unverified",
+                "annotation_source": matched_law.get("annotation_source", "") if matched_law else "",
             }
         )
     return applied_laws
@@ -243,6 +246,7 @@ async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
     session_id = state.get("session_id", "unknown")
     facts_structured = state.get("facts_structured", {})
     state["current_agent"] = "LawRef"
+    state["law_text_candidates"] = []
     if not facts_structured:
         state["applied_laws"] = []
         state["element_to_law_mapping"] = {}
@@ -282,6 +286,18 @@ async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
         return state
 
     state["law_research"] = research.audit_summary()
+    state["law_text_candidates"] = [
+        {
+            "article_number": a["article_number"],
+            "content": a["content"],
+            "text_provenance": a.get("text_provenance", {}),
+            "annotation_status": {k: v["review_status"] for k, v in a.get("annotations", {}).items()},
+            "coverage_eligible": False,
+        }
+        for a in research.candidate_laws
+        if not is_lawref_eligible(a)
+    ]
+    research.candidate_laws = [a for a in research.candidate_laws if is_lawref_eligible(a)]
     if research.termination_reason == "final_answer" and research.candidate_laws:
         structured_laws = []
         for law in research.candidate_laws:
@@ -305,7 +321,7 @@ async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
             validated = [charge.model_dump(mode="json") for charge in artifact.charges]
             state["applied_laws"] = _build_applied_laws_from_structured(validated, research.candidate_laws)
             state["element_to_law_mapping"] = _build_element_to_law_mapping(validated, "elements_matched")
-            state["law_search_status"] = "success"
+            state["law_search_status"] = "text_only" if state["law_text_candidates"] else "success"
             state["rag_only"] = False
         else:
             state["applied_laws"] = []
@@ -319,9 +335,14 @@ async def law_ref_node(state: "ConsultationState") -> "ConsultationState":
             step.tool_name == "search_laws" and step.tool_status == "empty" for step in research.trajectory
         )
         state["law_search_status"] = (
-            "no_law_match"
-            if searched_empty and all(step.tool_status in {"empty", "invalid_final"} for step in research.trajectory)
-            else "dependency_failure"
+            "text_only"
+            if state["law_text_candidates"]
+            else (
+                "no_law_match"
+                if searched_empty
+                and all(step.tool_status in {"empty", "invalid_final"} for step in research.trajectory)
+                else "dependency_failure"
+            )
         )
         _, artifact_result = validate_artifact(
             LawArtifact,

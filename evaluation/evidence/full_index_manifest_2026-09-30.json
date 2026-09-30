@@ -1,0 +1,18 @@
+{
+  "schema_version": "full-index-v1",
+  "corpus_version": "2026-09-30.2.integration1",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "official_text_source": "criminal-law-consolidated-amendment-12",
+  "document_count": 504,
+  "excluded_article_ids": [
+    "第199条"
+  ],
+  "collection": "criminal_law_full",
+  "embedding_engine": "ollama",
+  "embedding_model": "qwen3-embedding:0.6b",
+  "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+  "embedding_dimension": 1024,
+  "documents_sha256": "sha256:913a6682b01fe140ce353f215c6f4d4f6118ec236ec84af7ef6b756285566d95",
+  "embeddings_sha256": "sha256:b4540a5781b39d0f6362c03a565a4451752de5b877cbf0311b1e64077a6dad02",
+  "legal_review_completed": false
+}

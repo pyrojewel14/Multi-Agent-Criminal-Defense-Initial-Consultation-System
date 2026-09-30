@@ -249,6 +249,9 @@ async def _analyze_coverage(facts_structured: Dict[str, Any], applied_laws: List
                 if canonical_key
                 else _is_chinese_element_supported(facts_structured, element_name)
             )
+            if law.get("annotation_usage") == "demo":
+                # 演示分支由已读取条文的 LawRef 判断，避免旧关键词规则把替代项误作共同条件。
+                is_covered = element_name in law.get("elements_matched", [])
 
             if is_covered:
                 covered_elements.append(element_name)
@@ -831,6 +834,18 @@ async def fact_coverage_node(state: "ConsultationState") -> "ConsultationState":
     applied_laws = state.get("applied_laws", [])
     pending_questions = state.get("pending_questions", [])
     conversation_history = state.get("conversation_history", [])
+
+    if state.get("law_search_status") == "text_only":
+        # 标注缺口无法通过追问案情补足，保留正文参考并直接等待律师复核。
+        _record_fact_law_attempt(state, "annotation_review_required")
+        state["facts_coverage_rate"] = 0.0
+        state["workflow_status"] = "degraded"
+        state["fact_law_termination_reason"] = "annotation_review_required"
+        state["lawyer_review_needed"] = True
+        state["pending_questions"] = []
+        state["current_agent"] = "FactDigger"
+        state["final_output"] = disclaimer.inject("已找到相关条文正文，法律标注尚待复核，系统已转交律师审核。")
+        return state
 
     if not applied_laws:
         state["facts_coverage_rate"] = 0.0

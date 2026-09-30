@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 
 from app.infrastructure.logging import get_logger
 from app.infrastructure.observability.tracing import SessionBudgetExceeded
-from app.knowledge.law_knowledge import _normalize_article_number
+from app.knowledge.law_knowledge import _normalize_article_number, is_article_in_force, is_lawref_eligible
 from app.knowledge.schemas import LawDataSource
 
 _logger = get_logger("LawRetrieval")
@@ -46,7 +46,7 @@ def _verify_and_enrich_with_json(
     """用 JSON 知识库验证并增强 RAG 检索结果。
 
     从 RAG 结果中提取法条编号，在 JSON 知识库中精确匹配，
-    用 JSON 中的可靠元数据替换 RAG 文档中不可靠的元数据。
+    仅用项目维护的标注替换 RAG 文档中未经核验的元数据。
 
     Args:
         rag_results: RAG 检索结果列表
@@ -61,8 +61,22 @@ def _verify_and_enrich_with_json(
         normalized = _normalize_article_number(article_number)
         json_match = article_index.get(normalized) if normalized else None
 
-        if json_match:
-            # 用 JSON 知识库的可靠数据增强 RAG 结果
+        if json_match and not is_article_in_force(json_match):
+            continue
+
+        full_match = bool(json_match and json_match.get("text_provenance"))
+        if json_match is not None and full_match and (
+            rag_law.get("corpus_sha256") != json_match.get("corpus_sha256")
+            or rag_law.get("corpus_version") != json_match.get("corpus_version")
+            or rag_law.get("content") != f"{json_match['article_number']} {json_match['content']}"
+        ):
+            enriched.append({**rag_law, "elements": [], "required_elements": [], "data_source": "rag_unverified"})
+            continue
+        if json_match is not None and full_match and not is_lawref_eligible(json_match):
+            enriched.append({**json_match, "elements": [], "required_elements": [], "data_source": "text_only", "coverage_eligible": False, "retrieval_method": rag_law.get("retrieval_method", "rag")})
+            continue
+        if json_match and is_lawref_eligible(json_match):
+            # 项目维护标注通过安全门槛后，才可增强 RAG 结果。
             enriched.append(
                 {
                     **rag_law,
@@ -75,10 +89,12 @@ def _verify_and_enrich_with_json(
                     "common_keywords": json_match.get("common_keywords", []),
                     "chapter": json_match.get("chapter", rag_law.get("chapter", "")),
                     "data_source": "rag_verified",
+                    "annotation_usage": json_match.get("annotation_usage", "project_regression"),
+                    "annotation_source": json_match.get("annotation_source", ""),
                 }
             )
         else:
-            # RAG 结果在 JSON 中找不到，保留原始内容但标记为未验证
+            # 未命中或标注未通过安全门槛时，只保留未验证的原始结果。
             enriched.append({**rag_law, "data_source": "rag_unverified"})
 
     verified_count = sum(1 for law in enriched if law.get("data_source") == "rag_verified")
@@ -168,7 +184,11 @@ async def search_laws_by_keyword(facts_structured: Dict[str, Any], law_data: Dic
 
     for chapter in law_data.get("chapters", []):
         for article in chapter.get("articles", []):
-            charge_name = article.get("title", "").lower()
+            full_article = bool(article.get("text_provenance"))
+            eligible = is_lawref_eligible(article)
+            if not is_article_in_force(article) or (not eligible and not full_article):
+                continue
+            charge_name = (article.get("title") or article.get("display_title", "")).lower()
             charge_tags = " ".join(article.get("charge_tags", [])).lower()
             content = article.get("content", "").lower()
             common_keywords = " ".join(article.get("common_keywords", [])).lower()
@@ -178,6 +198,8 @@ async def search_laws_by_keyword(facts_structured: Dict[str, Any], law_data: Dic
 
             for term in search_terms:
                 term_lower = term.lower()
+                if _normalize_article_number(term) == _normalize_article_number(article.get("article_number", "")):
+                    relevance_score += 100
                 if term_lower in charge_name:
                     relevance_score += 3
                     matched_tags.append(f"罪名匹配: {term}")
@@ -204,7 +226,13 @@ async def search_laws_by_keyword(facts_structured: Dict[str, Any], law_data: Dic
                         "chapter": chapter.get("chapter", ""),
                         "relevance_score": relevance_score,
                         "matched_tags": matched_tags,
-                        "data_source": LawDataSource.JSON_KEYWORD.value,
+                        "data_source": LawDataSource.JSON_KEYWORD.value if eligible else "text_only",
+                        "coverage_eligible": eligible,
+                        "annotation_usage": article.get("annotation_usage", "project_regression"),
+                        "annotation_source": article.get("annotation_source", ""),
+                        "text_provenance": article.get("text_provenance", {}),
+                        "annotations": article.get("annotations", {}),
+                        "display_title": article.get("display_title", ""),
                     }
                 )
 
@@ -233,6 +261,10 @@ async def search_laws_by_rag(facts_structured: Dict[str, Any], user_id: str | No
         return []
 
     try:
+        import os
+        if os.getenv("LAW_KNOWLEDGE_PROFILE", "snapshot") == "full":
+            from app.knowledge.full_law_index import search_full_index
+            return LawSearchResults(await search_full_index(facts_structured))
         from app.knowledge.rag.rag_service import RagService
 
         behavior_sequence = facts_structured.get("behavior_sequence", [])

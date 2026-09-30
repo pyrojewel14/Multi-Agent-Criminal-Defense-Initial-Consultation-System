@@ -1,0 +1,2335 @@
+{
+  "schema_version": "agent-authored-notes-v1",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "review_date": "2026-09-30",
+  "scope": "第一批43条；代理提议，非用户接受或律师确认",
+  "records": [
+    {
+      "article_number": "第一条",
+      "content_sha256": "sha256:00dd8c52df9653b6804cdff948aea3b8e036196d81e23968385baac11b523a74",
+      "findings": [
+        "一般立法目的被复制为罪名标签；占位元素不应表示一个真实要件。"
+      ],
+      "original_annotations_sha256": "sha256:3fed433eff699f568a29ab684689a5ca66f8e93ca5e7954333c4165264c343dc",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一条；主观要素与责任能力另见总则第14—18条"
+        }
+      ],
+      "proposal": {
+        "title": "刑法的立法目的与根据",
+        "charges": [],
+        "elements": {
+          "kind": "general_rule",
+          "common_conditions": [],
+          "alternative_branches": [],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "not_applicable",
+          "rules": [],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "保留标题为检索摘要；罪名与独立要件为空。",
+        "本条不形成独立罪名覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第十三条",
+      "content_sha256": "sha256:f4c2924b34f55e553f66a4cd0cfdfd331c6e51c9c556495368047cc434601ddb",
+      "findings": [
+        "犯罪概念、但书属于总则规则，不是独立罪名；占位丢失“显著轻微危害不大”的排除规则。"
+      ],
+      "original_annotations_sha256": "sha256:218747211dccc2e00377b69ec6b90e1ba94ace36ce357fe9c63ecba6bbc53404",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第十三条；主观要素与责任能力另见总则第14—18条"
+        }
+      ],
+      "proposal": {
+        "title": "犯罪的概念与但书",
+        "charges": [],
+        "elements": {
+          "kind": "general_rule",
+          "common_conditions": [],
+          "alternative_branches": [
+            "依照法律应受刑罚处罚的危害行为",
+            "情节显著轻微且危害不大：不认为是犯罪"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "not_applicable",
+          "rules": [],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "将但书作为适用排除规则，不能作为另一犯罪要件。",
+        "本条不形成独立罪名覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第十七条",
+      "content_sha256": "sha256:b5cdee380f2f8efcb8546f246750386401c33351111072bbc2c3e534de01fb7b",
+      "findings": [
+        "minor_victim误把行为人的责任年龄标成被害人年龄；各年龄段与结果、罪种、核准追诉被扁平化。"
+      ],
+      "original_annotations_sha256": "sha256:277f3567c8f3ab2b4b6bbc4b847aa2060890d9f733c8c9ae6d0647dfded7671e",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第十七条；主观要素与责任能力另见总则第14—18条"
+        }
+      ],
+      "proposal": {
+        "title": "刑事责任年龄",
+        "charges": [],
+        "elements": {
+          "kind": "general_rule",
+          "common_conditions": [
+            "判断对象为行为人实施行为时的年龄"
+          ],
+          "alternative_branches": [
+            "已满16周岁：犯罪应负刑事责任",
+            "已满14不满16周岁：仅条文列举的八类犯罪；故意伤害须致重伤或死亡，不能扩张为一切伤害",
+            "已满12不满14周岁：故意杀人或故意伤害；致人死亡，或以特别残忍手段致重伤造成严重残疾；还须情节恶劣且最高检核准追诉",
+            "依前三款追责且不满18周岁：应当从轻或减轻；因不满16不予刑事处罚：监护管教及必要时专门矫治教育"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "not_applicable",
+          "rules": [],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "年龄时点、年龄证明与核准手续不能由标签推定；不得按“被害人不满14”匹配本条。",
+        "本条不形成独立罪名覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百三十三条之一",
+      "content_sha256": "sha256:3862a5025c41f0c769faa06746a6a0206351af65fe8a8eba5a8a6c31a437566c",
+      "findings": [
+        "原要件只有“情节恶劣”，把第一项条件误作全部分支共同条件；缺道路、机动车、所有人/管理人分支。"
+      ],
+      "original_annotations_sha256": "sha256:e87868f727fd08ba7a0504f13f0cd670057f3bab732a9a56ccb3eb484e37b734",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百三十三条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/zixun/xiangqing/2600.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "危险驾驶罪",
+        "charges": [
+          "危险驾驶罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "在道路上驾驶机动车"
+          ],
+          "alternative_branches": [
+            "追逐竞驶，且情节恶劣",
+            "醉酒驾驶机动车",
+            "从事校车业务或旅客运输；严重超额载客，或严重超速",
+            "违反危化品安全管理规定运输危化品，且危及公共安全",
+            "所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "任一适用分支",
+              "sentence": "拘役，并处罚金"
+            }
+          ],
+          "competition": [
+            "同时构成其他犯罪：依处罚较重规定定罪处罚"
+          ]
+        }
+      },
+      "unresolved": [
+        "醉酒、严重超员/超速与责任归属的具体标准须另核有效解释。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百三十三条之二",
+      "content_sha256": "sha256:1b05173c3d298063fc3b7fe4d5a0efb0f5a771056ca667bd1c7b84da94db9e62",
+      "findings": [
+        "“不设独立要件”错误；普通行为人与公共交通驾驶人员是两条行为分支。"
+      ],
+      "original_annotations_sha256": "sha256:1d2d9c303f69e6680e2b63d7e1f3a06fe6b5fe74e132da0abc5314cefdd9b3c1",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百三十三条之二；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "妨害安全驾驶罪",
+        "charges": [
+          "妨害安全驾驶罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "行驶中的公共交通工具",
+            "危及公共安全"
+          ],
+          "alternative_branches": [
+            "对驾驶人员使用暴力或抢控驾驶操纵装置，干扰正常行驶",
+            "该驾驶人员擅离职守，与他人互殴或殴打他人"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "任一适用分支",
+              "sentence": "一年以下有期徒刑、拘役或管制，并处或单处罚金"
+            }
+          ],
+          "competition": [
+            "与其他犯罪竞合：从一重"
+          ]
+        }
+      },
+      "unresolved": [
+        "公共交通工具、干扰与危险之间的事实关联需核实。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百三十四条",
+      "content_sha256": "sha256:4f25c63a48a45355d164250fdf8e0f69eaecbb29d845239df96716e7dedf936c",
+      "findings": [
+        "标题、罪名漏掉第二款的强令、组织他人违章冒险作业罪；“明知”只对应第二款中的组织分支。"
+      ],
+      "original_annotations_sha256": "sha256:74f0219c4617c389268bbde53040b16c890015f18d83fddc8cb12f33f1a3b8d2",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百三十四条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "重大责任事故罪；强令、组织他人违章冒险作业罪",
+        "charges": [
+          "重大责任事故罪",
+          "强令、组织他人违章冒险作业罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "第一款：生产、作业中违反安全管理规定，因而发生重大伤亡事故或其他严重后果",
+            "第二款A：强令他人违章冒险作业，因而发生上述结果",
+            "第二款B：明知存在重大事故隐患而不排除，仍冒险组织作业，因而发生上述结果"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "第一款一般",
+              "sentence": "三年以下有期徒刑或拘役"
+            },
+            {
+              "when": "第一款情节特别恶劣",
+              "sentence": "三年以上七年以下有期徒刑"
+            },
+            {
+              "when": "第二款一般",
+              "sentence": "五年以下有期徒刑或拘役"
+            },
+            {
+              "when": "第二款情节特别恶劣",
+              "sentence": "五年以上有期徒刑"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "两款罪名、主体、过失责任与事故因果关系分别核对，不能共享一组扁平要件。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百三十四条之一",
+      "content_sha256": "sha256:f62fcd344a2c69ad0454441c46cfc502f8f535c1b3c2f4e7044bea2b16b59aa9",
+      "findings": [
+        "原“严重后果”错把现实危险改成已经发生的后果；三类危险行为遗漏。"
+      ],
+      "original_annotations_sha256": "sha256:1d9960b4c684bf8e016c1980865bb92d148b7ab5b6c5228d4c46cd90a0f6f161",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百三十四条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "危险作业罪",
+        "charges": [
+          "危险作业罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "生产、作业中违反安全管理规定",
+            "具有发生重大伤亡事故或其他严重后果的现实危险"
+          ],
+          "alternative_branches": [
+            "关闭、破坏直接关系生产安全的列举设备设施，或篡改、隐瞒、销毁相关数据",
+            "因重大事故隐患被依法责令采取条文列举措施而拒不执行",
+            "相关安全生产事项未经依法批准或许可，擅自从事条文列举的高度危险作业"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "任一适用分支",
+              "sentence": "一年以下有期徒刑、拘役或管制"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "行政命令合法性、许可范围、现实危险须有具体证据。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百四十一条",
+      "content_sha256": "sha256:d180ee5132f15364330ed59a52b5f0c4d0b09629f21ab6fe1ee4bcf1167efaaa",
+      "findings": [
+        "原要件漏生产/销售假药；死亡与特别严重情节属于刑罚升档；药品使用单位人员分支单独保留。"
+      ],
+      "original_annotations_sha256": "sha256:56b1b96279d251b22a6a5392bdb417bbd8679f916c92f6bd0cf039e0882e9f9f",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百四十一条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "生产、销售、提供假药罪",
+        "charges": [
+          "生产、销售、提供假药罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "生产或销售假药",
+            "药品使用单位人员明知是假药而提供给他人使用"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "一般",
+              "sentence": "三年以下有期徒刑或拘役，并处罚金"
+            },
+            {
+              "when": "严重危害健康或其他严重情节",
+              "sentence": "三年以上十年以下有期徒刑，并处罚金"
+            },
+            {
+              "when": "致人死亡或其他特别严重情节",
+              "sentence": "十年以上有期徒刑、无期徒刑或死刑，并处罚金或没收财产"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "假药判定标准、各分支主观要素及健康损害因果关系须补核。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百四十二条",
+      "content_sha256": "sha256:2d3d6fe154fd2f58b002e3181db4cdd1b31b19503c13b7a472cb42647bb6a21e",
+      "findings": [
+        "原要件漏劣药与严重危害人体健康这一入罪条件；后果特别严重不应充当普通档共同要件。"
+      ],
+      "original_annotations_sha256": "sha256:ed7ca16d333af6f853b9027b53069b5db88583a9bea9a9faeeba88bf7ec6a154",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百四十二条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "生产、销售、提供劣药罪",
+        "charges": [
+          "生产、销售、提供劣药罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "对人体健康造成严重危害"
+          ],
+          "alternative_branches": [
+            "生产或销售劣药",
+            "药品使用单位人员明知是劣药而提供给他人使用"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "严重危害健康",
+              "sentence": "三年以上十年以下有期徒刑，并处罚金"
+            },
+            {
+              "when": "后果特别严重",
+              "sentence": "十年以上有期徒刑或无期徒刑，并处罚金或没收财产"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "劣药判定及严重危害与特别严重后果须分别核对。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百四十二条之一",
+      "content_sha256": "sha256:5b59e61cf1f511d9a583bb3e5f152db50ca5829774d61f321dee7c9cd29c57a5",
+      "findings": [
+        "原要件只保留“明知”“其他严重情节”，漏违法、四类行为及足以严重危害健康。"
+      ],
+      "original_annotations_sha256": "sha256:150075eaba0d8d0678353c6ceaae52e56048e66d0eeb82a5c2ef846c20d13f06",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百四十二条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "妨害药品管理罪",
+        "charges": [
+          "妨害药品管理罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "违反药品管理法规",
+            "足以严重危害人体健康"
+          ],
+          "alternative_branches": [
+            "生产、销售国务院药监部门禁止使用的药品",
+            "未获相关批准证明文件而生产、进口药品；或明知是上述药品而销售",
+            "药品注册申请中提供虚假证明、数据、资料、样品或采用其他欺骗手段",
+            "编造生产、检验记录"
+          ],
+          "references": [
+            "第141条",
+            "第142条"
+          ],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "一般危险",
+              "sentence": "三年以下有期徒刑或拘役，并处或单处罚金"
+            },
+            {
+              "when": "严重危害健康或其他严重情节",
+              "sentence": "三年以上七年以下有期徒刑，并处罚金"
+            }
+          ],
+          "competition": [
+            "与第141、142条或其他犯罪竞合：从一重"
+          ]
+        }
+      },
+      "unresolved": [
+        "“明知”在原文中对应销售分支；其他行为主观要素不能依关键词省略判断。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百四十九条",
+      "content_sha256": "sha256:b46e061ae6adf7af03c4040444680da7eac2ee6f16d789b51a23e315a8c8c5e1",
+      "findings": [
+        "法条适用标题被当罪名；“不规定法定刑”未表达实际跨条处罚规则。"
+      ],
+      "original_annotations_sha256": "sha256:ca3673d4479c4b23d88588cc8294ca19ab258f29d28794ef66721b0b9dcf69e2",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百四十九条；主观要素与责任能力另见总则第14—18条"
+        }
+      ],
+      "proposal": {
+        "title": "生产、销售伪劣商品罪的法条适用",
+        "charges": [],
+        "elements": {
+          "kind": "reference_rule",
+          "common_conditions": [],
+          "alternative_branches": [
+            "第141—148条产品不构成对应罪，但销售金额五万元以上：按第140条定罪处罚",
+            "构成对应罪且同时构成第140条之罪：依处罚较重规定定罪处罚"
+          ],
+          "references": [
+            "第140条",
+            "第141—148条"
+          ],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "第一款转引",
+              "sentence": "依第140条相应档次"
+            },
+            {
+              "when": "第二款竞合",
+              "sentence": "比较第140条与对应条文刑罚后从一重"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "这是转引/竞合规则，五万元属于第一款条件，不是独立罪名或整组产品的统一入罪阈值。",
+        "本条不形成独立罪名覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百六十条",
+      "content_sha256": "sha256:bc2bbc8ab6b88f1cce6b5cf243afe2bae074288a080ef94e95e4bdf84065963e",
+      "findings": [
+        "原标注仅抽取数额和情节，漏证券发行欺诈行为；控股股东、实际控制人及单位的刑罚规则不同。"
+      ],
+      "original_annotations_sha256": "sha256:95b598f82a97c4935054468232feab46f7bce61b68c85946bfd3bd9d1c0cc79f",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百六十条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "欺诈发行证券罪",
+        "charges": [
+          "欺诈发行证券罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "发行文件隐瞒重要事实或编造重大虚假内容，发行条文列举证券；数额巨大、后果严重或其他严重情节",
+            "控股股东、实际控制人组织、指使前款行为",
+            "单位犯前两款罪"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "第一款基本档",
+              "sentence": "五年以下有期徒刑或拘役，并处或单处罚金"
+            },
+            {
+              "when": "第一款特别严重档",
+              "sentence": "五年以上有期徒刑，并处罚金"
+            },
+            {
+              "when": "第二款基本档",
+              "sentence": "五年以下有期徒刑或拘役，并处或单处非法募集资金20%以上一倍以下罚金"
+            },
+            {
+              "when": "第二款特别严重档",
+              "sentence": "五年以上有期徒刑，并处上述比例罚金"
+            },
+            {
+              "when": "单位",
+              "sentence": "单位处上述比例罚金；主管与其他直接责任人员依第一款"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "各严重情节门槛须另核；不得把单位比例罚金复制给第一款全部自然人。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百六十三条",
+      "content_sha256": "sha256:8e729967d92ee455c4f8dce84eebb853585bcd221fc32c50b5c04c37cc289b0e",
+      "findings": [
+        "入罪/升档与回扣分支、国家工作人员转引须拆开；2026年新解释影响数额标准，不能沿用旧倍数口径。"
+      ],
+      "original_annotations_sha256": "sha256:21c8ce7489477503db4f025e062af282930ccad284fd6eded1600b3f881d778a",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百六十三条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/497181.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "非国家工作人员受贿罪",
+        "charges": [
+          "非国家工作人员受贿罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "公司企业其他单位工作人员利用职务便利索取或非法收受财物，为他人谋利益，数额较大",
+            "经济往来中利用职务便利，违法收受回扣/手续费归个人所有",
+            "国有单位从事公务或国有单位委派从事公务人员：转第385、386条"
+          ],
+          "references": [
+            "第385条",
+            "第386条"
+          ],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "基本档",
+              "sentence": "三年以下有期徒刑或拘役，并处罚金"
+            },
+            {
+              "when": "数额巨大或其他严重情节",
+              "sentence": "三年以上十年以下有期徒刑，并处罚金"
+            },
+            {
+              "when": "数额特别巨大或其他特别严重情节",
+              "sentence": "十年以上有期徒刑或无期徒刑，并处罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "法释〔2026〕6号第8条参照受贿罪标准；须核行为时法、配套标准与主体身份，不能只根据职称判定。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百六十四条",
+      "content_sha256": "sha256:4608bbf3094bb758099f1008237f450523bf5011e748fd088524f91c7f687af6",
+      "findings": [
+        "非国家工作人员与外国公职人员/国际公共组织官员行贿分支目的及对象不同；单位及主动交待处罚规则遗漏风险。"
+      ],
+      "original_annotations_sha256": "sha256:2c2b93d0bbcc8404e6b91c462a76fe54c0801d025b3b1ae99dafe64d2e76b0a4",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百六十四条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/497181.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "对非国家工作人员行贿罪；对外国公职人员、国际公共组织官员行贿罪",
+        "charges": [
+          "对非国家工作人员行贿罪",
+          "对外国公职人员、国际公共组织官员行贿罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "为谋不正当利益，给公司企业其他单位工作人员财物，数额较大",
+            "为谋不正当商业利益，给外国公职人员或国际公共组织官员财物",
+            "单位犯前两款罪"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "第一款基本档及第二款转引",
+              "sentence": "三年以下有期徒刑或拘役，并处罚金"
+            },
+            {
+              "when": "第一款数额巨大",
+              "sentence": "三年以上十年以下有期徒刑，并处罚金"
+            },
+            {
+              "when": "单位",
+              "sentence": "单位判罚金；主管与其他直接责任人员依第一款"
+            },
+            {
+              "when": "行贿人在被追诉前主动交待",
+              "sentence": "可以减轻或免除处罚"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "法释〔2026〕6号第8条规定非国家工作人员行贿参照标准；不能自动套给外国公职人员分支，后者数额/升档条件待专项核。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百六十五条",
+      "content_sha256": "sha256:1e5124e538edde33408d53aa523e5ace21340ce7e73305d7f3efb1419f0b328a",
+      "findings": [
+        "原标注合并国企与其他企业两款主体/损害条件；法定刑原值没有其他企业的引用适用。"
+      ],
+      "original_annotations_sha256": "sha256:f54adf355bafabcf066f3416292e08de74f927f27fd09e7bdef9619b1e7c4279",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百六十五条；主观要素与责任能力另见总则第14—18条"
+        }
+      ],
+      "proposal": {
+        "title": "非法经营同类营业罪",
+        "charges": [
+          "非法经营同类营业罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "国有公司、企业董事或经理：利用职务便利，自己/为他人经营同类营业，获取非法利益数额巨大",
+            "其他公司、企业董事、监事、高管：违反法律、行政法规实施前款行为，致使公司企业利益遭受重大损失"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "第一款基本档及第二款依前款处罚",
+              "sentence": "三年以下有期徒刑或拘役，并处或单处罚金"
+            },
+            {
+              "when": "第一款数额特别巨大",
+              "sentence": "三年以上七年以下有期徒刑，并处罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "第二款重大损失与第一款非法利益数额的对应、升档适用及有效解释待确认；不能默认国企/其他企业阈值相同。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百六十六条",
+      "content_sha256": "sha256:1418d941a0534f31c3d7ec926561bc8d05a64956f4d8f42f8a4c75d087a02ccf",
+      "findings": [
+        "原要件仅损失标签，漏特殊主体、利用职务便利、亲友关系和三类行为；非国有企业分支未被刑罚标注表达。"
+      ],
+      "original_annotations_sha256": "sha256:b8b5d819464340c1d9bfeeed53456c66d39087e562faece0a66061bfa7e7b528",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百六十六条；主观要素与责任能力另见总则第14—18条"
+        }
+      ],
+      "proposal": {
+        "title": "为亲友非法牟利罪",
+        "charges": [
+          "为亲友非法牟利罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "国有公司、企业、事业单位工作人员利用职务便利；将盈利业务给亲友，或明显不利市场价格向亲友单位采购/销售，或向亲友单位采购不合格商品；使国家利益重大损失",
+            "其他公司、企业工作人员违反法律、行政法规实施前款行为，致公司企业利益重大损失"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "第一款重大损失及第二款依前款处罚",
+              "sentence": "三年以下有期徒刑或拘役，并处或单处罚金"
+            },
+            {
+              "when": "第一款特别重大损失",
+              "sentence": "三年以上七年以下有期徒刑，并处罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "其他企业升档对应、亲友范围与损失核算须补核；三个行为类型为替代，不要求同时成立。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百六十九条",
+      "content_sha256": "sha256:6f5a9325cee172e958075e738c50d4429caba786b489d4d487bb371e5b30683f",
+      "findings": [
+        "新罪名已核对，但原要件仅损失；漏主体、徇私舞弊、低价折股/出售和非国企分支。"
+      ],
+      "original_annotations_sha256": "sha256:eb06e840033e0bfb124869a1d5c07da85315b4b276e16c567ba454ca321720af",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百六十九条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/424452.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "徇私舞弊低价折股、出售公司、企业资产罪",
+        "charges": [
+          "徇私舞弊低价折股、出售公司、企业资产罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "国有公司、企业或上级主管部门直接负责主管人员，徇私舞弊将国有资产低价折股或低价出售，致国家利益重大损失",
+            "其他公司、企业直接负责主管人员，徇私舞弊将公司企业资产低价折股或出售，致公司企业利益重大损失"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "第一款重大损失及第二款依前款处罚",
+              "sentence": "三年以下有期徒刑或拘役"
+            },
+            {
+              "when": "第一款特别重大损失",
+              "sentence": "三年以上七年以下有期徒刑"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "罪名规范来自补充规定（八）；非国企升档对应与低价/损失认定仍待确认。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第一百九十九条",
+      "content_sha256": "sha256:0796c14e2b5046ca4cb4a62d0c324ee06cdf478859ca2dc137554a6d8c17526f",
+      "findings": [
+        "删去记录被当作罪名标签；不得作为当前有效正文或要件。"
+      ],
+      "original_annotations_sha256": "sha256:785dcc8caefb5f73be8e440c9a64408a7acd15fe1c759bbf027eeb3f6eddfeec",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第一百九十九条；主观要素与责任能力另见总则第14—18条"
+        }
+      ],
+      "proposal": {
+        "title": "（删去）",
+        "charges": [],
+        "elements": {
+          "kind": "repealed",
+          "common_conditions": [],
+          "alternative_branches": [],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "not_applicable",
+          "rules": [],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "保留删去状态供版本追踪；历史适用须查行为时版本，本条不提供现行罪名。",
+        "本条不形成独立罪名覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百一十九条之一",
+      "content_sha256": "sha256:139b5321d19cc825de76257a22816f0d4a96582b738b2540f849c6e5507fe7d0",
+      "findings": [
+        "“情节严重”只是升档条件；基本档漏境外对象、商业秘密及四类行为。"
+      ],
+      "original_annotations_sha256": "sha256:9425aa5b553015cba22a1765574a6971d9004c5f8a9daaca29cbf2c52541ad3a",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百一十九条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "为境外窃取、刺探、收买、非法提供商业秘密罪",
+        "charges": [
+          "为境外窃取、刺探、收买、非法提供商业秘密罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "为境外机构、组织或人员",
+            "对象是商业秘密"
+          ],
+          "alternative_branches": [
+            "窃取",
+            "刺探",
+            "收买",
+            "非法提供"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "一般",
+              "sentence": "五年以下有期徒刑，并处或单处罚金"
+            },
+            {
+              "when": "情节严重",
+              "sentence": "五年以上有期徒刑，并处罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "商业秘密与境外关系、主观要素及严重情节须另核，不从另一罪名的损失阈值直接复制。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百三十二条",
+      "content_sha256": "sha256:e0b186f4b82d062f805368ab6728c19414a44caac5fc78d9420239f68fa745ca",
+      "findings": [
+        "旧六条是测试摘要；一个行为标签不能代表故意杀人完整要件、既未遂和责任能力。"
+      ],
+      "original_annotations_sha256": "sha256:992e754f5e659af986f6ab0cd9eeafc8b814eb5df69d568d7fada674d63119a4",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百三十二条；主观要素与责任能力另见总则第14—18条"
+        }
+      ],
+      "proposal": {
+        "title": "故意杀人罪",
+        "charges": [
+          "故意杀人罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "故意剥夺他人生命的行为"
+          ],
+          "alternative_branches": [
+            "既遂与未遂须分开核对，未遂另结合第23条"
+          ],
+          "references": [
+            "第23条"
+          ],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "一般",
+              "sentence": "死刑、无期徒刑或十年以上有期徒刑"
+            },
+            {
+              "when": "情节较轻",
+              "sentence": "三年以上十年以下有期徒刑"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "补核杀人故意、对象、死亡因果或未遂、阻却违法与责任能力；本条不因已在回归快照中而获律师确认。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百三十四条",
+      "content_sha256": "sha256:2ab2676e28ba02f8696538a8e48870ff18de00b08ff5c63e07c9843fc815f61b",
+      "findings": [
+        "旧摘要漏伤情、因果关系及特别残忍手段分支；伤害故意不能自动等于杀人故意。"
+      ],
+      "original_annotations_sha256": "sha256:c484c685a5c77ea9903d988222b76444dde82a527f1dba569838e82115275318",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百三十四条；主观要素与责任能力另见总则第14—18条"
+        }
+      ],
+      "proposal": {
+        "title": "故意伤害罪",
+        "charges": [
+          "故意伤害罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "故意伤害他人身体"
+          ],
+          "alternative_branches": [
+            "基本档：伤害结果和入罪伤情结合有效规范核对",
+            "致人重伤",
+            "致人死亡，或以特别残忍手段致重伤造成严重残疾"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "基本档",
+              "sentence": "三年以下有期徒刑、拘役或管制"
+            },
+            {
+              "when": "致重伤",
+              "sentence": "三年以上十年以下有期徒刑"
+            },
+            {
+              "when": "致死或特别残忍手段致重伤严重残疾",
+              "sentence": "十年以上有期徒刑、无期徒刑或死刑"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "轻伤等标准需另核；不得把致死设为所有伤害的共同条件，另有规定依其规定。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百三十六条之一",
+      "content_sha256": "sha256:627ce7d768586ecc4d6a93a70db56965d77c059cb4e70af78742de8cc4f8375f",
+      "findings": [
+        "“情节恶劣”是升档，漏特殊照护职责、被害女性年龄和性关系行为。"
+      ],
+      "original_annotations_sha256": "sha256:88f968ccbae94688b29f81ad84aaff9a7c2303bc3a74e797a3eeea98153e7a82",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百三十六条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "负有照护职责人员性侵罪",
+        "charges": [
+          "负有照护职责人员性侵罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "对已满14不满16周岁的未成年女性负有条文所列特殊职责",
+            "与该女性发生性关系"
+          ],
+          "alternative_branches": [],
+          "references": [
+            "第236条"
+          ],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "基本档",
+              "sentence": "三年以下有期徒刑"
+            },
+            {
+              "when": "情节恶劣",
+              "sentence": "三年以上十年以下有期徒刑"
+            }
+          ],
+          "competition": [
+            "同时构成第236条罪：从一重"
+          ]
+        }
+      },
+      "unresolved": [
+        "核对职责实际存在、年龄证明、主观认识及与强奸罪关系。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百六十三条",
+      "content_sha256": "sha256:d384112939effcbb8903d83f5ea5552207f045ff1c1bac9f63718b1a1c92dd6f",
+      "findings": [
+        "旧摘要保留两项行为，但漏非法占有等完整判断及八类加重分支；不是完整法律认证。"
+      ],
+      "original_annotations_sha256": "sha256:4264fb98d1bcb233691dd3595dea2e872d180d8af89e48bbb7f40cf975762aff",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百六十三条；主观要素与责任能力另见总则第14—18条"
+        }
+      ],
+      "proposal": {
+        "title": "抢劫罪",
+        "charges": [
+          "抢劫罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "以暴力、胁迫或其他方法抢劫公私财物"
+          ],
+          "alternative_branches": [
+            "普通分支",
+            "入户；公共交通工具上；银行或其他金融机构；多次或数额巨大；致重伤/死亡；冒充军警；持枪；特定军用/抢险救灾救济物资：各为加重替代项"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "普通",
+              "sentence": "三年以上十年以下有期徒刑，并处罚金"
+            },
+            {
+              "when": "法定八项之一",
+              "sentence": "十年以上有期徒刑、无期徒刑或死刑，并处罚金或没收财产"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "需补核非法占有目的、方法与取财联系、既未遂及八项解释；不要求八项同时满足。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百六十四条",
+      "content_sha256": "sha256:e8039bad3e0b6a6c106e5a42f90166f9c2bf1c276b3ea5366749c39ce0e9d9d8",
+      "findings": [
+        "旧摘要“具备法定情形之一”须展开；数额门槛不适用于多次/入户/携凶器/扒窃的全部分支。"
+      ],
+      "original_annotations_sha256": "sha256:cb115327c11a6d98afab3f385edbc6de23f112014898f2137f0dd13ea4cbb80b",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百六十四条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/zixun/xiangqing/5228.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "盗窃罪",
+        "charges": [
+          "盗窃罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "盗窃公私财物"
+          ],
+          "alternative_branches": [
+            "数额较大",
+            "多次盗窃",
+            "入户盗窃",
+            "携带凶器盗窃",
+            "扒窃"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "基本档",
+              "sentence": "三年以下有期徒刑、拘役或管制，并处或单处罚金"
+            },
+            {
+              "when": "数额巨大或其他严重情节",
+              "sentence": "三年以上十年以下有期徒刑，并处罚金"
+            },
+            {
+              "when": "数额特别巨大或其他特别严重情节",
+              "sentence": "十年以上有期徒刑或无期徒刑，并处罚金或没收财产"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "补核非法占有目的、地区数额标准、减半门槛和各特殊情形定义；不预填统一全国金额。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百六十六条",
+      "content_sha256": "sha256:351dde6bd8cebcb90b46e0af30ec6221759eab226f1f0e00691a5bc830a5c0ea",
+      "findings": [
+        "旧摘要把“诈骗”当单一要素，尚未拆解欺骗—错误认识—处分—损失；地区金额与特别规定未建模。"
+      ],
+      "original_annotations_sha256": "sha256:b6d04699d4d8e471af064e97b9368c8df04ebdafc86f61b9da4d1dafa73fcb0d",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百六十六条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/zixun/xiangqing/2472.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "诈骗罪",
+        "charges": [
+          "诈骗罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "诈骗公私财物",
+            "数额较大（既遂基本档）"
+          ],
+          "alternative_branches": [
+            "既遂基本档",
+            "未遂结合总则及有效解释另核",
+            "有特别规定的诈骗行为依其规定"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "基本档",
+              "sentence": "三年以下有期徒刑、拘役或管制，并处或单处罚金"
+            },
+            {
+              "when": "数额巨大或其他严重情节",
+              "sentence": "三年以上十年以下有期徒刑，并处罚金"
+            },
+            {
+              "when": "数额特别巨大或其他特别严重情节",
+              "sentence": "十年以上有期徒刑或无期徒刑，并处罚金或没收财产"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "非法占有目的、因果链各环节为待补法律要素提议；金额取地区标准，不能把经济纠纷仅凭“诈骗”标签定罪。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百七十一条",
+      "content_sha256": "sha256:617383e884fd56a4fa012a3b14f1ec33d06768cd8e7e5ff9b7c904856aa0bc05",
+      "findings": [
+        "主体与公务人员转引须拆开；2026年解释第8条规定参照贪污罪定罪量刑标准。"
+      ],
+      "original_annotations_sha256": "sha256:ac258449473197792a48455b9e730f82f9754f407e7af54b69efc55a2224f613",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百七十一条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/497181.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "职务侵占罪",
+        "charges": [
+          "职务侵占罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "公司企业其他单位工作人员利用职务便利，将本单位财物非法占为己有，数额较大",
+            "国有单位从事公务或受国有单位委派从事公务人员：依第382、383条"
+          ],
+          "references": [
+            "第382条",
+            "第383条"
+          ],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "基本档",
+              "sentence": "三年以下有期徒刑或拘役，并处罚金"
+            },
+            {
+              "when": "数额巨大",
+              "sentence": "三年以上十年以下有期徒刑，并处罚金"
+            },
+            {
+              "when": "数额特别巨大",
+              "sentence": "十年以上有期徒刑或无期徒刑，并处罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "2026解释引用与行为时法须核；数额标准与法定刑档次须分别核对，不能把贪污罪刑罚直接复制成本条法定刑。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百七十二条",
+      "content_sha256": "sha256:1df45203f1780bc8933a1becbf26076667c291e60b1fdc7e1130251cd46165b5",
+      "findings": [
+        "三类用途/时间条件是替代；非法活动分支不能自动要求三个月未还；退还时间与从宽规则需记录。"
+      ],
+      "original_annotations_sha256": "sha256:d8151cc9f52cdfde36f0b7b5443c9624a210ae2810c59c90047f32ad26ecc85a",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百七十二条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/497181.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "挪用资金罪",
+        "charges": [
+          "挪用资金罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "公司企业其他单位工作人员",
+            "利用职务便利挪用本单位资金归个人使用或借贷给他人"
+          ],
+          "alternative_branches": [
+            "数额较大且超过三个月未还",
+            "数额较大且进行营利活动，虽未超过三个月",
+            "进行非法活动（具体金额标准另核解释）",
+            "国有单位从事公务或受委派从事公务人员：依第384条"
+          ],
+          "references": [
+            "第384条"
+          ],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "基本档",
+              "sentence": "三年以下有期徒刑或拘役"
+            },
+            {
+              "when": "数额巨大",
+              "sentence": "三年以上七年以下有期徒刑"
+            },
+            {
+              "when": "数额特别巨大",
+              "sentence": "七年以上有期徒刑"
+            },
+            {
+              "when": "提起公诉前退还",
+              "sentence": "可以从轻或减轻；犯罪较轻可减轻或免除"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "法释〔2026〕6号第8条参照挪用公款标准；各用途的金额、个人使用定义和行为时法须补核。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百七十七条",
+      "content_sha256": "sha256:bfe1ce5d2597e77e0f5883f1b710352c7692c2f0afecb911cd68214a91782195",
+      "findings": [
+        "原要件混用五款条件；严重后果只对应第四款，国家机关工作人员不包含全部保护对象；袭警第五款独立。"
+      ],
+      "original_annotations_sha256": "sha256:d86f69066853e284d4e18ce52d630273e20d570cbdfc88602a8a1e8c428a613d",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百七十七条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "妨害公务罪；袭警罪",
+        "charges": [
+          "妨害公务罪",
+          "袭警罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "一款：暴力/威胁阻碍国家机关工作人员依法执行职务",
+            "二款：暴力/威胁阻碍人大代表依法执行代表职务",
+            "三款：自然灾害和突发事件中暴力/威胁阻碍红十字工作人员依法履责",
+            "四款：故意阻碍国安/公安依法执行国家安全工作任务，未使用暴力/威胁但造成严重后果",
+            "五款：暴力袭击正在依法执行职务的人民警察"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "第一至四款妨害公务",
+              "sentence": "三年以下有期徒刑、拘役、管制或罚金"
+            },
+            {
+              "when": "第五款袭警普通",
+              "sentence": "三年以下有期徒刑、拘役或管制"
+            },
+            {
+              "when": "袭警使用枪支/管制刀具，或驾车撞击等严重危及人身安全",
+              "sentence": "三年以上七年以下有期徒刑"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "职务合法性、警察身份和执行状态、手段/危险程度逐款核实；不能将“非暴力严重后果”套入袭警。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百八十条之二",
+      "content_sha256": "sha256:08dc50f841f75386283d9204db90bfe27d39c91972dd25214bfb5a1044b1f8ab",
+      "findings": [
+        "原要件“国家工作人员”仅关联第三款，非本罪共同特殊主体；身份与三类资格待遇遗漏。"
+      ],
+      "original_annotations_sha256": "sha256:566eedf09b837aad153dc48db7109e90f5a4c964f07229d43b9bfd76ffad9897",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百八十条之二；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "冒名顶替罪",
+        "charges": [
+          "冒名顶替罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "盗用或冒用他人身份，顶替高等学历教育入学资格、公务员录用资格或就业安置待遇",
+            "组织、指使他人实施前款行为"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "一般",
+              "sentence": "三年以下有期徒刑、拘役或管制，并处罚金"
+            },
+            {
+              "when": "组织/指使",
+              "sentence": "依前款从重"
+            }
+          ],
+          "competition": [
+            "国家工作人员实施前两款又构成其他犯罪：数罪并罚"
+          ]
+        }
+      },
+      "unresolved": [
+        "顶替资格待遇的范围与身份事实待核；普通行为人无需先证明是国家工作人员。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百九十一条之二",
+      "content_sha256": "sha256:849bd87af72bfe29636d45069991ba279e57be121bf33983a6f4af6284fd7cee",
+      "findings": [
+        "原仅情节标签，缺建筑物/其他高空及抛掷行为；不得凭抛物标签自动推危险方法危害公共安全。"
+      ],
+      "original_annotations_sha256": "sha256:f5f5b0039b434af72c45a04f717fc5291d2fef3cc0c149d547d31ec44648e870",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百九十一条之二；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "高空抛物罪",
+        "charges": [
+          "高空抛物罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "从建筑物或其他高空抛掷物品",
+            "情节严重"
+          ],
+          "alternative_branches": [],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "本罪",
+              "sentence": "一年以下有期徒刑、拘役或管制，并处或单处罚金"
+            }
+          ],
+          "competition": [
+            "同时构成其他犯罪：从一重"
+          ]
+        }
+      },
+      "unresolved": [
+        "具体高度、抛掷物与严重情节及主观状态另核。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百九十三条",
+      "content_sha256": "sha256:d180ac77d630d122bc718170b67f276144cda7042fd026fb37d8bd52fea11e30",
+      "findings": [
+        "旧两要件未展开四类行为与各自阈值；需排除一般纠纷误入；加重档另需纠集、多次、严重破坏秩序。"
+      ],
+      "original_annotations_sha256": "sha256:81cb6dc0f8299ea2b44d7443238f25bfb653ba5513453b8df3bc51dadacd332d",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百九十三条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/zixun/xiangqing/5572.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "寻衅滋事罪",
+        "charges": [
+          "寻衅滋事罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "破坏社会秩序",
+            "依据解释核对寻衅性质及一般纠纷排除"
+          ],
+          "alternative_branches": [
+            "随意殴打，情节恶劣",
+            "追逐、拦截、辱骂、恐吓，情节恶劣",
+            "强拿硬要或任意损毁、占用财物，情节严重",
+            "公共场所起哄闹事，造成公共场所秩序严重混乱"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "基本档",
+              "sentence": "五年以下有期徒刑、拘役或管制"
+            },
+            {
+              "when": "纠集他人多次实施前款行为、严重破坏社会秩序",
+              "sentence": "五年以上十年以下有期徒刑，可以并处罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "将法释〔2013〕18号各行为阈值、纠纷例外与具体案件证据另行细化；主观动机不得只靠关键词认定。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百九十三条之一",
+      "content_sha256": "sha256:350a185ac56def34baaa2ee0f9f9c241d2b13d39fd6275e67d17c336b43ca415",
+      "findings": [
+        "只列情节严重漏非法债务与催收行为；三类手段是替代，不能当作全具备。"
+      ],
+      "original_annotations_sha256": "sha256:e82da8e643f5d4b5ff866c33ae78f41f5df724ee6db1da0542022a8520f5b482",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百九十三条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "催收非法债务罪",
+        "charges": [
+          "催收非法债务罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "催收高利放贷等产生的非法债务",
+            "情节严重"
+          ],
+          "alternative_branches": [
+            "使用暴力或胁迫",
+            "限制人身自由或侵入住宅",
+            "恐吓、跟踪或骚扰"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "任一适用分支",
+              "sentence": "三年以下有期徒刑、拘役或管制，并处或单处罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "债务违法性和催收目的需证据，合法债务催收不能只凭这些手段标签套本罪。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百九十九条",
+      "content_sha256": "sha256:f1a7095c055c545312c77121cebc01a81bf012f1fd572515b0f38f5d8d6aafe0",
+      "findings": [
+        "情节严重只明文对应国歌分支；公共场合和对象遗漏；国旗国徽与国歌不能共享全部平铺条件。"
+      ],
+      "original_annotations_sha256": "sha256:92ae1cd3ffcd9709c87ea4865608763e7bdc4a7a525a50d322cfcef31b6ea220",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百九十九条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "侮辱国旗、国徽、国歌罪",
+        "charges": [
+          "侮辱国旗、国徽、国歌罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "公共场合",
+            "故意"
+          ],
+          "alternative_branches": [
+            "焚烧、毁损、涂划、玷污、践踏等方式侮辱国旗/国徽",
+            "篡改国歌歌词/曲谱、歪曲贬损奏唱或其他侮辱国歌方式，情节严重"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "任一适用分支",
+              "sentence": "三年以下有期徒刑、拘役、管制或剥夺政治权利"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "对象、故意、公共场合及国歌严重情节分别核实。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第二百九十九条之一",
+      "content_sha256": "sha256:72d9779f0146168cf7b0cc83911b459e7859af0e464c20b88fecd62886ea5c3b",
+      "findings": [
+        "原仅情节标签，遗漏英烈名誉荣誉、侵害行为与损害社会公共利益。"
+      ],
+      "original_annotations_sha256": "sha256:237e85fd1bd27a70fc1ec52e49a4b8c30e600e9a2587fa766fe9f1dbd2173b07",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第二百九十九条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "侵害英雄烈士名誉、荣誉罪",
+        "charges": [
+          "侵害英雄烈士名誉、荣誉罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "侵害英雄烈士名誉、荣誉",
+            "损害社会公共利益",
+            "情节严重"
+          ],
+          "alternative_branches": [
+            "侮辱",
+            "诽谤",
+            "其他侵害方式"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "任一适用分支",
+              "sentence": "三年以下有期徒刑、拘役、管制或剥夺政治权利"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "英烈对象资格、公共利益损害与严重情节、主观状态需补核。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第三百零三条",
+      "content_sha256": "sha256:8ec46b372b63f7505f70a65987449854adb51f9e43d8eaeee37094a6b4827a7a",
+      "findings": [
+        "三罪共享数额巨大/营利目的标签会误判；第三款法定刑转引第二款但不等于复制其入罪行为条件。"
+      ],
+      "original_annotations_sha256": "sha256:a35a91e1b0eb78f574be3dbf30383916fe6ce15c23becd0081f30b7d20cd9ff0",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第三百零三条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "赌博罪；开设赌场罪；组织参与国（境）外赌博罪",
+        "charges": [
+          "赌博罪",
+          "开设赌场罪",
+          "组织参与国（境）外赌博罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "第一款：营利目的，聚众赌博或以赌博为业",
+            "第二款：开设赌场",
+            "第三款：组织我国公民参与国（境）外赌博，数额巨大或其他严重情节"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "第一款",
+              "sentence": "三年以下有期徒刑、拘役或管制，并处罚金"
+            },
+            {
+              "when": "第二款基本档及第三款依前款处罚",
+              "sentence": "五年以下有期徒刑、拘役或管制，并处罚金"
+            },
+            {
+              "when": "第二款情节严重",
+              "sentence": "五年以上十年以下有期徒刑，并处罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "第三款入罪“其他严重情节”与第二款升档条件对应须另核，不能见同一标签就自动升档。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第三百三十四条之一",
+      "content_sha256": "sha256:d2a95681a7e144909cb90cc149788aed3effa87d519c2e3ace0c6d2a640907b9",
+      "findings": [
+        "原仅轻重情节，漏违反国家规定、我国资源/材料、出境及健康/公益损害。"
+      ],
+      "original_annotations_sha256": "sha256:3cd2ae6e41531cf98f3fd240bbf77aee90388f018e0689fa4ebc9ce37f3599eb",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第三百三十四条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "非法采集人类遗传资源、走私人类遗传资源材料罪",
+        "charges": [
+          "非法采集人类遗传资源、走私人类遗传资源材料罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "违反国家有关规定",
+            "危害公众健康或社会公共利益",
+            "情节严重"
+          ],
+          "alternative_branches": [
+            "非法采集我国人类遗传资源",
+            "非法运送、邮寄或携带我国人类遗传资源材料出境"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "情节严重",
+              "sentence": "三年以下有期徒刑、拘役或管制，并处或单处罚金"
+            },
+            {
+              "when": "情节特别严重",
+              "sentence": "三年以上七年以下有期徒刑，并处罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "资源/材料与出境许可、公共危害、主观状态须另核；选择性罪名按行为确定。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第三百三十六条之一",
+      "content_sha256": "sha256:ba60c5c1a0ca33fe649ab46a1af444e18a977c32d9d7abd7d6a20aa704a248b6",
+      "findings": [
+        "原仅轻重情节，遗漏胚胎类型与受体组合，不能把所有动物胚胎植入动物列入。"
+      ],
+      "original_annotations_sha256": "sha256:b9c7ac01dee02957e7ab5cd2815a1473c8557276c99facd713f5486e8526fe6c",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第三百三十六条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "非法植入基因编辑、克隆胚胎罪",
+        "charges": [
+          "非法植入基因编辑、克隆胚胎罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "情节严重"
+          ],
+          "alternative_branches": [
+            "基因编辑或克隆的人类胚胎植入人体",
+            "上述人类胚胎植入动物体内",
+            "基因编辑或克隆的动物胚胎植入人体"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "情节严重",
+              "sentence": "三年以下有期徒刑或拘役，并处罚金"
+            },
+            {
+              "when": "情节特别严重",
+              "sentence": "三年以上七年以下有期徒刑，并处罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "胚胎技术类型、植入行为与严重情节另核，须保持条文限定组合。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第三百四十一条",
+      "content_sha256": "sha256:bd9eda4c5dd536b8a39ce3ac032f9fdc4cb4543a078a1d997b436e964cad1ca6",
+      "findings": [
+        "三款罪名共享情节标签，漏保护物种等级、禁猎条件、第三款食用目的；一款基本档无需情节严重才成立。"
+      ],
+      "original_annotations_sha256": "sha256:24bfa71734c267a4ca555fb58fed972b11b976bdc1f7c4ab161bfeb0bf15d218",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第三百四十一条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "危害珍贵、濒危野生动物罪；非法狩猎罪；非法猎捕、收购、运输、出售陆生野生动物罪",
+        "charges": [
+          "危害珍贵、濒危野生动物罪",
+          "非法狩猎罪",
+          "非法猎捕、收购、运输、出售陆生野生动物罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [],
+          "alternative_branches": [
+            "一款：非法猎捕/杀害国家重点保护珍贵濒危野生动物，或非法收购/运输/出售该动物及制品",
+            "二款：违反狩猎法规，在禁猎区/期或用禁用工具/方法狩猎，破坏野生动物资源，情节严重",
+            "三款：违反保护管理法规，以食用为目的非法猎捕/收购/运输/出售第一款外、在野外自然生长繁殖的陆生野生动物，情节严重"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "第一款一般",
+              "sentence": "五年以下有期徒刑或拘役，并处罚金"
+            },
+            {
+              "when": "第一款严重",
+              "sentence": "五年以上十年以下有期徒刑，并处罚金"
+            },
+            {
+              "when": "第一款特别严重",
+              "sentence": "十年以上有期徒刑，并处罚金或没收财产"
+            },
+            {
+              "when": "第二款及第三款转引",
+              "sentence": "三年以下有期徒刑、拘役、管制或罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "物种名录、人工繁育/自然生长、价值标准及新解释另核；三款不能合成单一要件分母。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第三百四十二条之一",
+      "content_sha256": "sha256:32d155444c29322b56481d2177c66b027aa09d9b371a7319166c964474b35d32",
+      "findings": [
+        "只标严重后果漏其他恶劣情节替代项，以及自然保护地类别、行为和违法性。"
+      ],
+      "original_annotations_sha256": "sha256:5ebaa815187ed0c1df5727556c303f9ab349232c3b797e68950fb46dbf2ad0d9",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第三百四十二条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "破坏自然保护地罪",
+        "charges": [
+          "破坏自然保护地罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "违反自然保护地管理法规",
+            "国家公园或国家级自然保护区"
+          ],
+          "alternative_branches": [
+            "开垦、开发或修建建筑物；造成严重后果，或有其他恶劣情节"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "本罪",
+              "sentence": "五年以下有期徒刑或拘役，并处或单处罚金"
+            }
+          ],
+          "competition": [
+            "同时构成其他犯罪：从一重"
+          ]
+        }
+      },
+      "unresolved": [
+        "法定保护地范围与行为/后果证据须补核，不能泛化所有保护区。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第三百四十四条",
+      "content_sha256": "sha256:40f988424e1dba25a36f20a9535688821596ef5acf541d4847d409751e243a25",
+      "findings": [
+        "情节严重仅为升档，原标注遗漏国家规定、保护对象及直接毁损/流转行为。"
+      ],
+      "original_annotations_sha256": "sha256:e0b65424fe317392ba6de73605fbe8cb731a08d5dc9a8d3ab8ddc5906ba28c7c",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第三百四十四条；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "危害国家重点保护植物罪",
+        "charges": [
+          "危害国家重点保护植物罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "违反国家规定",
+            "珍贵树木或国家重点保护的其他植物及对应制品"
+          ],
+          "alternative_branches": [
+            "非法采伐或毁坏植物（直接行为对象不含仅制品）",
+            "非法收购、运输、加工或出售植物及制品"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "一般",
+              "sentence": "三年以下有期徒刑、拘役或管制，并处罚金"
+            },
+            {
+              "when": "情节严重",
+              "sentence": "三年以上七年以下有期徒刑，并处罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "保护名录、珍贵树木界定、流转环节主观要素与严重情节另核。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第三百四十四条之一",
+      "content_sha256": "sha256:3f95abded771647da989835e6d2f1504301a6a5c0ddd864426cc6f1803caf8c9",
+      "findings": [
+        "原仅严重情节，漏违反国家规定、外来入侵物种与三种行为。"
+      ],
+      "original_annotations_sha256": "sha256:e472760b84682f163174eae9b134511a4731dbe0eaa08fa64382a4e8e652614a",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第三百四十四条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "非法引进、释放、丢弃外来入侵物种罪",
+        "charges": [
+          "非法引进、释放、丢弃外来入侵物种罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "违反国家规定",
+            "对象为外来入侵物种",
+            "情节严重"
+          ],
+          "alternative_branches": [
+            "非法引进",
+            "非法释放",
+            "非法丢弃"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "任一适用分支",
+              "sentence": "三年以下有期徒刑或拘役，并处或单处罚金"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "物种认定、引进/释放/丢弃事实、主观状态及严重情节须另核。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第三百五十五条之一",
+      "content_sha256": "sha256:06b4bc25202561338157937610ac25ddded11e07c5e85a19353dbbe133d31720",
+      "findings": [
+        "“明知”只明文对应提供分支；漏运动员、重大竞赛、组织强迫及从重规则。"
+      ],
+      "original_annotations_sha256": "sha256:d99117501419c982dcd86ef2a7d50a4e97971617fe8c68fa5304ac9d245e4560",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第三百五十五条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "妨害兴奋剂管理罪",
+        "charges": [
+          "妨害兴奋剂管理罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "运动员使用兴奋剂参加国内/国际重大体育竞赛"
+          ],
+          "alternative_branches": [
+            "引诱、教唆或欺骗使用，情节严重",
+            "明知参加上述竞赛而提供兴奋剂，情节严重",
+            "组织或强迫使用"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "第一款适用分支",
+              "sentence": "三年以下有期徒刑或拘役，并处罚金"
+            },
+            {
+              "when": "第二款组织/强迫",
+              "sentence": "依前款从重处罚"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "第二款引用前款的具体条件与严重情节适用、重大竞赛范围及兴奋剂清单须补核。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    },
+    {
+      "article_number": "第四百零八条之一",
+      "content_sha256": "sha256:ac608cc3125cf8b62e71d329d034a8f4edf9621039473e6f85e0246ec8ba10e7",
+      "findings": [
+        "规范罪名应为“食品、药品监管渎职罪”，原值漏顿号；要件遗漏职责、滥用/玩忽、五类行为与从重规则。"
+      ],
+      "original_annotations_sha256": "sha256:22db7341e66e6c939eb95ef554ce4cdbecf585a1e0cb26b6ef9273f8b71324ce",
+      "sources": [
+        {
+          "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+          "locator": "整合版刑法 第四百零八条之一；主观要素与责任能力另见总则第14—18条"
+        },
+        {
+          "url": "https://www.court.gov.cn/fabu/xiangqing/288171.html",
+          "locator": "罪名或适用标准中与本条对应的规定"
+        }
+      ],
+      "proposal": {
+        "title": "食品、药品监管渎职罪",
+        "charges": [
+          "食品、药品监管渎职罪"
+        ],
+        "elements": {
+          "kind": "branch_proposal",
+          "common_conditions": [
+            "负有食品药品安全监督管理职责的国家机关工作人员",
+            "滥用职权或玩忽职守"
+          ],
+          "alternative_branches": [
+            "瞒报或谎报食品安全事故/药品安全事件",
+            "严重违法行为未按规定查处",
+            "药品/特殊食品审批审评违法许可",
+            "依法应移交追究刑责而不移交",
+            "其他滥用职权/玩忽职守"
+          ],
+          "references": [],
+          "not_complete_legal_elements": true
+        },
+        "penalty": {
+          "kind": "rules_proposal",
+          "rules": [
+            {
+              "when": "造成严重后果或其他严重情节",
+              "sentence": "五年以下有期徒刑或拘役"
+            },
+            {
+              "when": "特别严重后果或其他特别严重情节",
+              "sentence": "五年以上十年以下有期徒刑"
+            },
+            {
+              "when": "徇私舞弊",
+              "sentence": "在相应档次从重"
+            }
+          ],
+          "competition": []
+        }
+      },
+      "unresolved": [
+        "职责实际归属、监管违法与损害因果及滥用/玩忽的主观要素分别确认。",
+        "还需结合总则、行为时法和相关司法解释确认完整要件；本提议不进入覆盖分母。"
+      ]
+    }
+  ]
+}

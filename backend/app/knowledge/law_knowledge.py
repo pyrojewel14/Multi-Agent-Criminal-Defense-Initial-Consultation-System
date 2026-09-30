@@ -1,6 +1,8 @@
-"""刑法验证快照的加载、校验与共享条文索引操作。"""
+"""刑法正文与固定验证快照的加载、校验和共享条文索引。"""
 
+import hashlib
 import json
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -17,23 +19,58 @@ class LawKnowledgeDataError(RuntimeError):
     """表示 tracked 法条验证快照缺失、损坏或不符合审计契约。"""
 
 
-@lru_cache(maxsize=1)
 def load_criminal_law_data() -> Dict[str, Any]:
+    """按显式配置选择资产，缓存键包含路径和文件版本以避免跨配置复用。"""
+    profile = os.getenv("LAW_KNOWLEDGE_PROFILE", "snapshot")
+    if profile not in {"snapshot", "full"}:
+        raise LawKnowledgeDataError(f"未知法条配置: {profile}")
+    path = LAW_KNOWLEDGE_PATH
+    if profile == "full":
+        path = Path(os.getenv("LAW_FULL_CORPUS_PATH", str(path.with_name("criminal_law_full.json"))))
+    try:
+        stat = path.stat()
+    except OSError as exc:
+        raise LawKnowledgeDataError(f"法条验证数据文件不存在: {path}") from exc
+    data = _load_law_path(str(path.resolve()), stat.st_mtime_ns, stat.st_size, profile)
+    if profile == "full":
+        demo_mode = os.getenv("LAW_FULL_DEMO_ANNOTATIONS", "on")
+        if demo_mode not in {"on", "off"}:
+            raise LawKnowledgeDataError(f"未知演示标注配置: {demo_mode}")
+        if demo_mode == "on":
+            from app.knowledge.demo_law_annotations import apply_demo_annotations
+
+            demo_path = Path(os.getenv("LAW_DEMO_ANNOTATIONS_PATH", str(LAW_KNOWLEDGE_PATH.with_name("criminal_law_demo_annotations.json"))))
+            return apply_demo_annotations(data, demo_path)
+    return data
+
+
+@lru_cache(maxsize=4)
+def _load_law_path(path: str, mtime_ns: int, size: int, profile: str) -> Dict[str, Any]:
     """加载并校验版本化的刑事法律验证快照（带缓存）。"""
-    if not LAW_KNOWLEDGE_PATH.is_file():
+    selected_path = Path(path)
+    if not selected_path.is_file():
         raise LawKnowledgeDataError(f"法条验证数据文件不存在: {LAW_KNOWLEDGE_PATH}")
 
     try:
-        with LAW_KNOWLEDGE_PATH.open("r", encoding="utf-8") as file:
-            data = json.load(file)
+        with selected_path.open("r", encoding="utf-8") as file:
+            raw_data = file.read()
+            data = json.loads(raw_data)
     except json.JSONDecodeError as exc:
         raise LawKnowledgeDataError(f"法条验证数据不是有效 JSON: {LAW_KNOWLEDGE_PATH}: {exc}") from exc
     except OSError as exc:
         raise LawKnowledgeDataError(f"无法读取法条验证数据: {LAW_KNOWLEDGE_PATH}: {exc}") from exc
 
-    _validate_law_knowledge_data(data)
+    if profile == "full":
+        from app.knowledge.full_law_corpus import validate_full_corpus
+        validate_full_corpus(data)
+        data["metadata"]["corpus_sha256"] = "sha256:" + hashlib.sha256(raw_data.encode("utf-8")).hexdigest()
+    else:
+        _validate_law_knowledge_data(data)
     _logger.info("【load_criminal_law_data】成功加载法条验证快照，共 %d 章", len(data["chapters"]))
     return data
+
+
+load_criminal_law_data.cache_clear = _load_law_path.cache_clear
 
 
 def _require_non_empty_string(container: Dict[str, Any], field: str, location: str) -> str:
@@ -200,6 +237,8 @@ def _normalize_article_number(article_number: str) -> str:
     if not match:
         return article_number.strip()
     number, suffix = match.group(1), match.group(2) or ""
+    if suffix:
+        suffix = "之" + ({str(i): v for i, v in enumerate("零一二三四五六七八九十")}.get(suffix[1:], suffix[1:]))
     if number.isdigit():
         return f"第{number}条{suffix}"
     arabic = _cn_to_arabic(number)
@@ -214,11 +253,50 @@ def _build_article_index(law_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             normalized = _normalize_article_number(article.get("article_number", ""))
             if normalized:
                 index[normalized] = {**article, "chapter": chapter.get("chapter", "")}
+                if law_data.get("metadata", {}).get("schema_version") == "full-text-v1":
+                    index[normalized]["corpus_sha256"] = law_data["metadata"].get("corpus_sha256", "")
+                    index[normalized]["corpus_version"] = law_data["metadata"]["dataset_version"]
     return index
 
 
 def _element_name(element: Any) -> str:
-    """提取权威构成要件的可比较名称。"""
+    """提取项目标注的构成要件名称。"""
     if isinstance(element, dict):
         return str(element.get("name", ""))
     return str(element)
+
+
+def is_article_in_force(article: Dict[str, Any]) -> bool:
+    """排除快照中明确标记失效或正文已删去的条文。"""
+    return article.get("status") in (None, "active") and article.get("content", "").strip() not in (
+        "（删去）",
+        "(删去)",
+    )
+
+
+def is_lawref_eligible(article: Dict[str, Any]) -> bool:
+    """允许旧回归或已基础校对的演示标注进入 LawRef，排除占位要件。"""
+    if not is_article_in_force(article):
+        return False
+
+    layer = article.get("annotation_layer", article.get("annotation_source"))
+    if layer not in {"project-maintained-v1", "demo-reviewed-v1"} or not article.get("annotation_source"):
+        return False
+    if layer == "demo-reviewed-v1" and (
+        article.get("annotation_usage") != "demo" or article.get("demo_review_status") != "demo_ready"
+    ):
+        return False
+
+    sentence = article.get("base_sentence", "")
+    if not isinstance(sentence, str) or not sentence.strip() or sentence.strip().startswith("（本条不"):
+        return False
+
+    elements = article.get("elements")
+    if not isinstance(elements, list) or not elements:
+        return False
+    names = [_element_name(element).strip() for element in elements]
+    if any(not name for name in names) or len(names) != len(set(names)):
+        return False
+    if any(isinstance(element, dict) and element.get("key") == "no_independent_elements" for element in elements):
+        return False
+    return True

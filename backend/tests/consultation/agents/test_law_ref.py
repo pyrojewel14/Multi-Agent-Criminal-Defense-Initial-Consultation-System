@@ -14,6 +14,7 @@ from app.consultation.agents.law_ref import (
     extract_structured_laws,
     law_ref_node,
 )
+from app.consultation.agents.legal_research import LegalToolRegistry
 from app.knowledge import law_knowledge
 from app.knowledge.law_knowledge import (
     _build_article_index,
@@ -104,6 +105,7 @@ def _make_law_data():
                         "base_sentence": "三年以下有期徒刑",
                         "charge_tags": ["盗窃", "财产犯罪"],
                         "common_keywords": ["窃取", "偷"],
+                        "annotation_source": "project-maintained-v1",
                     },
                 ],
             },
@@ -121,6 +123,7 @@ def _make_law_data():
                         "base_sentence": "三年以下有期徒刑",
                         "charge_tags": ["故意伤害", "人身权利"],
                         "common_keywords": ["殴打", "伤害"],
+                        "annotation_source": "project-maintained-v1",
                     },
                 ],
             },
@@ -233,6 +236,90 @@ async def test_search_laws_by_keyword_no_match():
     }
     results = await search_laws_by_keyword(facts, law_data)
     assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_keyword_search_excludes_unreviewed_repealed_and_placeholder_articles():
+    trusted = {
+        "article_number": "第二百六十四条",
+        "title": "盗窃罪",
+        "content": "盗窃公私财物。",
+        "elements": [{"key": "theft", "name": "盗窃公私财物"}],
+        "base_sentence": "处三年以下有期徒刑",
+        "charge_tags": ["盗窃"],
+        "common_keywords": ["盗窃"],
+        "annotation_source": "project-maintained-v1",
+    }
+    articles = [
+        trusted,
+        {**trusted, "article_number": "第一百三十三条之一", "annotation_source": "manual-title-v1"},
+        {**trusted, "article_number": "第一百九十九条", "status": "repealed"},
+        {
+            **trusted,
+            "article_number": "第三百八十五条",
+            "elements": [{"key": "no_independent_elements", "name": "本条不设独立的构成要件要素"}],
+        },
+        {
+            **trusted,
+            "article_number": "第二百七十四条",
+            "elements": [
+                {"key": "a", "name": "数额特别巨大"},
+                {"key": "b", "name": "数额特别巨大"},
+            ],
+        },
+    ]
+    law_data = {"chapters": [{"chapter": "第五章", "articles": articles}]}
+
+    results = await search_laws_by_keyword({"behavior_sequence": ["盗窃"]}, law_data)
+
+    assert [item["article_number"] for item in results] == ["第二百六十四条"]
+
+
+@pytest.mark.asyncio
+async def test_rag_match_does_not_promote_unreviewed_article_to_verified_candidate():
+    article = {
+        "article_number": "第一百三十三条之一",
+        "title": "危险驾驶罪",
+        "content": "在道路上驾驶机动车，追逐竞驶，情节恶劣的。",
+        "elements": [{"key": "circumstances_vicious", "name": "情节恶劣"}],
+        "base_sentence": "处拘役",
+        "charge_tags": ["危险驾驶"],
+        "common_keywords": ["醉驾"],
+        "annotation_source": "manual-title-v1",
+        "annotation_layer": "manual-title-v1",
+    }
+    law_data = {"chapters": [{"chapter": "第二章", "articles": [article]}]}
+    rag_hit = {"article_number": "第133条之一", "content": article["content"], "data_source": "rag_unverified"}
+    with patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[rag_hit]):
+        registry = LegalToolRegistry({}, "user-1", law_data)
+        result = await registry._search_laws("危险驾驶")
+
+    assert result["candidates"][0]["source"] == "rag_unverified"
+    assert registry.searched == {}
+    assert (await registry._get_article("第133条之一"))["article"] is None
+
+
+@pytest.mark.asyncio
+async def test_repealed_article_is_not_a_rag_candidate():
+    article = {
+        "article_number": "第一百九十九条",
+        "title": "删去",
+        "content": "（删去）",
+        "elements": [{"key": "deleted", "name": "删去"}],
+        "base_sentence": "处拘役",
+        "charge_tags": ["删去"],
+        "common_keywords": ["删去"],
+        "annotation_source": "project-maintained-v1",
+        "status": "repealed",
+    }
+    law_data = {"chapters": [{"chapter": "第三章", "articles": [article]}]}
+    rag_hit = {"article_number": "第199条", "content": "第一百九十九条（删去）", "data_source": "rag_unverified"}
+    with patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[rag_hit]):
+        registry = LegalToolRegistry({}, "user-1", law_data)
+        result = await registry._search_laws("删去")
+
+    assert result["candidates"] == []
+    assert registry.searched == {}
 
 
 # ---------------------------------------------------------------------------
@@ -377,6 +464,7 @@ def test_verify_and_enrich_with_json_match():
             "charge_tags": ["盗窃"],
             "common_keywords": ["窃取"],
             "chapter": "侵犯财产罪",
+            "annotation_source": "project-maintained-v1",
         }
     }
     result = _verify_and_enrich_with_json(rag_results, article_index)
@@ -505,10 +593,11 @@ async def test_search_laws_by_keyword_accepts_structured_behavior_items():
                         "article_number": "第二百三十四条",
                         "title": "故意伤害罪",
                         "content": "故意伤害他人身体",
-                        "elements": [],
+                        "elements": [{"key": "harm", "name": "故意伤害他人身体"}],
                         "base_sentence": "三年以下有期徒刑",
                         "charge_tags": ["击打"],
                         "common_keywords": ["徒手击打"],
+                        "annotation_source": "project-maintained-v1",
                     }
                 ],
             }

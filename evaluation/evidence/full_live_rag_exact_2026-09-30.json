@@ -1,0 +1,96 @@
+{
+  "evidence_kind": "real-ollama-public-chroma",
+  "query_mode": "article",
+  "corpus_version": "2026-09-30.2.integration1",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "llm_executed": false,
+  "rag_executed": true,
+  "embedding_model": "qwen3-embedding:0.6b",
+  "embedding_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+  "chat_model": null,
+  "legal_review_completed": false,
+  "production_deployment_verified": false,
+  "passed": 8,
+  "total": 8,
+  "cases": [
+    {
+      "id": "general-purpose",
+      "passed": true,
+      "retrieved_article_ids": [
+        "第1条"
+      ],
+      "body_readable": true,
+      "required_element_count": 0,
+      "latency_ms": 638.408
+    },
+    {
+      "id": "dangerous-driving-derived",
+      "passed": true,
+      "retrieved_article_ids": [
+        "第133条之一"
+      ],
+      "body_readable": true,
+      "required_element_count": 0,
+      "latency_ms": 273.295
+    },
+    {
+      "id": "penalty-cross-reference",
+      "passed": true,
+      "retrieved_article_ids": [
+        "第149条"
+      ],
+      "body_readable": true,
+      "required_element_count": 0,
+      "latency_ms": 275.037
+    },
+    {
+      "id": "corrected-charge-title",
+      "passed": true,
+      "retrieved_article_ids": [
+        "第169条"
+      ],
+      "body_readable": true,
+      "required_element_count": 0,
+      "latency_ms": 280.149
+    },
+    {
+      "id": "repealed-199",
+      "passed": true,
+      "retrieved_article_ids": [],
+      "body_readable": false,
+      "required_element_count": 0,
+      "latency_ms": 272.888
+    },
+    {
+      "id": "multiple-charges-277",
+      "passed": true,
+      "retrieved_article_ids": [
+        "第277条"
+      ],
+      "body_readable": true,
+      "required_element_count": 0,
+      "latency_ms": 271.297
+    },
+    {
+      "id": "core-theft",
+      "passed": true,
+      "retrieved_article_ids": [
+        "第264条"
+      ],
+      "body_readable": true,
+      "required_element_count": 2,
+      "latency_ms": 279.468
+    },
+    {
+      "id": "core-alternative-293",
+      "passed": true,
+      "retrieved_article_ids": [
+        "第293条"
+      ],
+      "body_readable": true,
+      "required_element_count": 2,
+      "latency_ms": 276.93
+    }
+  ],
+  "latency_scope": "本机顺序组件调用，包含核验与模型预热；不是并发或生产性能测试"
+}

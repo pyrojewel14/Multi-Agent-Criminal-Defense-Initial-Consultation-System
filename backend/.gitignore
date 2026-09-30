@@ -19,3 +19,6 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+!data/law_knowledge/criminal_law_full.json
+!data/law_knowledge/criminal_law_full.review.json
+!data/law_knowledge/criminal_law_demo_annotations.json

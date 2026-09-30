@@ -216,6 +216,7 @@ class TestVerifyAndEnrichWithJson:
                 "charge_tags": ["伤害"],
                 "common_keywords": ["殴打"],
                 "chapter": "分则",
+                "annotation_source": "project-maintained-v1",
             }
         }
         rag_results = [
@@ -264,11 +265,12 @@ class TestVerifyAndEnrichWithJson:
                 "article_number": "第234条",
                 "title": "故意伤害罪",
                 "content": "内容",
-                "elements": [],
-                "base_sentence": "",
+                "elements": ["故意伤害他人身体"],
+                "base_sentence": "处三年以下有期徒刑",
                 "charge_tags": [],
                 "common_keywords": [],
                 "chapter": "分则",
+                "annotation_source": "project-maintained-v1",
             }
         }
         rag_results = [

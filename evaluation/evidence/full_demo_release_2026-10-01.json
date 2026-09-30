@@ -1,0 +1,23 @@
+{
+  "usage": "demo",
+  "new_released_articles": 32,
+  "coverage_eligible_articles": 38,
+  "raw_corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "six_snapshot_identical_to_HEAD": true,
+  "legal_review_completed": false,
+  "lawyer_confirmation_required_for_demo": false,
+  "backend_suite": {
+    "passed": 1377,
+    "failed": 2,
+    "failures": [
+      "test_rate_limiter_concurrency",
+      "test_redis_connection_pool_stress"
+    ],
+    "reason": "sandbox blocks 127.0.0.1:6379",
+    "local_redis_rerun_passed": 2
+  },
+  "focused_tests_passed": 24,
+  "demo_offline_cases_passed": 8,
+  "llm_decisions_in_flow_regression": "substituted",
+  "live_model_success_verified": false
+}

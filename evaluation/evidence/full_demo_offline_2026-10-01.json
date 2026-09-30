@@ -1,0 +1,112 @@
+{
+  "evidence_kind": "offline-deterministic-tools",
+  "query_mode": "article",
+  "corpus_version": "2026-09-30.2.integration1",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "annotation_mode": "demo",
+  "demo_annotations": {
+    "annotation_id": "demo-reviewed-2026-10-01-v1",
+    "released_articles": 32,
+    "usage": "demo",
+    "official": false,
+    "legal_review_completed": false
+  },
+  "llm_executed": false,
+  "rag_executed": false,
+  "embedding_model": null,
+  "embedding_digest": null,
+  "chat_model": null,
+  "legal_review_completed": false,
+  "production_deployment_verified": false,
+  "passed": 8,
+  "total": 8,
+  "cases": [
+    {
+      "id": "general-purpose",
+      "passed": true,
+      "expected_coverage_eligible": false,
+      "retrieved_article_ids": [
+        "第1条"
+      ],
+      "body_readable": true,
+      "required_element_count": 0,
+      "latency_ms": 1.441
+    },
+    {
+      "id": "dangerous-driving-derived",
+      "passed": true,
+      "expected_coverage_eligible": true,
+      "retrieved_article_ids": [
+        "第133条之一"
+      ],
+      "body_readable": true,
+      "required_element_count": 1,
+      "latency_ms": 1.739
+    },
+    {
+      "id": "penalty-cross-reference",
+      "passed": true,
+      "expected_coverage_eligible": false,
+      "retrieved_article_ids": [
+        "第149条"
+      ],
+      "body_readable": true,
+      "required_element_count": 0,
+      "latency_ms": 1.329
+    },
+    {
+      "id": "corrected-charge-title",
+      "passed": true,
+      "expected_coverage_eligible": true,
+      "retrieved_article_ids": [
+        "第169条"
+      ],
+      "body_readable": true,
+      "required_element_count": 1,
+      "latency_ms": 1.311
+    },
+    {
+      "id": "repealed-199",
+      "passed": true,
+      "expected_coverage_eligible": false,
+      "retrieved_article_ids": [],
+      "body_readable": false,
+      "required_element_count": 0,
+      "latency_ms": 1.316
+    },
+    {
+      "id": "multiple-charges-277",
+      "passed": true,
+      "expected_coverage_eligible": true,
+      "retrieved_article_ids": [
+        "第277条"
+      ],
+      "body_readable": true,
+      "required_element_count": 1,
+      "latency_ms": 1.327
+    },
+    {
+      "id": "core-theft",
+      "passed": true,
+      "expected_coverage_eligible": true,
+      "retrieved_article_ids": [
+        "第264条"
+      ],
+      "body_readable": true,
+      "required_element_count": 2,
+      "latency_ms": 1.32
+    },
+    {
+      "id": "core-alternative-293",
+      "passed": true,
+      "expected_coverage_eligible": true,
+      "retrieved_article_ids": [
+        "第293条"
+      ],
+      "body_readable": true,
+      "required_element_count": 2,
+      "latency_ms": 1.308
+    }
+  ],
+  "latency_scope": "本机顺序组件调用，包含核验与模型预热；不是并发或生产性能测试"
+}

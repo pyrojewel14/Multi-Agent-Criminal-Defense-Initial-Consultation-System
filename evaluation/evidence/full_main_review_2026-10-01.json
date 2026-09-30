@@ -1,0 +1,43 @@
+{
+  "evidence_kind": "independent-main-session-review",
+  "date": "2026-10-01",
+  "acceptance_scope": "demo-full-text-integration-and-released-annotations",
+  "verified_source": "export-of-reviewed-git-index-without-private-env-or-unstaged-edits",
+  "base_commit": "d1144d3",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "records": 505,
+  "active_records": 504,
+  "coverage_eligible_articles": 38,
+  "new_demo_annotations": 32,
+  "snapshot_byte_unchanged": true,
+  "default_profile": "snapshot",
+  "formal_service_configuration_changed": false,
+  "backend_suite": {
+    "command": "cd backend && LLM_TYPE=OLLAMA EMBED_MODEL_TYPE=OLLAMA OLLAMA_MODEL_NAME=qwen3.5:0.8b TEXT_EMBEDDING_MODEL_NAME=qwen3-embedding:0.6b PYTHONNOUSERSITE=1 conda run -n Agent_dev pytest -q --tb=short",
+    "passed": 1380,
+    "failed": 0,
+    "local_redis_access": true,
+    "initial_export_without_model_configuration": {
+      "passed": 1379,
+      "failed": 1,
+      "test": "tests/knowledge/rag/test_retrieval.py::test_retrieval",
+      "reason": "existing RAG sample defaults to ALIYUN without private .env; ALIYUN_ACCESS_KEY_SECRET absent"
+    },
+    "limitations": "Legacy RAG sample tests catch retrieval errors; suite success is not evidence of real model or retrieval accuracy."
+  },
+  "evaluation_tests": {"passed": 49, "failed": 0},
+  "offline_evaluation": {"passed": 8, "total": 8, "llm_executed": false, "rag_executed": false},
+  "static_checks": {
+    "ruff_reviewed_python_files": "passed",
+    "pyright_backend_app_errors": 0,
+    "pyright_whole_backend_head_errors": 247,
+    "pyright_whole_backend_current_errors": 237,
+    "new_diagnostic_signatures_against_head": 0,
+    "comparison": "file relative to backend, rule and message; excludes line offsets"
+  },
+  "live_lawref_success_verified": false,
+  "historical_live_lawref": {"passed": 0, "total": 2, "reason": "duplicate_call", "date": "2026-09-30"},
+  "legal_review_completed": false,
+  "docker_runtime_verified": false,
+  "production_deployment_verified": false
+}

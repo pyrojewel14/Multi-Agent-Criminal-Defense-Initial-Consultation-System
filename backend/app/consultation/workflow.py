@@ -248,7 +248,9 @@ async def human_review_node(state: ConsultationState) -> ConsultationState:
 
     if state.get("workflow_status") == "degraded":
         reason = state.get("fact_law_termination_reason", "dependency_failure_retry_exhausted")
-        if reason and reason.startswith("no_law_match"):
+        if reason == "annotation_review_required":
+            degraded_message = "已找到相关条文正文，法律标注尚待复核，系统已转交律师审核。"
+        elif reason and reason.startswith("no_law_match"):
             degraded_message = "自动检索持续未找到匹配法条，系统已停止重试并转交人工审核。"
         else:
             degraded_message = "知识或模型服务当前不可用，系统已停止重试并转交人工审核。"
@@ -328,6 +330,7 @@ def _reset_degraded_retry_state(state: ConsultationState) -> None:
     state["fact_law_failure_streak"] = 0
     state["fact_law_last_failure"] = None
     state["law_search_status"] = None
+    state["law_text_candidates"] = []
     state["lawyer_review_needed"] = False
     _logger.info(
         "【degraded_retry_reset】session_id=%s, previous_reason=%s, retained_attempts=%d",

@@ -23,7 +23,13 @@ from app.infrastructure.observability.tracing import (
     trace_store,
 )
 from app.knowledge import law_retrieval
-from app.knowledge.law_knowledge import _build_article_index, _element_name, _normalize_article_number
+from app.knowledge.law_knowledge import (
+    _build_article_index,
+    _element_name,
+    _normalize_article_number,
+    is_article_in_force,
+    is_lawref_eligible,
+)
 from app.security.sensitive_filter import mask_pii
 
 
@@ -160,15 +166,18 @@ class LegalToolRegistry:
             if not article_id:
                 continue
             source = law.get("data_source", "rag_unverified")
-            if article_id in index and source in {"rag_verified", "json_keyword"}:
+            if article_id in index and is_article_in_force(index[article_id]) and (
+                (is_lawref_eligible(index[article_id]) and source in {"rag_verified", "json_keyword"})
+                or (index[article_id].get("text_provenance") and source == "text_only")
+            ):
                 self.searched[article_id] = {**law, **index[article_id], "data_source": source}
             candidates.append(
                 {
                     "article_id": article_id,
-                    "title": law.get("title", ""),
+                    "title": law.get("title") or law.get("display_title", ""),
                     "score": law.get("relevance_score") if source == "json_keyword" else None,
                     "source": source,
-                    "retrieval_method": "rag" if source.startswith("rag_") else "keyword",
+                    "retrieval_method": law.get("retrieval_method") or ("rag" if source.startswith("rag_") else "keyword"),
                     "fingerprint": _article_fingerprint(index[article_id], self.law_data)
                     if article_id in index
                     else _fingerprint("unverified_article", {"article_id": article_id}),
@@ -189,10 +198,15 @@ class LegalToolRegistry:
         return {
             "article": {
                 "article_id": normalized,
-                "title": article.get("title", ""),
+                "title": article.get("title") or article.get("display_title", ""),
                 "content": article.get("content", ""),
                 "source": article.get("data_source", ""),
-                "required_elements": article.get("elements", []),
+                "required_elements": article.get("elements", []) if is_lawref_eligible(article) else [],
+                "coverage_eligible": is_lawref_eligible(article),
+                "annotation_usage": article.get("annotation_usage", "project_regression"),
+                "text_provenance": article.get("text_provenance", {}),
+                "annotation_status": {k: v["review_status"] for k, v in article.get("annotations", {}).items()},
+                "text_structure": article.get("text_structure", {}),
                 "fingerprint": _article_fingerprint(article, self.law_data),
             }
         }
@@ -205,7 +219,8 @@ class LegalToolRegistry:
         self.observed.add(normalized)
         return {
             "article_id": normalized,
-            "required_elements": article.get("elements", []),
+            "required_elements": article.get("elements", []) if is_lawref_eligible(article) else [],
+            "review_status": article.get("annotations", {}).get("elements", {}).get("review_status", "project_regression"),
             "annotation_source": article.get("annotation_source", ""),
         }
 
@@ -254,7 +269,8 @@ class LegalToolRegistry:
 _SYSTEM_PROMPT = """你是 LawRef 节点内部受限的法律检索决策器。每轮只调用一个已提供工具，或输出一个严格 JSON final_answer。
 先 search_laws，再用 get_article 或 search_elements 核验候选与构成要件，最后只选择已核验的法条。
 最终 JSON 格式：{"article_ids":["第264条"],"matched_elements":{"第264条":["要件名称"]},"confidence":"medium"}。
-只使用 observation 中出现的条文编号和要件名称；事实不足时将要件留作缺失，不得虚构证据。"""
+只使用 observation 中出现的条文编号和要件名称；事实不足时将要件留作缺失，不得虚构证据。
+coverage_eligible=false 的正文仅供阅读，matched_elements 必须为空，不得依据正文自行生成覆盖要件。"""
 
 
 async def run_legal_research(
@@ -443,7 +459,7 @@ async def run_legal_research(
                     selected = []
                     break
                 required = [_element_name(item) for item in article.get("elements", [])]
-                if not required:
+                if not required and not article.get("text_provenance"):
                     selected = []
                     break
                 claimed = answer.matched_elements.get(requested_id, [])
@@ -469,7 +485,7 @@ async def run_legal_research(
                 result.matched_elements = matched
                 result.missing_elements = missing
                 result.confidence = answer.confidence
-                result.evidence_status = "verified_candidate"
+                result.evidence_status = "verified_candidate" if all(is_lawref_eligible(a) for a in selected) else "text_only"
                 result.termination_reason = "final_answer"
                 break
     finally:
