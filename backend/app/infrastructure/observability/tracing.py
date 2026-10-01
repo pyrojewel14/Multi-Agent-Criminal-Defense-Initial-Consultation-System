@@ -98,7 +98,8 @@ class TraceEvent:
         result.pop("_started_ns", None)
         return result
 
-
+# TODO P4 【基础设施】轻量级内存 tracing，用于开发调试，不是生产级 observability。
+# TODO P4 Trace了一堆，没人消费，只用做测试了
 class BoundedTraceStore:
     """线程安全的有界进程内事件存储。"""
 

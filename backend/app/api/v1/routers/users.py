@@ -23,11 +23,11 @@ user_router = APIRouter(prefix="/users", tags=["users"])
 
 @user_router.get("/", response_model=UserListResponse)
 async def list_users(
-    skip: int = 0,
-    limit: int = 20,
-    role: Optional[str] = None,
-    _: dict = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+        skip: int = 0,
+        limit: int = 20,
+        role: Optional[str] = None,
+        _: dict = Depends(require_admin),
+        db: AsyncSession = Depends(get_db),
 ):
     """获取用户列表接口（仅管理员可访问）。
 
@@ -65,9 +65,9 @@ async def list_users(
 
 @user_router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
-    user_id: str,
-    _: dict = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+        user_id: str,
+        _: dict = Depends(require_admin),
+        db: AsyncSession = Depends(get_db),
 ):
     """获取指定用户信息接口（仅管理员可访问）。
 
@@ -89,10 +89,10 @@ async def get_user(
 
 @user_router.put("/{user_id}", response_model=UserResponse)
 async def update_user(
-    user_id: str,
-    request: UserUpdateRequest,
-    _: dict = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+        user_id: str,
+        request: UserUpdateRequest,
+        _: dict = Depends(require_admin),
+        db: AsyncSession = Depends(get_db),
 ):
     """更新用户信息接口（仅管理员可访问）。
 
@@ -129,10 +129,10 @@ async def update_user(
 
 @user_router.put("/{user_id}/role", response_model=UserResponse)
 async def update_user_role(
-    user_id: str,
-    request: UserRoleUpdateRequest,
-    _: dict = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+        user_id: str,
+        request: UserRoleUpdateRequest,
+        _: dict = Depends(require_admin),
+        db: AsyncSession = Depends(get_db),
 ):
     """更新用户角色接口（仅管理员可访问）。
 
@@ -164,9 +164,9 @@ async def update_user_role(
 
 @user_router.delete("/{user_id}")
 async def delete_user(
-    user_id: str,
-    _: dict = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+        user_id: str,
+        _: dict = Depends(require_admin),
+        db: AsyncSession = Depends(get_db),
 ):
     """删除用户接口（仅管理员可访问）。
 

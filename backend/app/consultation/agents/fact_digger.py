@@ -332,7 +332,7 @@ def _contains_affirmed_term(
                 start = clause.find(term, start + len(term))
     return False
 
-
+# TODO: 这玩意儿为啥要硬编码，完全不合理啊？即使硬编码也应该提高覆盖度，只有这么点儿也不够用吧。此外，中文要件的匹配规则应该是可配置的，或者至少放在一个单独的配置文件里，而不是写死在代码里。
 def _is_chinese_element_supported(facts_structured: Dict[str, Any], element: str) -> bool:
     """用保守、可审计的规则判断中文自由文本要件是否有事实支持。
 
