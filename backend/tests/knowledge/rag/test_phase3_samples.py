@@ -22,7 +22,8 @@ def test_phase3_query_file_has_five_structured_cases():
 
 
 @pytest.mark.asyncio
-async def test_offline_json_samples_return_real_local_results():
+async def test_offline_json_samples_return_real_local_results(monkeypatch):
+    monkeypatch.setenv("LAW_KNOWLEDGE_PROFILE", "snapshot")
     result = await run_samples(probe_live=False, with_reranker=False)
 
     assert result["run_mode"] == "offline_json_keyword_contract"

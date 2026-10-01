@@ -716,7 +716,8 @@ def write_report(summary: dict[str, Any], path: Path) -> None:
 async def run(cases_path: Path, output_dir: Path, command: str) -> dict[str, Any]:
     cases = load_cases(cases_path)
     validate_cases(cases)
-    law_data = load_criminal_law_data()
+    # 固定历史六条语料，使应用默认切换不改变离线基线的比较契约。
+    law_data = load_criminal_law_data(profile="snapshot")
     results = [await evaluate_case(case, law_data) for case in cases]
     summary = build_summary(cases_path, results, command)
 

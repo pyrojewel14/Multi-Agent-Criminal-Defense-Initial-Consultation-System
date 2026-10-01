@@ -262,7 +262,7 @@ async def search_laws_by_rag(facts_structured: Dict[str, Any], user_id: str | No
 
     try:
         import os
-        if os.getenv("LAW_KNOWLEDGE_PROFILE", "snapshot") == "full":
+        if os.getenv("LAW_KNOWLEDGE_PROFILE", "full") == "full":
             from app.knowledge.full_law_index import search_full_index
             return LawSearchResults(await search_full_index(facts_structured))
         from app.knowledge.rag.rag_service import RagService

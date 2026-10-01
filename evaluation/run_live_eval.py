@@ -528,6 +528,8 @@ def configure_runtime() -> dict[str, Path]:
     """固定评测进程的后端与绝对资源路径，保证预检和生产链一致。"""
     os.environ["LLM_TYPE"] = "OLLAMA"
     os.environ["EMBED_MODEL_TYPE"] = "OLLAMA"
+    # 六条 live 索引继续与其原始快照配对，不随应用默认语料变化。
+    os.environ["LAW_KNOWLEDGE_PROFILE"] = "snapshot"
     os.environ.setdefault("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     os.environ.setdefault("OLLAMA_MODEL_NAME", "qwen3.5:0.8b")
     os.environ.setdefault("TEXT_EMBEDDING_MODEL_NAME", "qwen3-embedding:0.6b")

@@ -19,9 +19,9 @@ class LawKnowledgeDataError(RuntimeError):
     """表示 tracked 法条验证快照缺失、损坏或不符合审计契约。"""
 
 
-def load_criminal_law_data() -> Dict[str, Any]:
-    """按显式配置选择资产，缓存键包含路径和文件版本以避免跨配置复用。"""
-    profile = os.getenv("LAW_KNOWLEDGE_PROFILE", "snapshot")
+def load_criminal_law_data(*, profile: str | None = None) -> Dict[str, Any]:
+    """默认加载全量正文及演示标注；显式 snapshot 保留六条回归资产。"""
+    profile = profile if profile is not None else os.getenv("LAW_KNOWLEDGE_PROFILE", "full")
     if profile not in {"snapshot", "full"}:
         raise LawKnowledgeDataError(f"未知法条配置: {profile}")
     path = LAW_KNOWLEDGE_PATH

@@ -12,6 +12,23 @@ from app.knowledge import law_knowledge as knowledge
 from app.knowledge.law_retrieval import _verify_and_enrich_with_json, search_laws_by_keyword
 
 
+@pytest.mark.asyncio
+async def test_unconfigured_application_loads_full_demo_and_falls_back_without_index(monkeypatch):
+    monkeypatch.delenv("LAW_KNOWLEDGE_PROFILE", raising=False)
+    monkeypatch.delenv("LAW_FULL_INDEX_DIRECTORY", raising=False)
+    monkeypatch.setenv("LAW_FULL_DEMO_ANNOTATIONS", "on")
+    data = knowledge.load_criminal_law_data()
+    index = knowledge._build_article_index(data)
+    assert len(index) == 505
+    assert sum(knowledge.is_article_in_force(a) for a in index.values()) == 504
+    assert sum(knowledge.is_lawref_eligible(a) for a in index.values()) == 38
+    registry = LegalToolRegistry({}, "default-test", data)
+    result = await registry._search_laws("第133条之一")
+    assert result["rag_dependency_failed"] is True
+    assert result["candidates"][0]["article_id"] == "第133条之一"
+    assert (await registry._get_article("第133条之一"))["article"]["coverage_eligible"] is True
+
+
 @pytest.fixture
 def full(monkeypatch):
     monkeypatch.setenv("LAW_KNOWLEDGE_PROFILE", "full")
