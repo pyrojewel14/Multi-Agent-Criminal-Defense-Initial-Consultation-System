@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -194,18 +195,19 @@ async def test_invalid_risk_artifact_routes_directly_to_human_without_service_ca
 
 
 @pytest.mark.asyncio
-async def test_resumed_fact_refreshes_law_query_and_risk_laws():
+async def test_resumed_fact_refreshes_law_query_and_risk_laws(monkeypatch):
     """本轮决定性事实必须先进入真实编译图的检索与风险输入。"""
     session_id = "p0-current-fact-before-law"
+    monkeypatch.setenv("LAW_KNOWLEDGE_PROFILE", "snapshot")
     rag_queries: list[str] = []
     risk_inputs: list[tuple[dict, list[dict]]] = []
 
-    async def law_decision(_system: str, message: str, _tools: list, **_kwargs: object) -> dict:
+    async def law_decision(_system: str, message: str, _tools: list, **_kwargs: Any) -> dict:
         import json
 
         payload = json.loads(message)
-        observations = payload["observations"]
-        if not observations:
+        observations = [json.loads(item.content) for item in _kwargs.get("message_history", []) if item.type == "tool"]
+        if not observations and not payload.get("read_articles"):
             facts = json.loads(payload["facts"])
             query = facts["behavior_sequence"][0]["action"]
             return {
@@ -220,7 +222,7 @@ async def test_resumed_fact_refreshes_law_query_and_risk_laws():
                 "tool_calls": [{"name": "get_article", "args": {"article_id": article_id}}],
                 "has_tool_call": True,
             }
-        article = observations[-1]["result"]["article"]
+        article = payload["read_articles"][0] if payload.get("read_articles") else observations[-1]["result"]["article"]
         article_id = article["article_id"]
         element = article["required_elements"][0]
         return {

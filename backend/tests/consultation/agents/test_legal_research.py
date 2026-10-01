@@ -17,6 +17,145 @@ from tests.factories import make_consultation_state
 FACTS = {"behavior_sequence": ["盗窃"], "consequence": "财物损失"}
 
 
+@pytest.fixture(autouse=True)
+def candidate_final_protocol(monkeypatch):
+    monkeypatch.setenv("LAW_AGENT_FINAL_PROTOCOL", "native_candidate")
+
+
+@pytest.mark.asyncio
+async def test_application_default_keeps_candidate_protocol_disabled(monkeypatch):
+    monkeypatch.delenv("LAW_AGENT_FINAL_PROTOCOL", raising=False)
+    captured = []
+
+    async def respond(system, prompt, tools, **kwargs):
+        captured.append((tools, kwargs))
+        return [decision("search_laws", {"query": "盗窃"}), decision("get_article", {"article_id": "第264条"}), final()][len(captured)-1]
+
+    with (
+        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", side_effect=respond),
+        patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+    ):
+        result = await run_legal_research(FACTS, "user", load_criminal_law_data())
+    assert result.termination_reason == "final_answer"
+    assert len(captured[2][0]) == 3
+    assert captured[2][1]["response_schema"] is None
+    assert len(captured[2][1]["message_history"]) == 4
+
+
+@pytest.mark.asyncio
+async def test_model_receives_assistant_calls_and_linked_tool_results():
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    histories = []
+
+    async def respond(system, prompt, tools, **kwargs):
+        histories.append(list(kwargs.get("message_history", [])))
+        return [decision("search_laws", {"query": "盗窃"}), decision("get_article", {"article_id": "第264条"}), final()][len(histories) - 1]
+
+    with (
+        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", side_effect=respond),
+        patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+    ):
+        result = await run_legal_research(FACTS, "user", load_criminal_law_data())
+    assert result.termination_reason == "final_answer"
+    assert len(histories[1]) == 2
+    assert isinstance(histories[1][0], AIMessage)
+    assert isinstance(histories[1][1], ToolMessage)
+    assert histories[1][0].tool_calls[0]["id"] == histories[1][1].tool_call_id
+    assert json.loads(histories[1][1].content)["result"]["candidates"][0]["article_id"] == "第264条"
+    assert histories[2] == []
+
+
+@pytest.mark.asyncio
+async def test_final_generation_uses_only_read_articles_and_constrained_elements():
+    captured = []
+
+    async def respond(system, prompt, tools, **kwargs):
+        captured.append((json.loads(prompt), tools, kwargs))
+        return [decision("search_laws", {"query": "盗窃"}), decision("get_article", {"article_id": "第264条"}), final()][len(captured)-1]
+
+    with (
+        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", side_effect=respond),
+        patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+    ):
+        result = await run_legal_research(FACTS, "user", load_criminal_law_data())
+    assert result.termination_reason == "final_answer"
+    payload, tools, kwargs = captured[2]
+    assert tools == []
+    assert [a["article_id"] for a in payload["read_articles"]] == ["第264条"]
+    schema = kwargs["response_schema"]
+    assert schema["properties"]["article_ids"]["items"]["enum"] == ["第264条"]
+    assert schema["properties"]["matched_elements"]["additionalProperties"] is False
+    assert schema["properties"]["matched_elements"]["properties"]["第264条"]["items"]["enum"] == ["盗窃公私财物", "数额较大或者具备法定盗窃情形之一"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_content,reason", [
+    ("", "empty_output"), ("not json", "invalid_json"), ("{}", "schema_error"),
+    (json.dumps({"article_ids": ["第9999条"], "matched_elements": {}, "confidence": "low"}), "unknown_article"),
+    (json.dumps({"article_ids": ["第264条"], "matched_elements": {"第264条": ["invented"]}, "confidence": "low"}), "unknown_element"),
+])
+async def test_rejected_final_has_specific_reason_and_one_contextual_retry(bad_content, reason):
+    prompts = []
+
+    async def respond(system, prompt, tools, **kwargs):
+        prompts.append((prompt, list(kwargs.get("message_history", []))))
+        return [decision("search_laws", {"query": "盗窃"}), decision("get_article", {"article_id": "第264条"}), {"content": bad_content, "tool_calls": []}, final()][len(prompts)-1]
+
+    with (
+        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", side_effect=respond),
+        patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+    ):
+        result = await run_legal_research(FACTS, "user", load_criminal_law_data())
+    assert result.termination_reason == "final_answer"
+    assert result.trajectory[2].tool_result_summary["rejection_reason"] == reason
+    assert len(prompts[3][1]) == 2
+    assert prompts[3][1][0].content == bad_content
+    assert reason in prompts[3][1][1].content
+
+
+@pytest.mark.asyncio
+async def test_final_retry_is_bounded_and_never_accepts_unknown_elements():
+    replies = [decision("search_laws", {"query": "盗窃"}), decision("get_article", {"article_id": "第264条"})]
+    invalid = {"content": "{}", "tool_calls": []}
+    with (
+        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=replies + [invalid]*6),
+        patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+    ):
+        result = await run_legal_research(FACTS, "user", load_criminal_law_data(), max_steps=8)
+    assert result.termination_reason == "invalid_final"
+    assert result.step_count == 4
+    assert result.candidate_laws == []
+
+
+@pytest.mark.asyncio
+async def test_final_rejects_searched_but_unread_article():
+    rejected = {"content": json.dumps({"article_ids": ["第234条"], "matched_elements": {}, "confidence": "low"}), "tool_calls": []}
+    with (
+        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[decision("search_laws", {"query": "盗窃"}), decision("search_laws", {"query": "故意伤害"}), decision("get_article", {"article_id": "第264条"}), rejected]),
+        patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+    ):
+        result = await run_legal_research(FACTS, "user", load_criminal_law_data(), max_steps=4)
+    assert result.candidate_laws == []
+    assert result.trajectory[-1].tool_result_summary["rejection_reason"] == "unread_article"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rejected,reason", [
+    ({"content": '{"article_ids":["第264条"],"matched_elements":{},"confidence":"low"}', "tool_calls": [], "response_metadata": {"done_reason": "length"}}, "output_truncated"),
+    ({"content": "", "tool_calls": [{"name": "search_laws", "args": {"query": "盗窃"}}]}, "unexpected_tool_call"),
+])
+async def test_final_rejects_truncation_and_tool_calls_without_executing_them(rejected, reason):
+    with (
+        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[decision("search_laws", {"query": "盗窃"}), decision("get_article", {"article_id": "第264条"}), rejected]),
+        patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+    ):
+        result = await run_legal_research(FACTS, "user", load_criminal_law_data(), max_steps=3)
+    assert result.candidate_laws == []
+    assert result.successful_tool_call_count == 2
+    assert result.trajectory[-1].tool_result_summary["rejection_reason"] == reason
+
+
 def decision(name, args):
     return {"content": "", "tool_calls": [{"name": name, "args": args}], "has_tool_call": True}
 

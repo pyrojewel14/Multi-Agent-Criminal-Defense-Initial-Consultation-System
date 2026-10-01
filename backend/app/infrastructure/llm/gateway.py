@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import os
 import random
 from collections.abc import Awaitable, Callable, Sequence
@@ -8,6 +9,7 @@ from typing import Any, Dict, List, TypeVar
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolCall
 from langchain_core.tools import BaseTool
+from pydantic import BaseModel
 
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
 from app.infrastructure.llm.factory import chat_model_factory
@@ -313,6 +315,9 @@ class LLMGateway:
         tools: Sequence[BaseTool],
         temperature: float = 0.1,
         is_legal: bool = False,
+        *,
+        message_history: Sequence[BaseMessage] | None = None,
+        response_schema: dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         """调用 LLM 并支持 Function Calling。
 
@@ -320,6 +325,8 @@ class LLMGateway:
             system_prompt: 系统的指令内容。
             user_message: 用户的输入文本。
             tools: 可用的工具列表（使用 @tool 装饰的函数）。
+            message_history: 本次局部循环的助手决策与关联工具返回；不写入持久化状态。
+            response_schema: 无工具最终生成的 JSON schema；Ollama 仅对该次调用关闭思考并限制输出。
             temperature: 采样温度 (0.0-1.0)，法律场景强制为 0。
             is_legal: 是否为法律场景，为 True 时强制使用 temperature=0。
 
@@ -334,6 +341,8 @@ class LLMGateway:
             LLMTimeoutException: 上游 API 超时。
             LLMServiceException: 上游 API 返回错误。
         """
+        if response_schema is not None and tools:
+            raise ValueError("结构化最终生成不能同时开放检索工具")
         actual_temp = 0.0 if is_legal else temperature
         tool_names = [t.name for t in tools]
         self._logger.info(
@@ -347,11 +356,20 @@ class LLMGateway:
         messages: List[BaseMessage] = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_message),
+            *(message_history or []),
         ]
 
         async def invoke(attempt: int):
             model = chat_model_factory.create_precise_model(actual_temp)
-            model_with_tools = model.bind_tools(tools)
+            local_ollama = model.__class__.__module__.startswith("langchain_ollama")
+            if response_schema is not None and local_ollama:
+                # 不改动工厂缓存，避免最终回答落入 thinking 字段或挤占其他节点的预算。
+                model = model.model_copy(update={"reasoning": False, "num_predict": 1024})
+                model_with_tools = model.bind(format=response_schema)
+            elif response_schema is not None:
+                model_with_tools = model.with_structured_output(response_schema, include_raw=True)
+            else:
+                model_with_tools = model.bind_tools(tools) if tools else model
             self._logger.debug("【generate_with_tools】绑定工具: %s", tool_names)
             context = current_trace_context()
             session_id = str(context["session_id"]) if context and context["session_id"] else "unknown"
@@ -368,10 +386,20 @@ class LLMGateway:
                 metadata=build_safe_metadata({"tool_names": sorted(tool_names)}),
             ) as event:
                 try:
-                    response = await model_with_tools.ainvoke(messages)
+                    response: Any = await model_with_tools.ainvoke(messages)
                 except TimeoutError:
                     event.outcome = "timeout"
                     raise
+                if response_schema is not None and not local_ollama:
+                    # 保留原消息的 usage 与供应商元数据，只将成功解析的最终对象适配成文本。
+                    raw = response["raw"]
+                    parsed = response.get("parsed")
+                    if isinstance(parsed, BaseModel):
+                        parsed = parsed.model_dump(mode="json")
+                    response = raw.model_copy(update={
+                        "content": json.dumps(parsed, ensure_ascii=False) if parsed is not None else raw.content,
+                        "tool_calls": [],
+                    })
                 input_tokens, output_tokens = _usage_tokens(response)
                 event.input_tokens = input_tokens
                 event.output_tokens = output_tokens
@@ -384,7 +412,7 @@ class LLMGateway:
                     )
                 return response
 
-        response = await self._invoke_with_policy("generate_with_tools", invoke)
+        response: Any = await self._invoke_with_policy("generate_with_tools", invoke)
         self._logger.debug("【generate_with_tools】LLM 响应完成")
 
         # 提取工具调用
@@ -410,10 +438,23 @@ class LLMGateway:
             len(content),
         )
 
+        input_tokens, output_tokens = _usage_tokens(response)
+        total_tokens = input_tokens + output_tokens if isinstance(input_tokens, int) and isinstance(output_tokens, int) else "unknown"
+        response_metadata = getattr(response, "response_metadata", {})
         result = {
             "content": content,
             "tool_calls": tool_calls,
             "has_tool_call": len(tool_calls) > 0,
+            "token_usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
+            },
+            "response_metadata": {
+                key: response_metadata[key]
+                for key in ("done_reason", "finish_reason")
+                if isinstance(response_metadata, dict) and key in response_metadata
+            },
         }
         return result
 

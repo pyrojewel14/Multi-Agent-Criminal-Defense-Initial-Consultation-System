@@ -409,6 +409,75 @@ def _echo_tool(message: str) -> str:
 
 class TestGenerateWithTools:
     @pytest.mark.asyncio
+    async def test_native_schema_final_uses_local_ollama_copy_and_keeps_raw_usage(self):
+        import json
+
+        import httpx
+        from langchain_ollama import ChatOllama
+
+        requests = []
+        schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
+
+        def handle(request):
+            requests.append(json.loads(request.content))
+            return httpx.Response(200, content=json.dumps({
+                "model": "qwen3.5:0.8b", "message": {"role": "assistant", "content": '{"ok":true}'},
+                "done": True, "done_reason": "stop", "prompt_eval_count": 10, "eval_count": 5,
+            }) + "\n", headers={"content-type": "application/x-ndjson"})
+
+        model = ChatOllama(model="qwen3.5:0.8b", client_kwargs={"transport": httpx.MockTransport(handle)})
+        with patch.object(gateway_module.chat_model_factory, "create_precise_model", return_value=model):
+            response = await LLMGateway().generate_with_tools("schema", "public", [], response_schema=schema, is_legal=True)
+        assert json.loads(response["content"]) == {"ok": True}
+        assert response["token_usage"]["total_tokens"] == 15
+        assert response["response_metadata"]["done_reason"] == "stop"
+        assert requests[0]["think"] is False
+        assert requests[0]["options"]["num_predict"] == 1024
+        assert requests[0]["format"] == schema
+        assert not requests[0].get("tools")
+        assert model.reasoning is None
+        assert model.num_predict is None
+
+    @pytest.mark.asyncio
+    async def test_other_provider_structured_response_preserves_usage_and_final_content(self):
+        import json
+
+        from langchain_core.messages import AIMessage
+
+        schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+        raw = AIMessage(content="", tool_calls=[{"id": "f", "name": "final", "args": {"ok": True}}], usage_metadata={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15})
+        model = MagicMock()
+        model.with_structured_output.return_value.ainvoke = AsyncMock(return_value={"raw": raw, "parsed": {"ok": True}, "parsing_error": None})
+        with patch.object(gateway_module.chat_model_factory, "create_precise_model", return_value=model):
+            response = await LLMGateway().generate_with_tools("schema", "public", [], response_schema=schema)
+        assert json.loads(response["content"]) == {"ok": True}
+        assert response["tool_calls"] == []
+        assert response["token_usage"]["total_tokens"] == 15
+        assert raw.content == ""
+        assert len(raw.tool_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_preserves_tool_history_and_supports_final_without_tools(self):
+        from langchain_core.messages import AIMessage, ToolMessage
+
+        history = [AIMessage(content="", tool_calls=[{"id": "c1", "name": "echo", "args": {}}]), ToolMessage(content="result", tool_call_id="c1")]
+        captured = []
+
+        async def invoke(messages):
+            captured.extend(messages)
+            return _make_response("final")
+
+        gateway = LLMGateway()
+        with patch.object(gateway_module, "chat_model_factory") as factory:
+            model = MagicMock()
+            model.ainvoke = AsyncMock(side_effect=invoke)
+            factory.create_precise_model.return_value = model
+            result = await gateway.generate_with_tools("system", "facts", [], message_history=history)
+        assert result["content"] == "final"
+        assert [m.type for m in captured] == ["system", "human", "ai", "tool"]
+        assert captured[-1].tool_call_id == "c1"
+
+    @pytest.mark.asyncio
     async def test_returns_no_tool_call_when_response_has_none(self):
         gateway = LLMGateway()
         with patch.object(gateway_module, "chat_model_factory") as mock_factory:

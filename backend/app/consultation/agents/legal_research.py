@@ -10,6 +10,7 @@ import re
 import time
 from typing import Any, Literal
 
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -268,9 +269,45 @@ class LegalToolRegistry:
 
 _SYSTEM_PROMPT = """你是 LawRef 节点内部受限的法律检索决策器。每轮只调用一个已提供工具，或输出一个严格 JSON final_answer。
 先 search_laws，再用 get_article 或 search_elements 核验候选与构成要件，最后只选择已核验的法条。
-最终 JSON 格式：{"article_ids":["第264条"],"matched_elements":{"第264条":["要件名称"]},"confidence":"medium"}。
-只使用 observation 中出现的条文编号和要件名称；事实不足时将要件留作缺失，不得虚构证据。
+最终 JSON 格式：{"article_ids":["第264条"],"matched_elements":{"第264条":[]},"confidence":"medium"}；示例不代表案件事实。
+matched_elements 只表示本案明确肯定叙述的事实支持；未提供、否认或不确定的条件留作缺失，不得虚构证据。
+只有条号、罪名或咨询构成要件的提问不是行为事实；法条正文和 required_elements 也不是案件证据，不能默认全部匹配。
+只选择已读取的可信条文；匹配时原样复制 get_article 或 search_elements 返回的 required_elements 中完整 name，不能缩写、截取或自行概括。
 coverage_eligible=false 的正文仅供阅读，matched_elements 必须为空，不得依据正文自行生成覆盖要件。"""
+
+
+_FINAL_PROMPT = """依据案件事实与已经检索读取的条文输出最终 JSON，不再调用工具。
+只有用户明确肯定叙述支持的条件才能放入 matched_elements；未提供、否认或不确定的条件留作缺失。
+只提供条号、罪名或提问不是行为事实，不能默认全部匹配。法条正文不是案件事实证据。
+只选择 read_articles 中的条文，只使用其中 required_elements 的完整名称；没有覆盖资格的正文不得生成要件。
+输出符合所提供的 JSON schema，confidence 必须为 high、medium 或 low。"""
+
+
+def _final_input(registry: LegalToolRegistry, safe_facts: str) -> tuple[str, dict[str, Any]]:
+    """只用已读取的可信条文构建最终输入与动态输出约束。"""
+    articles = []
+    for article_id in sorted(registry.observed):
+        article = registry.searched[article_id]
+        eligible = is_lawref_eligible(article)
+        articles.append({
+            "article_id": article_id,
+            "content": article.get("content", ""),
+            "required_elements": [_element_name(item) for item in article.get("elements", [])] if eligible else [],
+            "coverage_eligible": eligible,
+        })
+    schema = FinalAnswer.model_json_schema()
+    schema["properties"]["article_ids"]["items"] = {"type": "string", "enum": [a["article_id"] for a in articles]}
+    element_properties = {}
+    for article in articles:
+        names = article["required_elements"]
+        element_properties[article["article_id"]] = (
+            {"type": "array", "items": {"type": "string", "enum": names}}
+            if names else {"type": "array", "items": {"type": "string"}, "maxItems": 0}
+        )
+    schema["properties"]["matched_elements"] = {
+        "type": "object", "properties": element_properties, "additionalProperties": False,
+    }
+    return json.dumps({"facts": json.loads(safe_facts), "read_articles": articles}, ensure_ascii=False), schema
 
 
 async def run_legal_research(
@@ -294,17 +331,23 @@ async def run_legal_research(
     )
     if not 1 <= steps_limit <= 8 or tool_timeout <= 0 or total_timeout <= 0:
         raise ValueError("LawRef agent 预算无效")
+    final_protocol = os.getenv("LAW_AGENT_FINAL_PROTOCOL", "legacy")
+    if final_protocol not in {"legacy", "native_candidate"}:
+        raise ValueError("未知 LawRef 最终生成协议")
     registry = LegalToolRegistry(facts, user_id, law_data)
     result = LawResearchResult()
     started = time.monotonic()
     deadline = started + total_timeout
     seen: set[str] = set()
-    observations: list[dict[str, Any]] = []
+    message_history: list[BaseMessage] = []
+    final_history: list[BaseMessage] = []
+    final_attempts = 0
     context = current_trace_context()
     session_id = str(context["session_id"]) if context and context["session_id"] else None
     initial_tokens = session_budget.snapshot(session_id)["tokens"] if session_id else 0
     # facts 只进入脱敏后的模型输入，轨迹与 trace 不存原文。
     safe_facts = mask_pii(json.dumps(facts, ensure_ascii=False, default=str))
+    prompt = json.dumps({"facts": safe_facts}, ensure_ascii=False)
     try:
         for step_number in range(1, steps_limit + 1):
             remaining = deadline - time.monotonic()
@@ -313,13 +356,22 @@ async def run_legal_research(
                 break
             step_started = time.monotonic()
             step_tokens_before = session_budget.snapshot(session_id)["tokens"] if session_id else 0
-            prompt = json.dumps({"facts": safe_facts, "observations": observations}, ensure_ascii=False)
+            # 原生候选协议尚未通过事实支持控制，不作为应用默认行为放行。
+            final_phase = final_protocol == "native_candidate" and bool(registry.observed)
+            current_prompt, response_schema = _final_input(registry, safe_facts) if final_phase else (prompt, None)
+            if final_phase:
+                final_attempts += 1
             try:
                 with trace_span(
                     trace_store, event_type="law_agent_step", name="decision", attempt=step_number
                 ) as event:
                     decision = await asyncio.wait_for(
-                        llm_gateway.generate_with_tools(_SYSTEM_PROMPT, prompt, registry.model_tools, is_legal=True),
+                        llm_gateway.generate_with_tools(
+                            _FINAL_PROMPT if final_phase else _SYSTEM_PROMPT,
+                            current_prompt, [] if final_phase else registry.model_tools, is_legal=True,
+                            message_history=final_history if final_phase else message_history,
+                            response_schema=response_schema,
+                        ),
                         timeout=remaining,
                     )
                     event.outcome = "tool_call" if decision.get("tool_calls") else "final_answer"
@@ -358,7 +410,7 @@ async def run_legal_research(
                 break
 
             calls = decision.get("tool_calls") or []
-            if calls:
+            if calls and not final_phase:
                 if len(calls) != 1 or not isinstance(calls[0], dict):
                     result.trajectory.append(
                         AgentStep(
@@ -426,61 +478,95 @@ async def run_legal_research(
                         tool_status=status,
                         tool_result_summary=summary,
                         latency_ms=round((time.monotonic() - step_started) * 1000, 3),
-                        token_usage={"total_tokens": step_token_delta if step_token_delta > 0 else "unknown"},
+                        token_usage={"total_tokens": step_token_delta} if step_token_delta > 0 else decision.get("token_usage", {"total_tokens": "unknown"}),
                     )
                 )
-                observations.append(
-                    {"step": step_number, "tool_name": safe_name, "status": status, "result": observation}
+                # 用关联 ID 反馈真实执行结果，避免模型把新一轮事实输入当作重新检索的请求。
+                call_id = str(call.get("id") or f"lawref-{step_number}")
+                message_history.append(
+                    AIMessage(
+                        content=decision.get("content") or "",
+                        tool_calls=[{"name": name, "args": raw_args if isinstance(raw_args, dict) else {}, "id": call_id}],
+                    )
+                )
+                message_history.append(
+                    ToolMessage(
+                        content=json.dumps({"status": status, "result": observation}, ensure_ascii=False),
+                        tool_call_id=call_id, name=name,
+                    )
                 )
                 if status in {"timeout", "dependency_failure", "budget_exceeded"}:
                     result.termination_reason = "tool_timeout" if status == "timeout" else status
                     break
                 continue
 
-            try:
-                answer = FinalAnswer.model_validate_json(decision.get("content", ""))
-            except (ValidationError, ValueError, TypeError):
-                result.trajectory.append(
-                    AgentStep(
-                        step=step_number,
-                        model_decision="invalid",
-                        tool_status="invalid_final",
-                        latency_ms=round((time.monotonic() - step_started) * 1000, 3),
-                    )
-                )
-                continue
+            content = decision.get("content", "")
+            rejection: str | None = None
+            answer = None
+            error_types: list[str] = []
+            if calls:
+                rejection = "unexpected_tool_call"
+                result.tool_call_count += len(calls)
+                result.failed_tool_call_count += len(calls)
+            elif decision.get("response_metadata", {}).get("done_reason") == "length":
+                rejection = "output_truncated"
+            elif not isinstance(content, str) or not content.strip():
+                rejection = "empty_output"
+            else:
+                try:
+                    payload = json.loads(content)
+                except (json.JSONDecodeError, ValueError):
+                    rejection = "invalid_json"
+                else:
+                    try:
+                        answer = FinalAnswer.model_validate(payload)
+                    except ValidationError as exc:
+                        rejection = "schema_error"
+                        error_types = [error["type"] for error in exc.errors()[:5]]
             selected: list[dict[str, Any]] = []
             matched: dict[str, list[str]] = {}
             missing: dict[str, list[str]] = {}
-            for requested_id in answer.article_ids:
+            for requested_id in answer.article_ids if answer is not None else []:
                 article_id = _normalize_article_number(requested_id)
                 article = registry.searched.get(article_id)
-                if article is None or article_id not in registry.observed or article in selected:
-                    selected = []
+                if article is None:
+                    rejection = "unknown_article"
                     break
-                required = [_element_name(item) for item in article.get("elements", [])]
+                if article_id not in registry.observed:
+                    rejection = "unread_article"
+                    break
+                if article in selected:
+                    rejection = "duplicate_article"
+                    break
+                required = [_element_name(item) for item in article.get("elements", [])] if is_lawref_eligible(article) else []
                 if not required and not article.get("text_provenance"):
-                    selected = []
+                    rejection = "unverified_source"
                     break
+                assert answer is not None
                 claimed = answer.matched_elements.get(requested_id, [])
                 if any(item not in required for item in claimed):
-                    selected = []
+                    rejection = "unknown_element"
                     break
                 selected.append(article)
                 matched[article_id] = [item for item in required if item in claimed]
                 missing[article_id] = [item for item in required if item not in claimed]
+            if answer is not None and rejection is None and any(
+                key not in answer.article_ids for key in answer.matched_elements
+            ):
+                rejection = "unselected_article_elements"
             step_token_delta = session_budget.snapshot(session_id)["tokens"] - step_tokens_before if session_id else 0
             result.trajectory.append(
                 AgentStep(
                     step=step_number,
-                    model_decision="final_answer",
-                    tool_status="success" if selected else "invalid_final",
-                    tool_result_summary={"count": len(selected)},
+                    model_decision="final_answer" if answer is not None else "invalid",
+                    tool_status="success" if rejection is None and selected else "invalid_final",
+                    tool_result_summary={"count": len(selected)} if rejection is None else {"count": 0, "rejection_reason": rejection},
                     latency_ms=round((time.monotonic() - step_started) * 1000, 3),
-                    token_usage={"total_tokens": step_token_delta if step_token_delta > 0 else "unknown"},
+                    token_usage={"total_tokens": step_token_delta} if step_token_delta > 0 else decision.get("token_usage", {"total_tokens": "unknown"}),
                 )
             )
-            if selected:
+            if selected and rejection is None:
+                assert answer is not None
                 result.candidate_laws = selected
                 result.matched_elements = matched
                 result.missing_elements = missing
@@ -488,10 +574,26 @@ async def run_legal_research(
                 result.evidence_status = "verified_candidate" if all(is_lawref_eligible(a) for a in selected) else "text_only"
                 result.termination_reason = "final_answer"
                 break
+            # 纠偏携带原响应和错误类别；原生候选最多一次，legacy 仍受总轮数预算约束。
+            feedback_history = final_history if final_phase else message_history
+            feedback_history.extend([
+                AIMessage(content=content if isinstance(content, str) else ""),
+                HumanMessage(content=json.dumps({
+                    "validation_error": rejection, "schema_error_types": error_types,
+                    "instruction": "修正最终输出；只能选择已读取条文及已有要件名称，没有事实支持的要件留缺失。",
+                }, ensure_ascii=False)),
+            ])
+            if final_phase and final_attempts >= 2:
+                result.termination_reason = "invalid_final"
+                break
     finally:
         result.step_count = len(result.trajectory)
         result.latency_ms = round((time.monotonic() - started) * 1000, 3)
         current_tokens = session_budget.snapshot(session_id)["tokens"] if session_id else 0
         token_delta = current_tokens - initial_tokens
-        result.token_usage = {"total_tokens": token_delta if token_delta > 0 else "unknown"}
+        step_tokens = [step.token_usage.get("total_tokens", "unknown") for step in result.trajectory]
+        known_tokens = [value for value in step_tokens if isinstance(value, int)]
+        result.token_usage = {"total_tokens": token_delta if token_delta > 0 else (
+            sum(known_tokens) if len(known_tokens) == len(step_tokens) else "unknown"
+        )}
     return result

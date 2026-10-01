@@ -38,8 +38,8 @@ def scripted_law_tool_decisions():
 
     async def decide(_system, message, _tools, **_kwargs):
         payload = json.loads(message)
-        observations = payload["observations"]
-        if not observations:
+        observations = [json.loads(item.content) for item in _kwargs.get("message_history", []) if item.type == "tool"]
+        if not observations and not payload.get("read_articles"):
             facts = json.loads(payload["facts"])
             behavior = facts.get("behavior_sequence") or []
             term = behavior[0] if isinstance(behavior, list) else behavior
@@ -58,8 +58,8 @@ def scripted_law_tool_decisions():
                     "tool_calls": [{"name": "get_article", "args": {"article_id": candidates[0]["article_id"]}}],
                     "has_tool_call": True,
                 }
-        if len(observations) >= 2:
-            article = observations[-1]["result"].get("article")
+        if len(observations) >= 2 or payload.get("read_articles"):
+            article = payload["read_articles"][0] if payload.get("read_articles") else observations[-1]["result"].get("article")
             if article:
                 article_id = article["article_id"]
                 elements = article["required_elements"]
@@ -83,6 +83,12 @@ def scripted_law_tool_decisions():
 
 
 # ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def explicit_snapshot_contract(monkeypatch):
+    """This module tests the historical six-article and user-index contract."""
+    monkeypatch.setenv("LAW_KNOWLEDGE_PROFILE", "snapshot")
+
+
 # Helper: build law_data in the format load_criminal_law_data returns
 # ---------------------------------------------------------------------------
 
