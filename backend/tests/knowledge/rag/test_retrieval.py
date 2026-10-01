@@ -6,8 +6,9 @@
 
 import asyncio
 import sys
+from pathlib import Path
 
-sys.path.insert(0, "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/backend")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from app.infrastructure.logging import get_logger
 from app.knowledge.rag.rag_service import RagService

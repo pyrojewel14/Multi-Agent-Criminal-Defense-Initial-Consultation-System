@@ -12,5 +12,5 @@
   "embedding_dimension": 1024,
   "documents_sha256": "sha256:c5be8a50c413fa4a59d6053a8c613f87f88939950b3cc768748ddb19104cbe01",
   "embeddings_sha256": "sha256:57edb72a16561a3c89df55deead1b83c07c346b9806ace4168f251480ef4bd4d",
-  "build_command": "PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/build_live_index.py --index-dir <isolated-path>"
+  "build_command": "PYTHONNOUSERSITE=1 conda run -n <local-environment> python evaluation/build_live_index.py --index-dir <isolated-path>"
 }

@@ -13,12 +13,12 @@
   "targeted_regression": {
     "passed": 895,
     "failed": 0,
-    "command": "PYTHONNOUSERSITE=1 conda run -n Agent_dev pytest -q backend/tests/consultation backend/tests/knowledge evaluation"
+    "command": "PYTHONNOUSERSITE=1 conda run -n <local-environment> pytest -q backend/tests/consultation backend/tests/knowledge evaluation"
   },
   "backend_full_suite": {
     "passed": 1371,
     "failed": 2,
-    "command": "cd backend && PYTHONNOUSERSITE=1 conda run -n Agent_dev pytest",
+    "command": "cd backend && PYTHONNOUSERSITE=1 conda run -n <local-environment> pytest",
     "failures": [
       "tests/integration/test_concurrent_consistency.py::test_rate_limiter_concurrency",
       "tests/integration/test_concurrent_consistency.py::test_redis_connection_pool_stress"

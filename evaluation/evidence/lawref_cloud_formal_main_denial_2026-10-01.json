@@ -5,7 +5,7 @@
   "runtime_config": {
     "LAW_KNOWLEDGE_PROFILE": "full",
     "LAW_FULL_DEMO_ANNOTATIONS": "on",
-    "LAW_FULL_INDEX_DIRECTORY": "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/.scratch/lawref_default_fix/full-qwen3",
+    "LAW_FULL_INDEX_DIRECTORY": "<local-repository>/.scratch/lawref_default_fix/full-qwen3",
     "LAW_FULL_INDEX_COLLECTION": "criminal_law_full",
     "LAW_AGENT_MAX_STEPS": "4",
     "LAW_AGENT_TIMEOUT_SECONDS": "240",
@@ -181,7 +181,7 @@
     ],
     "protocol": "legacy; evaluation-only model copy; no native format/num_predict",
     "local_fallback": false,
-    "raw_output": "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/.scratch/lawref_default_fix/main_formal_denial_raw_2026-10-01.json",
+    "raw_output": "<local-repository>/.scratch/lawref_default_fix/main_formal_denial_raw_2026-10-01.json",
     "raw_sha256": "sha256:4d94e8ddb3ce7525bc9b6e1859a930ab7daba800f3852a4a020ba7b51d908f1d",
     "payload_check": "原案例现有mask_pii完整输出与公开快照逐字核对；gold不传模型"
   }

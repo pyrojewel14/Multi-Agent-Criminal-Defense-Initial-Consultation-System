@@ -13,7 +13,7 @@
   "default_profile": "snapshot",
   "formal_service_configuration_changed": false,
   "backend_suite": {
-    "command": "cd backend && LLM_TYPE=OLLAMA EMBED_MODEL_TYPE=OLLAMA OLLAMA_MODEL_NAME=qwen3.5:0.8b TEXT_EMBEDDING_MODEL_NAME=qwen3-embedding:0.6b PYTHONNOUSERSITE=1 conda run -n Agent_dev pytest -q --tb=short",
+    "command": "cd backend && LLM_TYPE=OLLAMA EMBED_MODEL_TYPE=OLLAMA OLLAMA_MODEL_NAME=qwen3.5:0.8b TEXT_EMBEDDING_MODEL_NAME=qwen3-embedding:0.6b PYTHONNOUSERSITE=1 conda run -n <local-environment> pytest -q --tb=short",
     "passed": 1380,
     "failed": 0,
     "local_redis_access": true,

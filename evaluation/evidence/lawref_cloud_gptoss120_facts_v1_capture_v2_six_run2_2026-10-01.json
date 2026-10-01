@@ -5,7 +5,7 @@
   "runtime_config": {
     "LAW_KNOWLEDGE_PROFILE": "full",
     "LAW_FULL_DEMO_ANNOTATIONS": "on",
-    "LAW_FULL_INDEX_DIRECTORY": "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/.scratch/lawref_default_fix/full-qwen3",
+    "LAW_FULL_INDEX_DIRECTORY": "<local-repository>/.scratch/lawref_default_fix/full-qwen3",
     "LAW_FULL_INDEX_COLLECTION": "criminal_law_full",
     "LAW_AGENT_MAX_STEPS": "4",
     "LAW_AGENT_TIMEOUT_SECONDS": "240",

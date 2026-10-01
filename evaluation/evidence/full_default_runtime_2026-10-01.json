@@ -585,7 +585,7 @@
   "records": 505,
   "in_force": 504,
   "coverage_eligible": 38,
-  "index_directory": "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/.scratch/lawref_default_fix/full-qwen3",
+  "index_directory": "<local-repository>/.scratch/lawref_default_fix/full-qwen3",
   "manifest": {
     "schema_version": "full-index-v1",
     "corpus_version": "2026-09-30.2.integration1",

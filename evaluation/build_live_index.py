@@ -124,7 +124,7 @@ def build_index(
         "embedding_dimension": len(embeddings[0]),
         "documents_sha256": _hash_bytes(json.dumps(documents, ensure_ascii=False, separators=(",", ":")).encode()),
         "embeddings_sha256": _hash_bytes(json.dumps(embeddings, separators=(",", ":")).encode()),
-        "build_command": "PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/build_live_index.py --index-dir <isolated-path>",
+        "build_command": "backend/.venv/bin/python evaluation/build_live_index.py --index-dir <isolated-path>",
     }
     manifest_path = index_dir.parent / f"{index_dir.name}.manifest.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -1,6 +1,6 @@
 # LawRef 原始响应与最终生成协议诊断
 
-状态：WIP。全量默认已验证，云对照两轮6/6及正式入口否认案例1/1已通过主线程独立验收；本地Qwen使用新提示词与默认legacy流程复测两轮均0/6，PII与本地最终生成的剩余边界尚未整体验收。本记录保留诊断历史和正式复现方式。
+状态：本地模型评测已记录并暂缓，不阻断当前开发。全量默认已验证，云对照两轮6/6及正式入口否认案例1/1已通过主线程独立验收；本地Qwen使用新提示词与默认legacy流程复测两轮均0/6。后续计划在相同案例与评分契约下试用更大本地模型；参数规模只是待验证的可能原因，PII误遮盖和本地最终生成仍需分别核实。本记录保留诊断历史和正式复现方式。
 
 ## 已确认的原因
 
@@ -40,6 +40,8 @@
 
 ## 可复现证据
 
+公开证据中的本地环境名称与个人绝对目录已脱敏；案例输入、模型响应、评分和运行统计未改动。脱敏副本的整文件字节可能不同于原始运行产物，历史整文件哈希不可直接用公开副本重算核对。复现时应按 [安装说明](../setup.md) 准备项目环境与独立索引。
+
 - [显式候选六例第一轮](../../evaluation/evidence/lawref_candidate_six_run1_2026-10-01.json)、[第二轮](../../evaluation/evidence/lawref_candidate_six_run2_2026-10-01.json)：每例含选择、来源、匹配／缺失、轨迹、token及配置。两轮均4/6，不能合并宣称整体通过。
 - [响应诊断摘要](../../evaluation/evidence/lawref_response_diagnosis_2026-10-01.json)：原始响应字符量、token、结束原因、请求参数与诊断路径。
 - 完整原始content／tool_calls／thinking及不含请求头的HTTP请求体只用于公开合成案例，保存在忽略的 `.scratch/lawref_default_fix/rework-*-raw.json`。诊断脚本为同目录 `capture_raw.py`，附带脚本hash；没有采集密钥或真实用户资料。
@@ -49,14 +51,14 @@
 从根目录分别复跑（输出请选新路径）：
 
 ```bash
-PYTHONNOUSERSITE=1 LAW_AGENT_FINAL_PROTOCOL=native_candidate conda run -n Agent_dev \
-  python evaluation/run_full_eval.py live-lawref --case dangerous-driving-derived --case core-theft \
+LAW_AGENT_FINAL_PROTOCOL=native_candidate backend/.venv/bin/python \
+  evaluation/run_full_eval.py live-lawref --case dangerous-driving-derived --case core-theft \
   --output .scratch/protocol-original-new.json
-PYTHONNOUSERSITE=1 LAW_AGENT_FINAL_PROTOCOL=native_candidate conda run -n Agent_dev \
-  python evaluation/run_full_eval.py live-lawref --query-mode semantic \
+LAW_AGENT_FINAL_PROTOCOL=native_candidate backend/.venv/bin/python \
+  evaluation/run_full_eval.py live-lawref --query-mode semantic \
   --cases evaluation/lawref_natural_cases.jsonl --output .scratch/protocol-natural-new.json
-PYTHONNOUSERSITE=1 LAW_AGENT_FINAL_PROTOCOL=native_candidate conda run -n Agent_dev \
-  python evaluation/run_full_eval.py live-lawref --query-mode semantic \
+LAW_AGENT_FINAL_PROTOCOL=native_candidate backend/.venv/bin/python \
+  evaluation/run_full_eval.py live-lawref --query-mode semantic \
   --cases evaluation/lawref_guardrail_cases.jsonl --output .scratch/protocol-guardrail-new.json
 ```
 
@@ -127,7 +129,7 @@ PYTHONNOUSERSITE=1 LLM_TYPE=OLLAMA EMBED_MODEL_TYPE=OLLAMA \
   LAW_AGENT_FINAL_PROTOCOL=legacy LAW_AGENT_MAX_STEPS=4 \
   LAW_AGENT_TOOL_TIMEOUT_SECONDS=90 LAW_AGENT_TIMEOUT_SECONDS=240 \
   LLM_TOTAL_TIMEOUT_SECONDS=30 LLM_ATTEMPT_TIMEOUT_SECONDS=15 \
-  conda run -n Agent_dev python evaluation/run_cloud_lawref.py \
+  backend/.venv/bin/python evaluation/run_cloud_lawref.py \
   --cases evaluation/lawref_cloud_cases.jsonl --model gpt-oss:120b-cloud --thinking low \
   --base-url http://127.0.0.1:11434 \
   --output .scratch/cloud-formal-new-run1.json --raw-output .scratch/cloud-formal-new-run1-raw.json
@@ -159,6 +161,6 @@ PYTHONNOUSERSITE=1 LLM_TYPE=OLLAMA EMBED_MODEL_TYPE=OLLAMA \
 
 用户要求按内容分批提交整个工作树并同步main与开发分支；本地模型eval失败已在issue中记录，本次按用户要求留待后续处理。PII误遮盖风险仍保留，提交不代表该风险已修复或整体生产验收通过。
 
-本次在Agent_dev环境重新运行后端全套：1396 passed、345条既有warning。首次受限运行的两项Redis测试因本机连接权限失败；允许本机连接后的完整重跑全部通过。evaluation代码测试61 passed；这些是runner及评分契约测试，不替代真实模型六例的结果。
+本次在当时的隔离环境重新运行后端全套：1396 passed、345条既有warning。首次受限运行的两项Redis测试因本机连接权限失败；允许本机连接后的完整重跑全部通过。evaluation代码测试61 passed；这些是runner及评分契约测试，不替代真实模型六例的结果。
 
 backend/app与backend/tests的Ruff通过；本次变更的六个evaluation Python文件按backend规则并明确app导入归属后Ruff通过；backend/app Pyright为0 errors、0 warnings。未宣称全仓Pyright通过。逐条核对后将被多行格式化的30例cases.jsonl和六例lawref_cloud_cases.jsonl恢复为JSONL，输入与全部gold字段相同；六例文件恢复为公开复跑证据绑定的hash，并增加真实资产解析与hash回归。历史六条快照仍保持原资产。

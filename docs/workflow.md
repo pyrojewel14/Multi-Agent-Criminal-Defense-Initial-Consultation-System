@@ -107,7 +107,7 @@ approve/reject/close 通过同一个 application command 写路径推进 checkpo
 从 `backend/` 运行：
 
 ```bash
-PYTHONNOUSERSITE=1 conda run -n Agent_dev pytest -q \
+.venv/bin/python -m pytest -q \
   tests/consultation/agents/test_fact_digger.py \
   tests/consultation/agents/test_law_ref.py \
   tests/consultation/agents/test_legal_research.py \

@@ -9,8 +9,6 @@
     "extraPaths": [
         "backend"
     ],
-    "venvPath": "/opt/anaconda3/envs",
-    "venv": "Agent_dev",
     "pythonVersion": "3.12",
     "typeCheckingMode": "basic"
 }

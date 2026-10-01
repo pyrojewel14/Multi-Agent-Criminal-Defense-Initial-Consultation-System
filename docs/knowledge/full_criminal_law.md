@@ -9,7 +9,7 @@
 代理手写意见保存在 `law_review/2026-09-30.batch1.notes.json`，绑定整个语料和各条正文、原标注的hash。可复现报告生成（输出须采用不存在的新路径）：
 
 ```bash
-PYTHONNOUSERSITE=1 conda run -n Agent_dev python -m evaluation.review_annotations \
+backend/.venv/bin/python -m evaluation.review_annotations \
   --corpus backend/data/law_knowledge/criminal_law_full.json \
   --notes docs/knowledge/law_review/2026-09-30.batch1.notes.json \
   --pdf /path/to/criminal_law.pdf \
@@ -59,12 +59,12 @@ PYTHONNOUSERSITE=1 conda run -n Agent_dev python -m evaluation.review_annotation
 
 ## 构建、更新与回滚
 
-所有项目Python命令均使用Agent_dev。以下从仓库根目录执行。
+以下命令从仓库根目录执行，使用 `make install` 创建的 `backend/.venv`。
 
 导入新的供应候选，输出到**不存在的新版本路径**，同时生成复核队列：
 
 ```bash
-PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/import_full_corpus.py \
+backend/.venv/bin/python evaluation/import_full_corpus.py \
   --candidate /path/to/candidate.json \
   --output backend/data/law_knowledge/criminal_law_full.NEW.json \
   --review-queue backend/data/law_knowledge/criminal_law_full.NEW.review.json
@@ -75,7 +75,7 @@ PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/import_full_corpus.p
 构建独立全量公共Chroma索引；目标目录和相邻manifest均不得存在：
 
 ```bash
-PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/build_full_index.py \
+backend/.venv/bin/python evaluation/build_full_index.py \
   --index-dir .scratch/full-law-2026-09-30.2.integration1-qwen3 \
   --collection criminal_law_full
 ```
@@ -97,18 +97,18 @@ export LAW_FULL_EMBEDDING_DIGEST='<manifest和/api/tags中的实际digest>'
 
 更新应使用新语料文件、新目录和新manifest；先完整核验，再检查运行中服务和会话保存方式后切换。回滚是恢复上一套明确语料路径、索引目录、collection和digest后重启，或改回 `LAW_KNOWLEDGE_PROFILE=snapshot`。回滚配置不会回滚checkpoint、数据库或已生成报告。
 
-本机 `.env` 指向 `.scratch/lawref_default_fix/full-qwen3`：从历史全量索引复制后核验的独立目录，原索引及用户上传库未重建或覆写。[默认入口证据](../../evaluation/evidence/full_default_runtime_2026-10-01.json)由 `main` 导入、实际 `.env` 加载及启动阶段的法条预检函数生成，记录505条、504条有效正文、38条可覆盖及公共索引查询。执行时未检测到 uvicorn 或8000端口服务，没有启动或重启服务；这不证明运行中的 HTTP 接口已经切换。正常 `main.lifespan` 使用 SQLite checkpointer，默认直接构造 Orchestrator 则使用进程内 MemorySaver；重启前必须核实所用入口与 checkpoint 路径。
+当时的验证配置使用隔离索引目录 `.scratch/lawref_default_fix/full-qwen3`，从历史全量索引复制后核验，原索引及用户上传库未重建或覆写。[默认入口证据](../../evaluation/evidence/full_default_runtime_2026-10-01.json)由 `main` 导入、实际配置加载及启动阶段的法条预检函数生成，记录505条、504条有效正文、38条可覆盖及公共索引查询。执行时未检测到 uvicorn 或8000端口服务，没有启动或重启服务；这不证明运行中的 HTTP 接口已经切换。正常 `main.lifespan` 使用 SQLite checkpointer，默认直接构造 Orchestrator 则使用进程内 MemorySaver；重启前必须核实所用入口与 checkpoint 路径。
 
 ## 评测与证据
 
 ```bash
-PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/run_full_eval.py offline \
+backend/.venv/bin/python evaluation/run_full_eval.py offline \
   --output evaluation/results/full-offline.json
-PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/run_full_eval.py live-rag \
+backend/.venv/bin/python evaluation/run_full_eval.py live-rag \
   --query-mode semantic --output evaluation/results/full-rag.json
-PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/run_full_eval.py live-lawref \
+backend/.venv/bin/python evaluation/run_full_eval.py live-lawref \
   --case dangerous-driving-derived --case core-theft --output evaluation/results/full-lawref.json
-PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/verify_full_text.py \
+backend/.venv/bin/python evaluation/verify_full_text.py \
   --corpus backend/data/law_knowledge/criminal_law_full.json \
   --pdf /path/to/official.pdf --output evaluation/results/full-text-check.json
 ```
@@ -144,13 +144,13 @@ PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/verify_full_text.py 
 从根目录重跑（输出请使用新文件名）：
 
 ```bash
-PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/run_full_eval.py live-lawref \
+backend/.venv/bin/python evaluation/run_full_eval.py live-lawref \
   --case dangerous-driving-derived --case core-theft --output .scratch/lawref-original-new.json
-PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/run_full_eval.py live-lawref \
+backend/.venv/bin/python evaluation/run_full_eval.py live-lawref \
   --query-mode semantic --cases evaluation/lawref_natural_cases.jsonl \
   --output .scratch/lawref-natural-new.json
 ```
 
 最终后端全套1383项通过（345条既有警告）；评测50项通过；后端app、tests与本轮变更评测文件Ruff通过；backend/app Pyright无诊断。首次沙箱全套中的两项Redis连接失败在允许本机连接后通过。扩大Ruff到整个evaluation目录仍有三个基线诊断（`import_full_corpus.py` E402，`test_annotation_review.py`与`test_full_index.py` I001），没有修改无关文件。全仓Pyright仍有237条诊断，不能称为通过。原六条JSON与2026-09-30失败文件的SHA256保持不变。
 
-主线程独立复跑口语盗窃仍失败，第二项整体未验收通过。返工后的原始响应、协议对照、模型事实支持限制和下一步选择见[响应协议诊断](lawref_response_protocol.md)。全量默认切换保留；原生最终生成仅以 `LAW_AGENT_FINAL_PROTOCOL=native_candidate` 显式启用，应用默认 `legacy`。候选协议未通过事实不足／否认行为控制，不能作为已修复的默认行为放行。
+主线程独立复跑口语盗窃仍失败，第二项当时未验收通过。后续云模型固定六例对照与本地小模型复测见[响应协议诊断](lawref_response_protocol.md)：本地默认路径仍未通过，相关评测已记录并暂缓，后续计划对照更大本地模型；参数规模不是已证实的唯一原因，也不阻断当前开发。全量默认切换保留；原生最终生成仅以 `LAW_AGENT_FINAL_PROTOCOL=native_candidate` 显式启用，应用默认 `legacy`。
