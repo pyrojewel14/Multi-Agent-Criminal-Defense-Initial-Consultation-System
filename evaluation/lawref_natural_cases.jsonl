@@ -1,0 +1,2 @@
+{"id":"natural-theft","query":"昨天我趁店员没注意，偷偷把商店的一部价值5000元的手机拿走了，没有付款。","semantic_query":"昨天我趁店员没注意，偷偷把商店的一部价值5000元的手机拿走了，没有付款。","article_id":"第264条","contains":"盗窃公私财物","coverage_eligible":true}
+{"id":"natural-drunk-driving","query":"昨晚我喝了酒，在城市道路上驾驶小汽车，被交警查到，血液酒精含量是120毫克每100毫升。","semantic_query":"昨晚我喝了酒，在城市道路上驾驶小汽车，被交警查到，血液酒精含量是120毫克每100毫升。","article_id":"第133条之一","contains":"醉酒驾驶机动车","coverage_eligible":false,"demo_coverage_eligible":true}

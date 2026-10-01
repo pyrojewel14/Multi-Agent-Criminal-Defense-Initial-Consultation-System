@@ -1,0 +1,458 @@
+{
+  "status": "WIP; requested cloud model unavailable; second item not accepted",
+  "evidence_kind": "actual-http-cloud-proxy-model-retirement",
+  "authorization_scope": "existing deepseek-v3.1:671b-cloud; original six public synthetic cases only; isolated process",
+  "requested_model": "deepseek-v3.1:671b-cloud",
+  "provider": "Ollama",
+  "ollama_version": "0.35.0",
+  "local_proxy": "http://127.0.0.1:11434",
+  "declared_remote_model": "deepseek-v3.1:671b",
+  "declared_remote_host": "https://ollama.com:443",
+  "proxy_manifest_digest": "d3749919e45f955731da7a7e76849e20f7ed310725d3b8b52822e811f55d0a90",
+  "proxy_manifest_bytes": 405,
+  "remote_weights_digest": null,
+  "cached_tag_capabilities": [
+    "completion",
+    "tools",
+    "thinking"
+  ],
+  "live_remote_capabilities_verified": false,
+  "cloud_inference_verified": false,
+  "account_login_verified": false,
+  "preflight_show": {
+    "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: 497ba54d-c873-4f75-ab48-18c561ee73cf)"
+  },
+  "preflight_chat": {
+    "path": ".scratch/lawref_default_fix/cloud-chat-preflight-2026-10-01.txt",
+    "http_status": 410
+  },
+  "retirement_reported_by_service": "2026-07-15 00:00:00 -0700 PDT",
+  "cases_input_sha256": "sha256:b5958b42d62ede849bafc245d3e31a4e00ac6c653806471908b3f10bcb7c1985",
+  "original_six_strings_unchanged": true,
+  "gold_sent_to_model": false,
+  "protocol": "legacy standard tool message loop; first decision rejected; no native final request",
+  "unsupported_local_parameters_sent": false,
+  "budgets": {
+    "max_steps": 4,
+    "max_step_configuration_limit": 8,
+    "tool_timeout_seconds": 90,
+    "overall_timeout_seconds": 240,
+    "llm_total_timeout_seconds": 30,
+    "llm_attempt_timeout_seconds": 15,
+    "max_llm_attempts": 2,
+    "retry_on_410": false
+  },
+  "runs": [
+    {
+      "path": "evaluation/evidence/lawref_cloud_six_run1_2026-10-01.json",
+      "sha256": "sha256:64d10634190f558ef99034b58c72326b6bcadd292572b9dd1f3fab2af2f17b69",
+      "passed": 0,
+      "total": 6,
+      "raw_path": ".scratch/lawref_default_fix/cloud-run1-raw-2026-10-01.json",
+      "raw_sha256": "sha256:4e8d305d6dff01fe89e3355fe62815b7d43df597f9b7fbdee267f49831a1cdc9",
+      "runner_original_path": ".scratch/lawref_default_fix/cloud-run1-unannotated-eval-2026-10-01.json",
+      "runner_original_sha256": "sha256:1f568a70847837f9e94ce43fc726203431322c495b262ec3506cfa3b0f8cd7cc",
+      "calls": [
+        {
+          "case_id": "dangerous-driving-derived",
+          "request_url": "http://127.0.0.1:11434/api/chat",
+          "model": "deepseek-v3.1:671b-cloud",
+          "http_status": 410,
+          "error": {
+            "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: e67d7d1f-7feb-4067-89b6-de84502a5bb4)"
+          },
+          "think_present": false,
+          "format_present": false,
+          "options": {
+            "temperature": 0.0
+          },
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "exception_type": "ResponseError",
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "chunks": 0,
+          "latency_ms": 413.196,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "selected_sources": [],
+          "termination_reason": "dependency_failure"
+        },
+        {
+          "case_id": "core-theft",
+          "request_url": "http://127.0.0.1:11434/api/chat",
+          "model": "deepseek-v3.1:671b-cloud",
+          "http_status": 410,
+          "error": {
+            "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: f2846cfe-2cc3-4035-a5d6-b73b8ce118c2)"
+          },
+          "think_present": false,
+          "format_present": false,
+          "options": {
+            "temperature": 0.0
+          },
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "exception_type": "ResponseError",
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "chunks": 0,
+          "latency_ms": 405.281,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "selected_sources": [],
+          "termination_reason": "dependency_failure"
+        },
+        {
+          "case_id": "natural-theft",
+          "request_url": "http://127.0.0.1:11434/api/chat",
+          "model": "deepseek-v3.1:671b-cloud",
+          "http_status": 410,
+          "error": {
+            "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: 71e3041f-a692-4d8b-af7c-8aac49a545f5)"
+          },
+          "think_present": false,
+          "format_present": false,
+          "options": {
+            "temperature": 0.0
+          },
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "exception_type": "ResponseError",
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "chunks": 0,
+          "latency_ms": 408.319,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "selected_sources": [],
+          "termination_reason": "dependency_failure"
+        },
+        {
+          "case_id": "natural-drunk-driving",
+          "request_url": "http://127.0.0.1:11434/api/chat",
+          "model": "deepseek-v3.1:671b-cloud",
+          "http_status": 410,
+          "error": {
+            "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: 9c74db07-33a3-4917-9720-30c558eab24e)"
+          },
+          "think_present": false,
+          "format_present": false,
+          "options": {
+            "temperature": 0.0
+          },
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "exception_type": "ResponseError",
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "chunks": 0,
+          "latency_ms": 411.371,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "selected_sources": [],
+          "termination_reason": "dependency_failure"
+        },
+        {
+          "case_id": "insufficient-theft-facts",
+          "request_url": "http://127.0.0.1:11434/api/chat",
+          "model": "deepseek-v3.1:671b-cloud",
+          "http_status": 410,
+          "error": {
+            "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: caca677a-de53-4f57-b8f4-ec377a950450)"
+          },
+          "think_present": false,
+          "format_present": false,
+          "options": {
+            "temperature": 0.0
+          },
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "exception_type": "ResponseError",
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "chunks": 0,
+          "latency_ms": 404.512,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "selected_sources": [],
+          "termination_reason": "dependency_failure"
+        },
+        {
+          "case_id": "denied-theft-behavior",
+          "request_url": "http://127.0.0.1:11434/api/chat",
+          "model": "deepseek-v3.1:671b-cloud",
+          "http_status": 410,
+          "error": {
+            "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: da7187f9-47ec-41f8-980c-9c4e086946d7)"
+          },
+          "think_present": false,
+          "format_present": false,
+          "options": {
+            "temperature": 0.0
+          },
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "exception_type": "ResponseError",
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "chunks": 0,
+          "latency_ms": 1010.09,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "selected_sources": [],
+          "termination_reason": "dependency_failure"
+        }
+      ]
+    },
+    {
+      "path": "evaluation/evidence/lawref_cloud_six_run2_2026-10-01.json",
+      "sha256": "sha256:1cef9c273f39809bea56790e8a87beb8d48e8690248e9d79f7473523472d4951",
+      "passed": 0,
+      "total": 6,
+      "raw_path": ".scratch/lawref_default_fix/cloud-run2-raw-2026-10-01.json",
+      "raw_sha256": "sha256:3f96d8fcf186595c47d0d8181b6fb38a2408786cf71a915389a8cf7b535e1727",
+      "runner_original_path": ".scratch/lawref_default_fix/cloud-run2-unannotated-eval-2026-10-01.json",
+      "runner_original_sha256": "sha256:3325df69507f634e30721955b45b7adb6c89b1f48cbf326d49767352dc215f07",
+      "calls": [
+        {
+          "case_id": "dangerous-driving-derived",
+          "request_url": "http://127.0.0.1:11434/api/chat",
+          "model": "deepseek-v3.1:671b-cloud",
+          "http_status": 410,
+          "error": {
+            "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: 8de4ecb5-af10-489b-a785-aee6c16fee60)"
+          },
+          "think_present": false,
+          "format_present": false,
+          "options": {
+            "temperature": 0.0
+          },
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "exception_type": "ResponseError",
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "chunks": 0,
+          "latency_ms": 421.69,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "selected_sources": [],
+          "termination_reason": "dependency_failure"
+        },
+        {
+          "case_id": "core-theft",
+          "request_url": "http://127.0.0.1:11434/api/chat",
+          "model": "deepseek-v3.1:671b-cloud",
+          "http_status": 410,
+          "error": {
+            "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: afd63205-a11c-4142-bbbc-f598c15151b5)"
+          },
+          "think_present": false,
+          "format_present": false,
+          "options": {
+            "temperature": 0.0
+          },
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "exception_type": "ResponseError",
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "chunks": 0,
+          "latency_ms": 427.064,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "selected_sources": [],
+          "termination_reason": "dependency_failure"
+        },
+        {
+          "case_id": "natural-theft",
+          "request_url": "http://127.0.0.1:11434/api/chat",
+          "model": "deepseek-v3.1:671b-cloud",
+          "http_status": 410,
+          "error": {
+            "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: 625372a8-cf8b-4346-9123-6daaaa36c571)"
+          },
+          "think_present": false,
+          "format_present": false,
+          "options": {
+            "temperature": 0.0
+          },
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "exception_type": "ResponseError",
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "chunks": 0,
+          "latency_ms": 423.166,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "selected_sources": [],
+          "termination_reason": "dependency_failure"
+        },
+        {
+          "case_id": "natural-drunk-driving",
+          "request_url": "http://127.0.0.1:11434/api/chat",
+          "model": "deepseek-v3.1:671b-cloud",
+          "http_status": 410,
+          "error": {
+            "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: 76559c6a-6478-4ac6-a17b-4e2de70367d9)"
+          },
+          "think_present": false,
+          "format_present": false,
+          "options": {
+            "temperature": 0.0
+          },
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "exception_type": "ResponseError",
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "chunks": 0,
+          "latency_ms": 1019.282,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "selected_sources": [],
+          "termination_reason": "dependency_failure"
+        },
+        {
+          "case_id": "insufficient-theft-facts",
+          "request_url": "http://127.0.0.1:11434/api/chat",
+          "model": "deepseek-v3.1:671b-cloud",
+          "http_status": 410,
+          "error": {
+            "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: b438f95d-4b64-48d1-a58f-8cae07ad6266)"
+          },
+          "think_present": false,
+          "format_present": false,
+          "options": {
+            "temperature": 0.0
+          },
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "exception_type": "ResponseError",
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "chunks": 0,
+          "latency_ms": 414.599,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "selected_sources": [],
+          "termination_reason": "dependency_failure"
+        },
+        {
+          "case_id": "denied-theft-behavior",
+          "request_url": "http://127.0.0.1:11434/api/chat",
+          "model": "deepseek-v3.1:671b-cloud",
+          "http_status": 410,
+          "error": {
+            "error": "deepseek-v3.1:671b was retired at 2026-07-15 00:00:00 -0700 PDT (ref: 0382e8d8-777a-4d95-9839-4f1ac952bcf7)"
+          },
+          "think_present": false,
+          "format_present": false,
+          "options": {
+            "temperature": 0.0
+          },
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "exception_type": "ResponseError",
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "chunks": 0,
+          "latency_ms": 424.778,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "selected_sources": [],
+          "termination_reason": "dependency_failure"
+        }
+      ]
+    }
+  ],
+  "official_sources": [
+    {
+      "url": "https://docs.ollama.com/api/authentication",
+      "claim": "signed-in local Ollama can proxy cloud calls; direct API uses key"
+    },
+    {
+      "url": "https://docs.ollama.com/capabilities/structured-outputs",
+      "claim": "cloud currently does not support native structured outputs"
+    },
+    {
+      "url": "https://docs.ollama.com/capabilities/thinking",
+      "claim": "thinking controls vary; query show metadata before relying on values"
+    },
+    {
+      "url": "https://docs.ollama.com/cloud",
+      "claim": "cloud models do not require weights download; retirements are reported in usage settings"
+    }
+  ],
+  "instrumentation": {
+    "path": ".scratch/lawref_default_fix/run_cloud_comparison.py",
+    "sha256": "sha256:70174f87f3b3091d78de7fa2161960f912d3b2161ab1448c6fe1dc766514d71f",
+    "capture": "actual HTTP body/status, no headers or credentials; response error body; asserted requested model per call"
+  },
+  "result": "两轮0/6均因服务410退役拒绝；不能评估模型能力、要件事实正确性或账户可用性。",
+  "unchanged": [
+    "application default qwen3.5:0.8b",
+    "full505/504/38 corpus/demo/isolated index",
+    "legacy default and native candidate opt-in",
+    "source/read/name validators and loop/deadline/retry bounds",
+    "shared external files and prior local failures"
+  ],
+  "not_performed": [
+    "no alternate model",
+    "no model download",
+    "no app/backend service launch or restart",
+    "no permanent config/code change",
+    "no commit/push/merge/archive/Done"
+  ],
+  "next_step": "Main thread/user must explicitly identify an available cloud model before further inference comparison; native schema compatibility will need separate verification."
+}

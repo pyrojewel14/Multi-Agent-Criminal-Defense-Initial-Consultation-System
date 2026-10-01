@@ -1,0 +1,601 @@
+{
+  "evidence_kind": "real-lawref-llm-rag-coverage",
+  "query_mode": "article",
+  "cases_sha256": "sha256:b5958b42d62ede849bafc245d3e31a4e00ac6c653806471908b3f10bcb7c1985",
+  "runtime_config": {
+    "LAW_KNOWLEDGE_PROFILE": "full",
+    "LAW_FULL_DEMO_ANNOTATIONS": "on",
+    "LAW_FULL_INDEX_DIRECTORY": "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/.scratch/lawref_default_fix/full-qwen3",
+    "LAW_FULL_INDEX_COLLECTION": "criminal_law_full",
+    "LAW_AGENT_MAX_STEPS": "4",
+    "LAW_AGENT_TIMEOUT_SECONDS": "240",
+    "LAW_AGENT_FINAL_PROTOCOL": "native_candidate",
+    "LAW_AGENT_TOOL_TIMEOUT_SECONDS": "90",
+    "LLM_TOTAL_TIMEOUT_SECONDS": "30",
+    "LLM_ATTEMPT_TIMEOUT_SECONDS": "15"
+  },
+  "corpus_version": "2026-09-30.2.integration1",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "annotation_mode": "demo",
+  "demo_annotations": {
+    "annotation_id": "demo-reviewed-2026-10-01-v1",
+    "released_articles": 32,
+    "usage": "demo",
+    "official": false,
+    "legal_review_completed": false
+  },
+  "llm_executed": true,
+  "rag_executed": true,
+  "embedding_model": "qwen3-embedding:0.6b",
+  "embedding_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+  "chat_model": "qwen3.5:0.8b",
+  "legal_review_completed": false,
+  "production_deployment_verified": false,
+  "passed": 4,
+  "total": 6,
+  "cases": [
+    {
+      "id": "dangerous-driving-derived",
+      "passed": true,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [
+        "第133条之一"
+      ],
+      "search_status": "success",
+      "termination_reason": "final_answer",
+      "total_elements": 1,
+      "degraded": false,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:6b0035cf48539dfc22dc3f308d91805073ff03104f610de5fe7cc69cd2572403",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 5149.002,
+          "token_usage": {
+            "input_tokens": 583,
+            "output_tokens": 135,
+            "total_tokens": 718
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "get_article",
+          "tool_arguments_fingerprint": "sha256:b35cef05c43a146238457c7704925009cd9650b0ac714051948d081ed28b07b9",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": true,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 1040.228,
+          "token_usage": {
+            "input_tokens": 767,
+            "output_tokens": 62,
+            "total_tokens": 829
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "final_answer",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1
+          },
+          "latency_ms": 2425.963,
+          "token_usage": {
+            "input_tokens": 382,
+            "output_tokens": 151,
+            "total_tokens": 533
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": 2080
+      },
+      "selected_sources": [
+        {
+          "article_number": "第一百三十三条之一",
+          "data_source": "rag_verified",
+          "required_elements": [
+            {
+              "key": "demo_applicable_branch",
+              "name": "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+            }
+          ],
+          "elements_matched": [
+            "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+          ],
+          "elements_missing": [],
+          "annotation_usage": "demo",
+          "annotation_source": "demo-reviewed-2026-10-01-v1"
+        }
+      ],
+      "latency_ms": 8657.35
+    },
+    {
+      "id": "core-theft",
+      "passed": true,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [
+        "第264条"
+      ],
+      "search_status": "success",
+      "termination_reason": "final_answer",
+      "total_elements": 2,
+      "degraded": false,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:5f2535562483753bd3a5cd0938a57ddfcbfee42b6b869ab63980a7eca305769e",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 2446.804,
+          "token_usage": {
+            "input_tokens": 581,
+            "output_tokens": 137,
+            "total_tokens": 718
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "get_article",
+          "tool_arguments_fingerprint": "sha256:1596ce83c1ebdbb03cf186fc21c56c8b6b4426633271c1f493fd79914eef4ad1",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": true,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 983.583,
+          "token_usage": {
+            "input_tokens": 753,
+            "output_tokens": 64,
+            "total_tokens": 817
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "final_answer",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1
+          },
+          "latency_ms": 863.181,
+          "token_usage": {
+            "input_tokens": 270,
+            "output_tokens": 46,
+            "total_tokens": 316
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": 1851
+      },
+      "selected_sources": [
+        {
+          "article_number": "第二百六十四条",
+          "data_source": "rag_verified",
+          "required_elements": [
+            {
+              "key": "theft_property",
+              "name": "盗窃公私财物"
+            },
+            {
+              "key": "theft_threshold",
+              "name": "数额较大或者具备法定盗窃情形之一"
+            }
+          ],
+          "elements_matched": [
+            "盗窃公私财物",
+            "数额较大或者具备法定盗窃情形之一"
+          ],
+          "elements_missing": [],
+          "annotation_usage": "project_regression",
+          "annotation_source": "project-maintained-v1"
+        }
+      ],
+      "latency_ms": 4328.882
+    },
+    {
+      "id": "natural-theft",
+      "passed": true,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [
+        "第264条"
+      ],
+      "search_status": "success",
+      "termination_reason": "final_answer",
+      "total_elements": 2,
+      "degraded": false,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:6128cde7da58c112c4ebe441f062a50db88a085bd335c887280fb6c8b4e1b237",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 3551.36,
+          "token_usage": {
+            "input_tokens": 600,
+            "output_tokens": 218,
+            "total_tokens": 818
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "get_article",
+          "tool_arguments_fingerprint": "sha256:1596ce83c1ebdbb03cf186fc21c56c8b6b4426633271c1f493fd79914eef4ad1",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": true,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 1196.386,
+          "token_usage": {
+            "input_tokens": 1225,
+            "output_tokens": 55,
+            "total_tokens": 1280
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "final_answer",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1
+          },
+          "latency_ms": 1249.579,
+          "token_usage": {
+            "input_tokens": 289,
+            "output_tokens": 74,
+            "total_tokens": 363
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": 2461
+      },
+      "selected_sources": [
+        {
+          "article_number": "第二百六十四条",
+          "data_source": "rag_verified",
+          "required_elements": [
+            {
+              "key": "theft_property",
+              "name": "盗窃公私财物"
+            },
+            {
+              "key": "theft_threshold",
+              "name": "数额较大或者具备法定盗窃情形之一"
+            }
+          ],
+          "elements_matched": [
+            "盗窃公私财物",
+            "数额较大或者具备法定盗窃情形之一"
+          ],
+          "elements_missing": [],
+          "annotation_usage": "project_regression",
+          "annotation_source": "project-maintained-v1"
+        }
+      ],
+      "latency_ms": 6015.635
+    },
+    {
+      "id": "natural-drunk-driving",
+      "passed": true,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [
+        "第133条之一"
+      ],
+      "search_status": "success",
+      "termination_reason": "final_answer",
+      "total_elements": 1,
+      "degraded": false,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:ba1a05c525cb3ac0f09f9b63f9d4d7a1380cbfcb82499433f1e35d65b0fe1480",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 2560.081,
+          "token_usage": {
+            "input_tokens": 607,
+            "output_tokens": 141,
+            "total_tokens": 748
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "get_article",
+          "tool_arguments_fingerprint": "sha256:b35cef05c43a146238457c7704925009cd9650b0ac714051948d081ed28b07b9",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": true,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 1293.739,
+          "token_usage": {
+            "input_tokens": 1267,
+            "output_tokens": 67,
+            "total_tokens": 1334
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "final_answer",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1
+          },
+          "latency_ms": 2151.75,
+          "token_usage": {
+            "input_tokens": 406,
+            "output_tokens": 151,
+            "total_tokens": 557
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": 2639
+      },
+      "selected_sources": [
+        {
+          "article_number": "第一百三十三条之一",
+          "data_source": "rag_verified",
+          "required_elements": [
+            {
+              "key": "demo_applicable_branch",
+              "name": "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+            }
+          ],
+          "elements_matched": [
+            "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+          ],
+          "elements_missing": [],
+          "annotation_usage": "demo",
+          "annotation_source": "demo-reviewed-2026-10-01-v1"
+        }
+      ],
+      "latency_ms": 6026.912
+    },
+    {
+      "id": "insufficient-theft-facts",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [
+        "第264条"
+      ],
+      "search_status": "success",
+      "termination_reason": "final_answer",
+      "total_elements": 2,
+      "degraded": false,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:25cfde8ccd5ffe3077a1f957d2803962af3d28d12201148df2707d0c1bcde862",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 1964.352,
+          "token_usage": {
+            "input_tokens": 596,
+            "output_tokens": 105,
+            "total_tokens": 701
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "search_elements",
+          "tool_arguments_fingerprint": "sha256:d9678f6473b2b8a2dd0a02124b602ee346638d94ac772c37070e887cf8dc26c2",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": false,
+            "element_count": 2,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 1233.335,
+          "token_usage": {
+            "input_tokens": 1199,
+            "output_tokens": 56,
+            "total_tokens": 1255
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "final_answer",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1
+          },
+          "latency_ms": 1131.42,
+          "token_usage": {
+            "input_tokens": 285,
+            "output_tokens": 74,
+            "total_tokens": 359
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": 2315
+      },
+      "selected_sources": [
+        {
+          "article_number": "第二百六十四条",
+          "data_source": "rag_verified",
+          "required_elements": [
+            {
+              "key": "theft_property",
+              "name": "盗窃公私财物"
+            },
+            {
+              "key": "theft_threshold",
+              "name": "数额较大或者具备法定盗窃情形之一"
+            }
+          ],
+          "elements_matched": [
+            "盗窃公私财物",
+            "数额较大或者具备法定盗窃情形之一"
+          ],
+          "elements_missing": [],
+          "annotation_usage": "project_regression",
+          "annotation_source": "project-maintained-v1"
+        }
+      ],
+      "guardrail_passed": false,
+      "latency_ms": 4354.858
+    },
+    {
+      "id": "denied-theft-behavior",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [
+        "第264条"
+      ],
+      "search_status": "success",
+      "termination_reason": "final_answer",
+      "total_elements": 2,
+      "degraded": false,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:25cfde8ccd5ffe3077a1f957d2803962af3d28d12201148df2707d0c1bcde862",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 2167.61,
+          "token_usage": {
+            "input_tokens": 603,
+            "output_tokens": 125,
+            "total_tokens": 728
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "get_article",
+          "tool_arguments_fingerprint": "sha256:1596ce83c1ebdbb03cf186fc21c56c8b6b4426633271c1f493fd79914eef4ad1",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": true,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 1144.013,
+          "token_usage": {
+            "input_tokens": 1206,
+            "output_tokens": 61,
+            "total_tokens": 1267
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "final_answer",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1
+          },
+          "latency_ms": 1117.442,
+          "token_usage": {
+            "input_tokens": 292,
+            "output_tokens": 74,
+            "total_tokens": 366
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": 2361
+      },
+      "selected_sources": [
+        {
+          "article_number": "第二百六十四条",
+          "data_source": "rag_verified",
+          "required_elements": [
+            {
+              "key": "theft_property",
+              "name": "盗窃公私财物"
+            },
+            {
+              "key": "theft_threshold",
+              "name": "数额较大或者具备法定盗窃情形之一"
+            }
+          ],
+          "elements_matched": [
+            "盗窃公私财物",
+            "数额较大或者具备法定盗窃情形之一"
+          ],
+          "elements_missing": [],
+          "annotation_usage": "project_regression",
+          "annotation_source": "project-maintained-v1"
+        }
+      ],
+      "guardrail_passed": false,
+      "latency_ms": 4463.865
+    }
+  ],
+  "latency_scope": "本机顺序组件调用，包含核验与模型预热；不是并发或生产性能测试"
+}

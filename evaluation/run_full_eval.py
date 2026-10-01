@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import sys
@@ -14,10 +15,12 @@ CASES = Path(__file__).with_name("full_cases.jsonl")
 
 
 async def run_evaluation(
-    mode: str,
-    output: Path,
-    case_ids: list[str] | None = None,
-    query_mode: str = "article",
+        mode: str,
+        output: Path,
+        case_ids: list[str] | None = None,
+        query_mode: str = "article",
+        *,
+        cases_path: Path = CASES,
 ) -> dict:
     """运行固定公共案例；离线模式只调用真实关键词与读取工具。"""
     from app.consultation.agents.legal_research import LegalToolRegistry
@@ -30,7 +33,7 @@ async def run_evaluation(
     corpus = load_criminal_law_data()
     demo_enabled = bool(corpus["metadata"].get("demo_annotations"))
     cases = [
-        json.loads(line) for line in CASES.read_text().splitlines() if line.strip()
+        json.loads(line) for line in cases_path.read_text().splitlines() if line.strip()
     ]
     if case_ids:
         cases = [c for c in cases if c["id"] in case_ids]
@@ -46,7 +49,9 @@ async def run_evaluation(
             ],
             "consequence": "",
         }
-        expected_coverage = case.get("demo_coverage_eligible", case.get("coverage_eligible", False)) if demo_enabled else case.get("coverage_eligible", False)
+        expected_coverage = case.get("demo_coverage_eligible",
+                                     case.get("coverage_eligible", False)) if demo_enabled else case.get(
+            "coverage_eligible", False)
         row = {"id": case["id"], "passed": False, "expected_coverage_eligible": expected_coverage}
         try:
             if mode == "live-lawref":
@@ -61,8 +66,8 @@ async def run_evaluation(
                     }
                 )
                 selected = [
-                    a["article_number"] for a in state.get("applied_laws", [])
-                ] + [a["article_number"] for a in state.get("law_text_candidates", [])]
+                               a["article_number"] for a in state.get("applied_laws", [])
+                           ] + [a["article_number"] for a in state.get("law_text_candidates", [])]
                 from app.knowledge.law_knowledge import _normalize_article_number
 
                 ids = [_normalize_article_number(n) for n in selected]
@@ -77,17 +82,35 @@ async def run_evaluation(
                         "total_elements": coverage["total_elements"],
                         "degraded": coverage["degraded"],
                         "trajectory": state["law_research"]["trajectory"],
+                        "token_usage": state["law_research"].get("token_usage", {}),
+                        "selected_sources": [
+                            {key: law.get(key) for key in (
+                                "article_number", "data_source", "required_elements",
+                                "elements_matched", "elements_missing", "annotation_usage", "annotation_source",
+                            )}
+                            for law in state.get("applied_laws", [])
+                        ],
                     }
                 )
                 row["passed"] = (
                     (case["article_id"] not in ids)
                     if case.get("absent")
                     else (
-                        case["article_id"] in ids
-                        and (coverage["total_elements"] > 0)
-                        == expected_coverage
+                            case["article_id"] in ids
+                            and (coverage["total_elements"] > 0)
+                            == expected_coverage
                     )
                 )
+                if "expected_matched_elements" in case:
+                    # 控制样例单独检查匹配与缺失；gold 条件不进入模型或检索输入。
+                    claimed = [element for law in state.get("applied_laws", []) for element in
+                               law.get("elements_matched", [])]
+                    missing_count = sum(len(law.get("elements_missing", [])) for law in state.get("applied_laws", []))
+                    row["guardrail_passed"] = (
+                            claimed == case["expected_matched_elements"]
+                            and missing_count == case["expected_missing_count"]
+                    )
+                    row["passed"] = row["passed"] and row["guardrail_passed"]
             else:
                 if mode == "offline":
                     laws = await law_retrieval.search_laws_by_keyword(facts, corpus)
@@ -104,9 +127,9 @@ async def run_evaluation(
                 for law in laws:
                     number = _normalize_article_number(law["article_number"])
                     if (
-                        law.get("data_source")
-                        in {"rag_verified", "json_keyword", "text_only"}
-                        and number in index
+                            law.get("data_source")
+                            in {"rag_verified", "json_keyword", "text_only"}
+                            and number in index
                     ):
                         registry.searched[number] = {
                             **index[number],
@@ -152,6 +175,13 @@ async def run_evaluation(
             "live-lawref": "real-lawref-llm-rag-coverage",
         }[mode],
         "query_mode": query_mode,
+        "cases_sha256": "sha256:" + hashlib.sha256(cases_path.read_bytes()).hexdigest(),
+        "runtime_config": {key: os.getenv(key) for key in (
+            "LAW_KNOWLEDGE_PROFILE", "LAW_FULL_DEMO_ANNOTATIONS", "LAW_FULL_INDEX_DIRECTORY",
+            "LAW_FULL_INDEX_COLLECTION", "LAW_AGENT_MAX_STEPS", "LAW_AGENT_TIMEOUT_SECONDS",
+            "LAW_AGENT_FINAL_PROTOCOL",
+            "LAW_AGENT_TOOL_TIMEOUT_SECONDS", "LLM_TOTAL_TIMEOUT_SECONDS", "LLM_ATTEMPT_TIMEOUT_SECONDS",
+        )},
         "corpus_version": corpus["metadata"]["dataset_version"],
         "corpus_sha256": corpus["metadata"]["corpus_sha256"],
         "annotation_mode": "demo" if demo_enabled else "text_only_with_six_regression",
@@ -184,6 +214,7 @@ def main():
     parser.add_argument("mode", choices=["offline", "live-rag", "live-lawref"])
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--case", action="append")
+    parser.add_argument("--cases", type=Path, default=CASES)
     parser.add_argument(
         "--query-mode", choices=["article", "semantic"], default="article"
     )
@@ -194,7 +225,7 @@ def main():
     os.environ.setdefault("OLLAMA_MODEL_NAME", "qwen3.5:0.8b")
     os.environ.setdefault("TEXT_EMBEDDING_MODEL_NAME", "qwen3-embedding:0.6b")
     result = asyncio.run(
-        run_evaluation(args.mode, args.output, args.case, args.query_mode)
+        run_evaluation(args.mode, args.output, args.case, args.query_mode, cases_path=args.cases)
     )
     return 0 if result["passed"] == result["total"] else 1
 

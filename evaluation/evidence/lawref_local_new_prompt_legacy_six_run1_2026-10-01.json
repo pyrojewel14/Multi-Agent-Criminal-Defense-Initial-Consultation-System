@@ -1,0 +1,215 @@
+{
+  "evidence_kind": "real-lawref-llm-rag-coverage",
+  "query_mode": "article",
+  "cases_sha256": "sha256:b5958b42d62ede849bafc245d3e31a4e00ac6c653806471908b3f10bcb7c1985",
+  "runtime_config": {
+    "LAW_KNOWLEDGE_PROFILE": "full",
+    "LAW_FULL_DEMO_ANNOTATIONS": "on",
+    "LAW_FULL_INDEX_DIRECTORY": "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/.scratch/lawref_default_fix/full-qwen3",
+    "LAW_FULL_INDEX_COLLECTION": "criminal_law_full",
+    "LAW_AGENT_MAX_STEPS": "4",
+    "LAW_AGENT_TIMEOUT_SECONDS": "240",
+    "LAW_AGENT_FINAL_PROTOCOL": "legacy",
+    "LAW_AGENT_TOOL_TIMEOUT_SECONDS": "90",
+    "LLM_TOTAL_TIMEOUT_SECONDS": "30",
+    "LLM_ATTEMPT_TIMEOUT_SECONDS": "15"
+  },
+  "corpus_version": "2026-09-30.2.integration1",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "annotation_mode": "demo",
+  "demo_annotations": {
+    "annotation_id": "demo-reviewed-2026-10-01-v1",
+    "released_articles": 32,
+    "usage": "demo",
+    "official": false,
+    "legal_review_completed": false
+  },
+  "llm_executed": true,
+  "rag_executed": true,
+  "embedding_model": "qwen3-embedding:0.6b",
+  "embedding_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+  "chat_model": "qwen3.5:0.8b",
+  "legal_review_completed": false,
+  "production_deployment_verified": false,
+  "passed": 0,
+  "total": 6,
+  "cases": [
+    {
+      "id": "dangerous-driving-derived",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "dependency_failure",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "dependency_failure",
+          "tool_result_summary": {},
+          "latency_ms": 272.01,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "latency_ms": 310.987
+    },
+    {
+      "id": "core-theft",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "dependency_failure",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "dependency_failure",
+          "tool_result_summary": {},
+          "latency_ms": 242.489,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "latency_ms": 271.43
+    },
+    {
+      "id": "natural-theft",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "dependency_failure",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "dependency_failure",
+          "tool_result_summary": {},
+          "latency_ms": 229.782,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "latency_ms": 257.496
+    },
+    {
+      "id": "natural-drunk-driving",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "dependency_failure",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "dependency_failure",
+          "tool_result_summary": {},
+          "latency_ms": 303.616,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "latency_ms": 368.321
+    },
+    {
+      "id": "insufficient-theft-facts",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "dependency_failure",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "dependency_failure",
+          "tool_result_summary": {},
+          "latency_ms": 261.892,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "guardrail_passed": false,
+      "latency_ms": 284.195
+    },
+    {
+      "id": "denied-theft-behavior",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "dependency_failure",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "dependency_failure",
+          "tool_result_summary": {},
+          "latency_ms": 309.581,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "guardrail_passed": false,
+      "latency_ms": 339.236
+    }
+  ],
+  "latency_scope": "本机顺序组件调用，包含核验与模型预热；不是并发或生产性能测试"
+}

@@ -1,0 +1,522 @@
+{
+  "evidence_kind": "real-lawref-llm-rag-coverage",
+  "query_mode": "article",
+  "cases_sha256": "sha256:b5958b42d62ede849bafc245d3e31a4e00ac6c653806471908b3f10bcb7c1985",
+  "runtime_config": {
+    "LAW_KNOWLEDGE_PROFILE": "full",
+    "LAW_FULL_DEMO_ANNOTATIONS": "on",
+    "LAW_FULL_INDEX_DIRECTORY": "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/.scratch/lawref_default_fix/full-qwen3",
+    "LAW_FULL_INDEX_COLLECTION": "criminal_law_full",
+    "LAW_AGENT_MAX_STEPS": "4",
+    "LAW_AGENT_TIMEOUT_SECONDS": "240",
+    "LAW_AGENT_FINAL_PROTOCOL": "legacy",
+    "LAW_AGENT_TOOL_TIMEOUT_SECONDS": "90",
+    "LLM_TOTAL_TIMEOUT_SECONDS": "30",
+    "LLM_ATTEMPT_TIMEOUT_SECONDS": "15"
+  },
+  "corpus_version": "2026-09-30.2.integration1",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "annotation_mode": "demo",
+  "demo_annotations": {
+    "annotation_id": "demo-reviewed-2026-10-01-v1",
+    "released_articles": 32,
+    "usage": "demo",
+    "official": false,
+    "legal_review_completed": false
+  },
+  "llm_executed": true,
+  "rag_executed": true,
+  "embedding_model": "qwen3-embedding:0.6b",
+  "embedding_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+  "chat_model": "qwen3.5:0.8b",
+  "legal_review_completed": false,
+  "production_deployment_verified": false,
+  "passed": 0,
+  "total": 6,
+  "cases": [
+    {
+      "id": "dangerous-driving-derived",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "agent_timeout",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:6b0035cf48539dfc22dc3f308d91805073ff03104f610de5fe7cc69cd2572403",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 3117.66,
+          "token_usage": {
+            "input_tokens": 658,
+            "output_tokens": 134,
+            "total_tokens": 792
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "get_article",
+          "tool_arguments_fingerprint": "sha256:b35cef05c43a146238457c7704925009cd9650b0ac714051948d081ed28b07b9",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": true,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 964.613,
+          "token_usage": {
+            "input_tokens": 842,
+            "output_tokens": 66,
+            "total_tokens": 908
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:aebce0f8d0818cbdd1ea41404b552d26e635fdfbd7201937584781f8b7c00265",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 7748.843,
+          "token_usage": {
+            "input_tokens": 1638,
+            "output_tokens": 443,
+            "total_tokens": 2081
+          }
+        },
+        {
+          "step": 4,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "agent_timeout",
+          "tool_result_summary": {},
+          "latency_ms": 30006.057,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "latency_ms": 41879.296
+    },
+    {
+      "id": "core-theft",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "duplicate_call",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:5f2535562483753bd3a5cd0938a57ddfcbfee42b6b869ab63980a7eca305769e",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 3108.98,
+          "token_usage": {
+            "input_tokens": 656,
+            "output_tokens": 148,
+            "total_tokens": 804
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "get_article",
+          "tool_arguments_fingerprint": "sha256:1596ce83c1ebdbb03cf186fc21c56c8b6b4426633271c1f493fd79914eef4ad1",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": true,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 1021.318,
+          "token_usage": {
+            "input_tokens": 828,
+            "output_tokens": 62,
+            "total_tokens": 890
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:5f2535562483753bd3a5cd0938a57ddfcbfee42b6b869ab63980a7eca305769e",
+          "tool_status": "duplicate",
+          "tool_result_summary": {},
+          "latency_ms": 7176.038,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "latency_ms": 11345.946
+    },
+    {
+      "id": "natural-theft",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "agent_timeout",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:b4f5da7064a0f09b7012490ea9fab15f5d2e43b1be3a56e060fe3687652335f1",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 4120.887,
+          "token_usage": {
+            "input_tokens": 675,
+            "output_tokens": 214,
+            "total_tokens": 889
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "get_article",
+          "tool_arguments_fingerprint": "sha256:1596ce83c1ebdbb03cf186fc21c56c8b6b4426633271c1f493fd79914eef4ad1",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": true,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 2250.3,
+          "token_usage": {
+            "input_tokens": 1288,
+            "output_tokens": 134,
+            "total_tokens": 1422
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "invalid_final",
+          "tool_result_summary": {
+            "count": 0,
+            "rejection_reason": "empty_output"
+          },
+          "latency_ms": 2984.296,
+          "token_usage": {
+            "input_tokens": 1872,
+            "output_tokens": 169,
+            "total_tokens": 2041
+          }
+        },
+        {
+          "step": 4,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "agent_timeout",
+          "tool_result_summary": {},
+          "latency_ms": 30008.762,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "latency_ms": 39401.382
+    },
+    {
+      "id": "natural-drunk-driving",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "agent_timeout",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:ba1a05c525cb3ac0f09f9b63f9d4d7a1380cbfcb82499433f1e35d65b0fe1480",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 4188.353,
+          "token_usage": {
+            "input_tokens": 682,
+            "output_tokens": 146,
+            "total_tokens": 828
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "get_article",
+          "tool_arguments_fingerprint": "sha256:b35cef05c43a146238457c7704925009cd9650b0ac714051948d081ed28b07b9",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": true,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 3389.217,
+          "token_usage": {
+            "input_tokens": 1342,
+            "output_tokens": 176,
+            "total_tokens": 1518
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "agent_timeout",
+          "tool_result_summary": {},
+          "latency_ms": 30005.844,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "latency_ms": 37625.397
+    },
+    {
+      "id": "insufficient-theft-facts",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "max_steps",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:25cfde8ccd5ffe3077a1f957d2803962af3d28d12201148df2707d0c1bcde862",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 3567.201,
+          "token_usage": {
+            "input_tokens": 671,
+            "output_tokens": 146,
+            "total_tokens": 817
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "get_article",
+          "tool_arguments_fingerprint": "sha256:1596ce83c1ebdbb03cf186fc21c56c8b6b4426633271c1f493fd79914eef4ad1",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": true,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 3499.146,
+          "token_usage": {
+            "input_tokens": 1274,
+            "output_tokens": 190,
+            "total_tokens": 1464
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "invalid_final",
+          "tool_result_summary": {
+            "count": 0,
+            "rejection_reason": "empty_output"
+          },
+          "latency_ms": 3018.54,
+          "token_usage": {
+            "input_tokens": 1858,
+            "output_tokens": 140,
+            "total_tokens": 1998
+          }
+        },
+        {
+          "step": 4,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:80c3f4cba45a047b61503b767bc25a29f4768788d6e16ae650ea5a3067556671",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 9014.42,
+          "token_usage": {
+            "input_tokens": 1901,
+            "output_tokens": 492,
+            "total_tokens": 2393
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": 6672
+      },
+      "selected_sources": [],
+      "guardrail_passed": false,
+      "latency_ms": 19144.102
+    },
+    {
+      "id": "denied-theft-behavior",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "duplicate_call",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:25cfde8ccd5ffe3077a1f957d2803962af3d28d12201148df2707d0c1bcde862",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 3446.57,
+          "token_usage": {
+            "input_tokens": 678,
+            "output_tokens": 155,
+            "total_tokens": 833
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "get_article",
+          "tool_arguments_fingerprint": "sha256:1596ce83c1ebdbb03cf186fc21c56c8b6b4426633271c1f493fd79914eef4ad1",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": true,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 4897.829,
+          "token_usage": {
+            "input_tokens": 1281,
+            "output_tokens": 269,
+            "total_tokens": 1550
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:19ec0b9e03d3bf3015981d22b89010b10c95d9a8978257e0b5dea8cbecd0bf31",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 7269.61,
+          "token_usage": {
+            "input_tokens": 1865,
+            "output_tokens": 360,
+            "total_tokens": 2225
+          }
+        },
+        {
+          "step": 4,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:25cfde8ccd5ffe3077a1f957d2803962af3d28d12201148df2707d0c1bcde862",
+          "tool_status": "duplicate",
+          "tool_result_summary": {},
+          "latency_ms": 6130.189,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "guardrail_passed": false,
+      "latency_ms": 21770.696
+    }
+  ],
+  "latency_scope": "本机顺序组件调用，包含核验与模型预热；不是并发或生产性能测试"
+}

@@ -1,0 +1,188 @@
+{
+  "evidence_kind": "real-lawref-llm-rag-coverage",
+  "query_mode": "article",
+  "cases_sha256": "sha256:b5958b42d62ede849bafc245d3e31a4e00ac6c653806471908b3f10bcb7c1985",
+  "runtime_config": {
+    "LAW_KNOWLEDGE_PROFILE": "full",
+    "LAW_FULL_DEMO_ANNOTATIONS": "on",
+    "LAW_FULL_INDEX_DIRECTORY": "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/.scratch/lawref_default_fix/full-qwen3",
+    "LAW_FULL_INDEX_COLLECTION": "criminal_law_full",
+    "LAW_AGENT_MAX_STEPS": "4",
+    "LAW_AGENT_TIMEOUT_SECONDS": "240",
+    "LAW_AGENT_FINAL_PROTOCOL": "legacy",
+    "LAW_AGENT_TOOL_TIMEOUT_SECONDS": "90",
+    "LLM_TOTAL_TIMEOUT_SECONDS": "30",
+    "LLM_ATTEMPT_TIMEOUT_SECONDS": "15"
+  },
+  "corpus_version": "2026-09-30.2.integration1",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "annotation_mode": "demo",
+  "demo_annotations": {
+    "annotation_id": "demo-reviewed-2026-10-01-v1",
+    "released_articles": 32,
+    "usage": "demo",
+    "official": false,
+    "legal_review_completed": false
+  },
+  "llm_executed": true,
+  "rag_executed": true,
+  "embedding_model": "qwen3-embedding:0.6b",
+  "embedding_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+  "chat_model": "gpt-oss:120b-cloud",
+  "legal_review_completed": false,
+  "production_deployment_verified": false,
+  "passed": 1,
+  "total": 1,
+  "cases": [
+    {
+      "id": "denied-theft-behavior",
+      "passed": true,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [
+        "第264条"
+      ],
+      "search_status": "success",
+      "termination_reason": "final_answer",
+      "total_elements": 2,
+      "degraded": false,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:25cfde8ccd5ffe3077a1f957d2803962af3d28d12201148df2707d0c1bcde862",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 2826.356,
+          "token_usage": {
+            "input_tokens": 514,
+            "output_tokens": 40,
+            "total_tokens": 554
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "tool_call",
+          "tool_name": "get_article",
+          "tool_arguments_fingerprint": "sha256:1596ce83c1ebdbb03cf186fc21c56c8b6b4426633271c1f493fd79914eef4ad1",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 0,
+            "article_found": true,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 3155.687,
+          "token_usage": {
+            "input_tokens": 990,
+            "output_tokens": 37,
+            "total_tokens": 1027
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "final_answer",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1
+          },
+          "latency_ms": 946.193,
+          "token_usage": {
+            "input_tokens": 1564,
+            "output_tokens": 99,
+            "total_tokens": 1663
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": 3244
+      },
+      "selected_sources": [
+        {
+          "article_number": "第二百六十四条",
+          "data_source": "rag_verified",
+          "required_elements": [
+            {
+              "key": "theft_property",
+              "name": "盗窃公私财物"
+            },
+            {
+              "key": "theft_threshold",
+              "name": "数额较大或者具备法定盗窃情形之一"
+            }
+          ],
+          "elements_matched": [],
+          "elements_missing": [
+            "盗窃公私财物",
+            "数额较大或者具备法定盗窃情形之一"
+          ],
+          "annotation_usage": "project_regression",
+          "annotation_source": "project-maintained-v1"
+        }
+      ],
+      "guardrail_passed": true,
+      "latency_ms": 6942.546
+    }
+  ],
+  "latency_scope": "本机顺序组件调用，包含核验与模型预热；不是并发或生产性能测试",
+  "actual_execution": {
+    "requested_model": "gpt-oss:120b-cloud",
+    "returned_models": [
+      "gpt-oss:120b"
+    ],
+    "provider": "Ollama cloud-tag proxy",
+    "base_url": "http://127.0.0.1:11434",
+    "thinking": "low",
+    "show_metadata": {
+      "thinking": {
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      },
+      "details": {
+        "parent_model": "gpt-oss:120b",
+        "format": "",
+        "family": "gptoss",
+        "families": null,
+        "parameter_size": "116829156672",
+        "quantization_level": "MXFP4"
+      },
+      "model_info": {
+        "general.architecture": "gptoss",
+        "general.parameter_count": 116829156672,
+        "gptoss.context_length": 131072,
+        "gptoss.embedding_length": 2880
+      },
+      "capabilities": [
+        "completion",
+        "tools",
+        "thinking"
+      ],
+      "modified_at": "2025-08-05T00:00:00Z"
+    },
+    "catalog_entry": null,
+    "remote_weights_digest_verified": null,
+    "proxy_manifest_digest": null,
+    "remote_host_observed": null,
+    "http_statuses": [
+      200,
+      200,
+      200
+    ],
+    "protocol": "legacy; evaluation-only model copy; no native format/num_predict",
+    "local_fallback": false,
+    "raw_output": "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/.scratch/lawref_default_fix/main_formal_denial_raw_2026-10-01.json",
+    "raw_sha256": "sha256:4d94e8ddb3ce7525bc9b6e1859a930ab7daba800f3852a4a020ba7b51d908f1d",
+    "payload_check": "原案例现有mask_pii完整输出与公开快照逐字核对；gold不传模型"
+  }
+}

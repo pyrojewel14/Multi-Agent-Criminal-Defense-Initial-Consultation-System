@@ -1,6 +1,6 @@
 # 全量刑法正文、标注与独立索引
 
-本实现提供显式启用的全量正文路径，默认仍为六条固定回归快照。`LAW_KNOWLEDGE_PROFILE=full` 现在默认加载基础校对后的demo标注，支持检索、LawRef和覆盖计算，不以律师确认作为放行门槛。
+应用默认使用 `LAW_KNOWLEDGE_PROFILE=full`，加载全量正文和基础校对后的demo标注，支持检索、LawRef和覆盖计算，不以律师确认作为演示门槛。未设置环境变量的新进程也使用全量；`backend/.env.example` 与本机 `backend/.env` 已同步。六条快照仅在显式 `snapshot` 配置下用于历史回归。
 
 2026-10-01新增放行第一批32条独立罪名标注，连同原六条共38条可参与demo覆盖计算。43条建议中的第1、13、17、149条属于一般或转引规则，第199条已删去，这五条不生成独立罪名分母。其余条文仍可读取全文。覆盖率表示演示要件的事实匹配程度，不是法律准确率。
 
@@ -49,7 +49,9 @@ PYTHONNOUSERSITE=1 conda run -n Agent_dev python -m evaluation.review_annotation
 
 ## LawRef 与覆盖计算
 
-`LAW_KNOWLEDGE_PROFILE=snapshot` 为默认；`full`加载新正文和demo标注，`LAW_FULL_DEMO_ANNOTATIONS=off`可恢复仅六条参与覆盖的历史模式。demo资产默认随backend打包，`LAW_DEMO_ANNOTATIONS_PATH`可指定另一路径。`LAW_FULL_CORPUS_PATH`可选择明确版本文件。未知配置、缺失资产、重复/错误条号、来源或hash损坏都失败关闭。进程缓存按配置、绝对路径、mtime与大小区分；不要原地覆写运行中资产，更新后切换到新路径并重启服务。
+`full` 为应用默认；`snapshot` 显式加载六条固定快照。`LAW_FULL_DEMO_ANNOTATIONS=off`可恢复全量正文中仅六条参与覆盖的历史模式。demo资产默认随backend打包，`LAW_DEMO_ANNOTATIONS_PATH`可指定另一路径。`LAW_FULL_CORPUS_PATH`可选择明确版本文件。未知配置、缺失资产、重复/错误条号、来源或hash损坏都失败关闭。进程缓存按配置、绝对路径、mtime与大小区分；不要原地覆写运行中资产，更新后切换到新路径并重启服务。
+
+`evaluation/run_eval.py` 的离线基线显式加载 snapshot；`evaluation/run_live_eval.py` 固定 snapshot 与原六条 live 索引配对。`evaluation/run_full_eval.py` 则固定 full。三者不会因应用默认变化而混用语料。
 
 关键词按条号、正文和带状态的标题召回。LegalToolRegistry的 `get_article` 可实际读取六条之外的全文、来源、标注状态和列举/引用线索；`search_elements`对未复核条文返回空要件。RAG命中同时连接语料hash、版本和完整正文，不一致时标为 `rag_unverified`，不继承可信要件，关键词JSON路径仍可降级运行。
 
@@ -82,7 +84,7 @@ PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/build_full_index.py 
 
 测试用合成向量标记 `deterministic-test`，运行时拒绝使用。运行时每次核验整份manifest、Chroma文档/来源/向量以及实际Ollama模型digest，再按条号精确读取或执行自然语言向量检索。这是优先保证可审查性的504条实现，尚未做大规模并发性能优化。
 
-在独立验证进程显式启用：
+在新进程中配置独立公共索引（full 已是默认，仍可显式声明）：
 
 ```bash
 export LAW_KNOWLEDGE_PROFILE=full
@@ -93,7 +95,9 @@ export LAW_FULL_EMBEDDING_DIGEST='<manifest和/api/tags中的实际digest>'
 
 该索引不改变通用 `CHROMA_*` 用户上传索引，不调用其HyDE或reranker。没有 `user_id`时仍跳过RAG，JSON正文检索可以继续；索引未配置或不一致时记录RAG依赖失败，不自动改读旧六条索引。
 
-更新应使用新语料文件、新目录和新manifest；先完整核验，再由主线程批准切换配置并重启。回滚是恢复上一套明确语料路径、索引目录、collection和digest后重启，或改回 `LAW_KNOWLEDGE_PROFILE=snapshot`。回滚配置不会回滚checkpoint、数据库或已生成报告；本任务没有更改任何正式服务配置。
+更新应使用新语料文件、新目录和新manifest；先完整核验，再检查运行中服务和会话保存方式后切换。回滚是恢复上一套明确语料路径、索引目录、collection和digest后重启，或改回 `LAW_KNOWLEDGE_PROFILE=snapshot`。回滚配置不会回滚checkpoint、数据库或已生成报告。
+
+本机 `.env` 指向 `.scratch/lawref_default_fix/full-qwen3`：从历史全量索引复制后核验的独立目录，原索引及用户上传库未重建或覆写。[默认入口证据](../../evaluation/evidence/full_default_runtime_2026-10-01.json)由 `main` 导入、实际 `.env` 加载及启动阶段的法条预检函数生成，记录505条、504条有效正文、38条可覆盖及公共索引查询。执行时未检测到 uvicorn 或8000端口服务，没有启动或重启服务；这不证明运行中的 HTTP 接口已经切换。正常 `main.lifespan` 使用 SQLite checkpointer，默认直接构造 Orchestrator 则使用进程内 MemorySaver；重启前必须核实所用入口与 checkpoint 路径。
 
 ## 评测与证据
 
@@ -114,7 +118,7 @@ PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/verify_full_text.py 
 - 提供的154页PDF经pypdf提取，移除空白和页码后505/505正文子串命中。源站本轮直接下载返回403，当前远端PDF字节hash没有确认；来源页面通过浏览核对。这只是程序文本证据。
 - 离线真实关键词/读取工具8/8；正式LawRef适配、覆盖计算和编译图另有确定性回归，模型决策在测试中替代，不能称为真实LLM成功。
 - 实际 `qwen3-embedding:0.6b` / 504条Chroma索引：初始纯向量条号测试2/8的失败保留；增加按条号精确路径后8/8；8个自然语言向量案例8/8。案例集合小且固定，不代表全量召回准确率或法律适用正确率。
-- 实际 `qwen3.5:0.8b` LawRef两例0/2，均为 `duplicate_call`；安全终止、零覆盖，没有生成错误的可靠要件。这是默认启用前必须处理的真实模型限制。
+- 实际 `qwen3.5:0.8b` LawRef两例0/2，均为 `duplicate_call`；安全终止、零覆盖。后续2026-10-01的消息链修复及残余限制见下文，历史文件保留。
 - 记录了本机组件耗时，包括全量一致性核验和预热；不是并发吞吐、生产延迟或端到端咨询质量评测。
 
 六条原live资产及input-only基线不与上述测试混合计分。2026-09-30记录为历史证据，2026-10-01起的评测另记录`annotation_mode=demo`。当前demo不以全量法律人工复核为门槛；真实模型稳定完成、Docker运行和生产部署仍只按实际执行结果报告。
@@ -122,3 +126,31 @@ PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/verify_full_text.py 
 2026-10-01放行验证：后台全量测试1377项通过，两项Redis连接受沙箱限制；获得本机连接权限后，两项原失败测试均通过。相关24项定向测试通过，demo离线工具评测8/8。放行记录见 `evaluation/evidence/full_demo_release_2026-10-01.json`。
 
 2026-10-01主线程独立验收：从暂存区导出公开提交内容，显式配置Ollama并允许本机Redis后，后端全套1380项通过、评测测试49项通过、离线检索8/8、变更Python文件Ruff及`backend/app` Pyright通过。没有私人`.env`且未指定模型时，旧RAG样例因默认阿里云配置缺密钥失败，保留该环境边界。全仓Pyright仍有237条诊断（HEAD基线247条），本次未增加诊断；不能称全仓类型检查通过。该验证没有重跑真实LLM LawRef，也不把会捕获检索异常的旧样例视为真实检索成功。记录见 `evaluation/evidence/full_main_review_2026-10-01.json`。
+
+## 默认切换与真实模型工具消息修复（首轮交付，独立验收未通过）
+
+2026-10-01在基线 `22a5ca440a895051cae99dedc3c764862d0bfb7d` 上复现原两例，[新失败证据](../../evaluation/evidence/full_live_lawref_before_2026-10-01.json)仍为0/2。原实现每轮重建事实加 observations 的 HumanMessage，没有助手调用与关联的工具返回。仅替换成标准消息链、保持工具开放和预算的对照，[危险驾驶](../../evaluation/evidence/lawref_history_probe_dangerous-driving-derived_2026-10-01.json)与[盗窃](../../evaluation/evidence/lawref_history_probe_core-theft_2026-10-01.json)均成功。这支持消息反馈方式是原两例重复检索的直接诱因，不代表所有重复调用都有同一原因。[LangChain ToolMessage 协议](https://reference.langchain.com/python/langchain-core/messages/tool/ToolMessage)使用 `tool_call_id` 关联助手调用与工具结果。
+
+保留的修复为局部 AIMessage／ToolMessage 历史，网关新增可选 `message_history`，其他调用者仍可使用原参数。历史只保留在当前函数调用内，不写入 checkpoint 或审计摘要。重复指纹拦截、读取后才能选择、来源与要件名称校验、最多4轮（配置上限8）、工具90秒、局部240秒及网关30/15秒有限重试均保留；没有自动补造要件或放宽最终 JSON 验证。
+
+最终[原两例复跑](../../evaluation/evidence/full_live_lawref_final_2026-10-01.json)为2/2：危险驾驶 `search_laws → get_article → search_elements → final_answer`，盗窃 `search_laws → get_article → final_answer`。选择来自 `rag_verified`，分别携带 demo 与 project_regression 标注。该评测的通过条件是选中预期条文并取得覆盖分母，条号输入不是完整案件事实；盗窃模型声称匹配要件不能作为事实支持正确性的证明。
+
+自然语言法规式输入的[补充失败记录](../../evaluation/evidence/full_live_lawref_semantic_2026-10-01.json)为0/2，多候选下仍出现无效最终输出与重复读取。[口语案件事实最终复跑](../../evaluation/evidence/full_live_lawref_natural_final_2026-10-01.json)同样0/2：均实际搜索、读取正文和要件，盗窃最终格式无效而耗尽轮数，醉驾最终生成触发模型超时；均未生成 applied_laws。输入为[两个公开合成案例](../../evaluation/lawref_natural_cases.jsonl)，没有真实用户材料。程序仍拒绝未读取条文、未知要件名称、未放行正文的覆盖要件，但不能证明模型选择的事实匹配本身正确。
+
+关闭已读取后的工具、补充字段错误反馈、引入 final_answer schema 工具三组临时探针分别保留[阶段探针](../../evaluation/evidence/lawref_final_stage_probe_2026-10-01.json)、[反馈探针](../../evaluation/evidence/lawref_feedback_probe_2026-10-01.json)、[schema工具探针](../../evaluation/evidence/lawref_final_tool_probe_2026-10-01.json)。它们未稳定通过两例，没有合入。当前修复不能宣称自然语言 LawRef 稳定完成或整体 demo 已获主线程验收。
+
+运行模型为本机 `qwen3.5:0.8b`，digest `f3817196d142eaf72ce79dfebe53dcb20bd21da87ce13e138a8f8e10a866b3a4`；embedding为 `qwen3-embedding:0.6b`，digest `ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d`。语料为 `2026-09-30.2.integration1`，demo标注为 `demo-reviewed-2026-10-01-v1`。来源、要件、配置与输入hash记录在新评测文件中。模型与索引仅运行于本机，没有Docker运行或生产部署证明。
+
+从根目录重跑（输出请使用新文件名）：
+
+```bash
+PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/run_full_eval.py live-lawref \
+  --case dangerous-driving-derived --case core-theft --output .scratch/lawref-original-new.json
+PYTHONNOUSERSITE=1 conda run -n Agent_dev python evaluation/run_full_eval.py live-lawref \
+  --query-mode semantic --cases evaluation/lawref_natural_cases.jsonl \
+  --output .scratch/lawref-natural-new.json
+```
+
+最终后端全套1383项通过（345条既有警告）；评测50项通过；后端app、tests与本轮变更评测文件Ruff通过；backend/app Pyright无诊断。首次沙箱全套中的两项Redis连接失败在允许本机连接后通过。扩大Ruff到整个evaluation目录仍有三个基线诊断（`import_full_corpus.py` E402，`test_annotation_review.py`与`test_full_index.py` I001），没有修改无关文件。全仓Pyright仍有237条诊断，不能称为通过。原六条JSON与2026-09-30失败文件的SHA256保持不变。
+
+主线程独立复跑口语盗窃仍失败，第二项整体未验收通过。返工后的原始响应、协议对照、模型事实支持限制和下一步选择见[响应协议诊断](lawref_response_protocol.md)。全量默认切换保留；原生最终生成仅以 `LAW_AGENT_FINAL_PROTOCOL=native_candidate` 显式启用，应用默认 `legacy`。候选协议未通过事实不足／否认行为控制，不能作为已修复的默认行为放行。

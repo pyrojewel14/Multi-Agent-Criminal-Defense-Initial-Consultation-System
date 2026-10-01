@@ -1,0 +1,124 @@
+{
+  "evidence_kind": "local-new-prompt-legacy-comparison",
+  "chat_model": "qwen3.5:0.8b",
+  "system_prompt": "你是 LawRef 节点内部受限的法律检索决策器。每轮只调用一个已提供工具，或输出一个严格 JSON final_answer。\n先 search_laws，再用 get_article 或 search_elements 核验候选与构成要件，最后只选择已核验的法条。\n最终 JSON 格式：{\"article_ids\":[\"第264条\"],\"matched_elements\":{\"第264条\":[]},\"confidence\":\"medium\"}；示例不代表案件事实。\nmatched_elements 只表示本案明确肯定叙述的事实支持；未提供、否认或不确定的条件留作缺失，不得虚构证据。\n只有条号、罪名或咨询构成要件的提问不是行为事实；法条正文和 required_elements 也不是案件证据，不能默认全部匹配。\n只选择已读取的可信条文；匹配时原样复制 get_article 或 search_elements 返回的 required_elements 中完整 name，不能缩写、截取或自行概括。\ncoverage_eligible=false 的正文仅供阅读，matched_elements 必须为空，不得依据正文自行生成覆盖要件。",
+  "system_prompt_sha256": "ff924fee8aa31b46a8e8200c07a182030bdf8ab0d92d7debd9afd1b12059b8a4",
+  "cases_sha256": "b5958b42d62ede849bafc245d3e31a4e00ac6c653806471908b3f10bcb7c1985",
+  "runs": [
+    {
+      "run": 1,
+      "evidence": "evaluation/evidence/lawref_local_new_prompt_legacy_six_live_run1_2026-10-01.json",
+      "passed": 0,
+      "total": 6,
+      "termination_counts": {
+        "agent_timeout": 3,
+        "duplicate_call": 2,
+        "max_steps": 1
+      },
+      "cases": [
+        {
+          "id": "dangerous-driving-derived",
+          "termination_reason": "agent_timeout",
+          "latency_ms": 43062.306,
+          "successful_search": true,
+          "successful_read": true
+        },
+        {
+          "id": "core-theft",
+          "termination_reason": "duplicate_call",
+          "latency_ms": 9085.515,
+          "successful_search": true,
+          "successful_read": true
+        },
+        {
+          "id": "natural-theft",
+          "termination_reason": "agent_timeout",
+          "latency_ms": 37654.155,
+          "successful_search": true,
+          "successful_read": true
+        },
+        {
+          "id": "natural-drunk-driving",
+          "termination_reason": "agent_timeout",
+          "latency_ms": 35223.871,
+          "successful_search": true,
+          "successful_read": true
+        },
+        {
+          "id": "insufficient-theft-facts",
+          "termination_reason": "max_steps",
+          "latency_ms": 16014.567,
+          "successful_search": true,
+          "successful_read": true
+        },
+        {
+          "id": "denied-theft-behavior",
+          "termination_reason": "duplicate_call",
+          "latency_ms": 19081.922,
+          "successful_search": true,
+          "successful_read": true
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "evidence": "evaluation/evidence/lawref_local_new_prompt_legacy_six_live_run2_2026-10-01.json",
+      "passed": 0,
+      "total": 6,
+      "termination_counts": {
+        "agent_timeout": 3,
+        "duplicate_call": 2,
+        "max_steps": 1
+      },
+      "cases": [
+        {
+          "id": "dangerous-driving-derived",
+          "termination_reason": "agent_timeout",
+          "latency_ms": 41879.296,
+          "successful_search": true,
+          "successful_read": true
+        },
+        {
+          "id": "core-theft",
+          "termination_reason": "duplicate_call",
+          "latency_ms": 11345.946,
+          "successful_search": true,
+          "successful_read": true
+        },
+        {
+          "id": "natural-theft",
+          "termination_reason": "agent_timeout",
+          "latency_ms": 39401.382,
+          "successful_search": true,
+          "successful_read": true
+        },
+        {
+          "id": "natural-drunk-driving",
+          "termination_reason": "agent_timeout",
+          "latency_ms": 37625.397,
+          "successful_search": true,
+          "successful_read": true
+        },
+        {
+          "id": "insufficient-theft-facts",
+          "termination_reason": "max_steps",
+          "latency_ms": 19144.102,
+          "successful_search": true,
+          "successful_read": true
+        },
+        {
+          "id": "denied-theft-behavior",
+          "termination_reason": "duplicate_call",
+          "latency_ms": 21770.696,
+          "successful_search": true,
+          "successful_read": true
+        }
+      ]
+    }
+  ],
+  "excluded_attempt": {
+    "evidence": "evaluation/evidence/lawref_local_new_prompt_legacy_six_run1_2026-10-01.json",
+    "reason": "受限环境 ConnectError，未形成模型推理结果，不计入本机实际评测。"
+  },
+  "boundary": "保持应用默认 legacy、4轮及30/15秒网关预算。无业务代码、模型配置修改，未复跑 native_candidate。两轮未产生最终法律判断，不能据此断言新提示词下明确否认被误匹配。"
+}

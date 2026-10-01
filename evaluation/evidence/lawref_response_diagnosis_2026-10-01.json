@@ -1,0 +1,2034 @@
+{
+  "evidence_kind": "real-ollama-raw-response-and-protocol-diagnosis",
+  "status": "WIP; second acceptance item not achieved",
+  "default_protocol": "legacy",
+  "candidate_protocol": "native_candidate; explicit opt-in only",
+  "ollama_version": "0.35.0",
+  "chat_model": "qwen3.5:0.8b",
+  "chat_model_digest": "f3817196d142eaf72ce79dfebe53dcb20bd21da87ce13e138a8f8e10a866b3a4",
+  "embedding_model": "qwen3-embedding:0.6b",
+  "embedding_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+  "corpus_version": "2026-09-30.2.integration1",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "demo_annotations": {
+    "annotation_id": "demo-reviewed-2026-10-01-v1",
+    "released_articles": 32,
+    "usage": "demo",
+    "official": false,
+    "legal_review_completed": false
+  },
+  "instrumentation": [
+    {
+      "path": ".scratch/lawref_default_fix/capture_raw.py",
+      "sha256": "sha256:1193632b1cec41597c5ce50ef3fc4d6749400ce906f493de6e86eef2d3d02861"
+    },
+    {
+      "path": ".scratch/lawref_default_fix/probe_support_protocol.py",
+      "sha256": "sha256:525c8ab5c1ba798bad81f3f1ce3693d06f0989e0cbd9697124be40f93946875b"
+    }
+  ],
+  "raw_samples": [
+    {
+      "raw_path": ".scratch/lawref_default_fix/rework-baseline-raw.json",
+      "raw_sha256": "sha256:9e25458b0d2b29f5f081e05ed93383cc2253caac82082b46ffd1a302d8eb6dd7",
+      "calls": [
+        {
+          "call": 1,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 373,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 600,
+          "output_tokens": 218,
+          "latency_ms": 2710.452,
+          "exception": null
+        },
+        {
+          "call": 2,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 35,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1225,
+          "output_tokens": 55,
+          "latency_ms": 1070.843,
+          "exception": null
+        },
+        {
+          "call": 3,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 187,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1809,
+          "output_tokens": 151,
+          "latency_ms": 2156.975,
+          "exception": null
+        },
+        {
+          "call": 4,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 394,
+          "tool_call_count": 0,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1939,
+          "output_tokens": 199,
+          "latency_ms": 2471.725,
+          "exception": null
+        },
+        {
+          "call": 5,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 205,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 607,
+          "output_tokens": 141,
+          "latency_ms": 2031.072,
+          "exception": null
+        },
+        {
+          "call": 6,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 50,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1267,
+          "output_tokens": 67,
+          "latency_ms": 1222.421,
+          "exception": null
+        },
+        {
+          "call": 7,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 760,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 2063,
+          "output_tokens": 433,
+          "latency_ms": 5658.958,
+          "exception": null
+        },
+        {
+          "call": 8,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 2737,
+          "tool_call_count": 0,
+          "done": false,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "latency_ms": 14998.821,
+          "exception": "CancelledError"
+        },
+        {
+          "call": 9,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 2686,
+          "tool_call_count": 0,
+          "done": false,
+          "done_reason": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "latency_ms": 14728.709,
+          "exception": "CancelledError"
+        }
+      ]
+    },
+    {
+      "raw_path": ".scratch/lawref_default_fix/rework-no-thinking-raw.json",
+      "raw_sha256": "sha256:c86ef13fce5d5401d084cff9ffefb42a21bba39c256f7268d0aa67ff06ee2d8f",
+      "calls": [
+        {
+          "call": 1,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": false,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 602,
+          "output_tokens": 27,
+          "latency_ms": 491.772,
+          "exception": null
+        },
+        {
+          "call": 2,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": false,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1217,
+          "output_tokens": 31,
+          "latency_ms": 791.062,
+          "exception": null
+        },
+        {
+          "call": 3,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": false,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1797,
+          "output_tokens": 31,
+          "latency_ms": 755.409,
+          "exception": null
+        },
+        {
+          "call": 4,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": false,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1923,
+          "output_tokens": 31,
+          "latency_ms": 523.208,
+          "exception": null
+        },
+        {
+          "call": 5,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": false,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 609,
+          "output_tokens": 26,
+          "latency_ms": 687.441,
+          "exception": null
+        },
+        {
+          "call": 6,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": false,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 0,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1241,
+          "output_tokens": 32,
+          "latency_ms": 765.049,
+          "exception": null
+        },
+        {
+          "call": 7,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": false,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 243,
+          "thinking_chars": 0,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 2033,
+          "output_tokens": 173,
+          "latency_ms": 2556.233,
+          "exception": null
+        },
+        {
+          "call": 8,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": false,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 243,
+          "thinking_chars": 0,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 2378,
+          "output_tokens": 173,
+          "latency_ms": 2303.825,
+          "exception": null
+        }
+      ]
+    },
+    {
+      "raw_path": ".scratch/lawref_default_fix/rework-native-final-raw.json",
+      "raw_sha256": "sha256:ef1f416ff5c68cb9c19101801a39cefc67ddf72618c242f5caa7a86d055667e9",
+      "calls": [
+        {
+          "call": 1,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 373,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 600,
+          "output_tokens": 218,
+          "latency_ms": 2658.514,
+          "exception": null
+        },
+        {
+          "call": 2,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 35,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1225,
+          "output_tokens": 55,
+          "latency_ms": 1073.47,
+          "exception": null
+        },
+        {
+          "call": 3,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": false,
+          "format": {
+            "additionalProperties": false,
+            "description": "模型的最终选择；可信来源与要件仍由程序复核。",
+            "properties": {
+              "article_ids": {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "第264条"
+                  ]
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "title": "Article Ids",
+                "type": "array"
+              },
+              "matched_elements": {
+                "type": "object",
+                "properties": {
+                  "第264条": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "盗窃公私财物",
+                        "数额较大或者具备法定盗窃情形之一"
+                      ]
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              }
+            },
+            "required": [
+              "article_ids",
+              "matched_elements",
+              "confidence"
+            ],
+            "title": "FinalAnswer",
+            "type": "object"
+          },
+          "options": {
+            "num_predict": 1024,
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [],
+          "content_chars": 111,
+          "thinking_chars": 0,
+          "tool_call_count": 0,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 225,
+          "output_tokens": 51,
+          "latency_ms": 932.066,
+          "exception": null
+        },
+        {
+          "call": 4,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 205,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 607,
+          "output_tokens": 141,
+          "latency_ms": 1967.832,
+          "exception": null
+        },
+        {
+          "call": 5,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 50,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1267,
+          "output_tokens": 67,
+          "latency_ms": 1184.519,
+          "exception": null
+        },
+        {
+          "call": 6,
+          "request_kind": "adapter_internal_params",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": false,
+          "format": {
+            "additionalProperties": false,
+            "description": "模型的最终选择；可信来源与要件仍由程序复核。",
+            "properties": {
+              "article_ids": {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "第133条之一"
+                  ]
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "title": "Article Ids",
+                "type": "array"
+              },
+              "matched_elements": {
+                "type": "object",
+                "properties": {
+                  "第133条之一": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+                      ]
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              }
+            },
+            "required": [
+              "article_ids",
+              "matched_elements",
+              "confidence"
+            ],
+            "title": "FinalAnswer",
+            "type": "object"
+          },
+          "options": {
+            "num_predict": 1024,
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [],
+          "content_chars": 292,
+          "thinking_chars": 0,
+          "tool_call_count": 0,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 342,
+          "output_tokens": 155,
+          "latency_ms": 2224.129,
+          "exception": null
+        }
+      ]
+    },
+    {
+      "raw_path": ".scratch/lawref_default_fix/rework-wire-baseline-raw.json",
+      "raw_sha256": "sha256:d80ceae4de55d6bd3aa6dc4f7b2d6fdcbed481008ff58f773d64b1c1713e7286",
+      "calls": [
+        {
+          "call": 1,
+          "request_kind": "actual_http_body",
+          "model": "qwen3.5:0.8b",
+          "think_present": false,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 373,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 600,
+          "output_tokens": 218,
+          "latency_ms": 2660.002,
+          "exception": null
+        },
+        {
+          "call": 2,
+          "request_kind": "actual_http_body",
+          "model": "qwen3.5:0.8b",
+          "think_present": false,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 35,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1225,
+          "output_tokens": 55,
+          "latency_ms": 1077.594,
+          "exception": null
+        },
+        {
+          "call": 3,
+          "request_kind": "actual_http_body",
+          "model": "qwen3.5:0.8b",
+          "think_present": false,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 187,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1809,
+          "output_tokens": 151,
+          "latency_ms": 2166.382,
+          "exception": null
+        },
+        {
+          "call": 4,
+          "request_kind": "actual_http_body",
+          "model": "qwen3.5:0.8b",
+          "think_present": false,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 394,
+          "tool_call_count": 0,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1939,
+          "output_tokens": 199,
+          "latency_ms": 2501.456,
+          "exception": null
+        }
+      ]
+    },
+    {
+      "raw_path": ".scratch/lawref_default_fix/rework-wire-candidate-raw.json",
+      "raw_sha256": "sha256:6b68b79f41c6fc53eee31c9d3d4b69658e21468631f9660728f90a339540fd6b",
+      "calls": [
+        {
+          "call": 1,
+          "request_kind": "actual_http_body",
+          "model": "qwen3.5:0.8b",
+          "think_present": false,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 373,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 600,
+          "output_tokens": 218,
+          "latency_ms": 2622.234,
+          "exception": null
+        },
+        {
+          "call": 2,
+          "request_kind": "actual_http_body",
+          "model": "qwen3.5:0.8b",
+          "think_present": false,
+          "think": null,
+          "format": null,
+          "options": {
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [
+            "search_laws",
+            "get_article",
+            "search_elements"
+          ],
+          "content_chars": 0,
+          "thinking_chars": 35,
+          "tool_call_count": 1,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 1225,
+          "output_tokens": 55,
+          "latency_ms": 1062.871,
+          "exception": null
+        },
+        {
+          "call": 3,
+          "request_kind": "actual_http_body",
+          "model": "qwen3.5:0.8b",
+          "think_present": true,
+          "think": false,
+          "format": {
+            "additionalProperties": false,
+            "description": "模型的最终选择；可信来源与要件仍由程序复核。",
+            "properties": {
+              "article_ids": {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "第264条"
+                  ]
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "title": "Article Ids",
+                "type": "array"
+              },
+              "matched_elements": {
+                "type": "object",
+                "properties": {
+                  "第264条": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "盗窃公私财物",
+                        "数额较大或者具备法定盗窃情形之一"
+                      ]
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              }
+            },
+            "required": [
+              "article_ids",
+              "matched_elements",
+              "confidence"
+            ],
+            "title": "FinalAnswer",
+            "type": "object"
+          },
+          "options": {
+            "num_predict": 1024,
+            "temperature": 0.0
+          },
+          "stream": true,
+          "tool_names": [],
+          "content_chars": 153,
+          "thinking_chars": 0,
+          "tool_call_count": 0,
+          "done": true,
+          "done_reason": "stop",
+          "input_tokens": 289,
+          "output_tokens": 74,
+          "latency_ms": 1095.427,
+          "exception": null
+        }
+      ]
+    }
+  ],
+  "support_controls": [
+    {
+      "variant": "plain-items",
+      "path": ".scratch/lawref_default_fix/rework-support-plain-items.json",
+      "sha256": "sha256:b23cf19ca4fcdf3fbd3ebab3ed1e734eada766ab0511351a154fbff6d6189f91",
+      "reasoning": false,
+      "num_predict": 1024,
+      "timeout_seconds": 15,
+      "cases": [
+        {
+          "id": "insufficient-theft-facts",
+          "schema": {
+            "additionalProperties": false,
+            "description": "模型的最终选择；可信来源与要件仍由程序复核。",
+            "properties": {
+              "article_ids": {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "第264条"
+                  ]
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "title": "Article Ids",
+                "type": "array"
+              },
+              "matched_elements": {
+                "type": "object",
+                "properties": {
+                  "第264条": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              }
+            },
+            "required": [
+              "article_ids",
+              "matched_elements",
+              "confidence"
+            ],
+            "title": "FinalAnswer",
+            "type": "object"
+          },
+          "content": "{\n  \"article_ids\": [\n    \"第264条\"\n  ],\n  \"matched_elements\": {\n    \"第264条\": [\n      \"盗窃公私财物\",\n      \"数额较大或者具备法定盗窃情形之一\"\n    ]\n  },\n  \"confidence\": \"high\"\n}",
+          "usage": {
+            "input_tokens": 279,
+            "output_tokens": 74,
+            "total_tokens": 353
+          },
+          "done_reason": "stop",
+          "total_duration_ns": 1275441625
+        },
+        {
+          "id": "denied-theft-behavior",
+          "schema": {
+            "additionalProperties": false,
+            "description": "模型的最终选择；可信来源与要件仍由程序复核。",
+            "properties": {
+              "article_ids": {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "第264条"
+                  ]
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "title": "Article Ids",
+                "type": "array"
+              },
+              "matched_elements": {
+                "type": "object",
+                "properties": {
+                  "第264条": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              }
+            },
+            "required": [
+              "article_ids",
+              "matched_elements",
+              "confidence"
+            ],
+            "title": "FinalAnswer",
+            "type": "object"
+          },
+          "content": "{\n  \"article_ids\": [\n    \"第264条\"\n  ],\n  \"matched_elements\": {\n    \"第264条\": [\n      \"盗窃公私财物\",\n      \"数额较大或者具备法定盗窃情形之一\"\n    ]\n  },\n  \"confidence\": \"high\"\n}",
+          "usage": {
+            "input_tokens": 287,
+            "output_tokens": 74,
+            "total_tokens": 361
+          },
+          "done_reason": "stop",
+          "total_duration_ns": 1423233125
+        },
+        {
+          "id": "natural-theft",
+          "schema": {
+            "additionalProperties": false,
+            "description": "模型的最终选择；可信来源与要件仍由程序复核。",
+            "properties": {
+              "article_ids": {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "第264条"
+                  ]
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "title": "Article Ids",
+                "type": "array"
+              },
+              "matched_elements": {
+                "type": "object",
+                "properties": {
+                  "第264条": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              }
+            },
+            "required": [
+              "article_ids",
+              "matched_elements",
+              "confidence"
+            ],
+            "title": "FinalAnswer",
+            "type": "object"
+          },
+          "content": "{\n  \"article_ids\": [\n    \"第264条\"\n  ],\n  \"matched_elements\": {\n    \"第264条\": [\n      \"盗窃公私财物\",\n      \"数额较大或者具备法定盗窃情形之一\"\n    ]\n  },\n  \"confidence\": \"high\"\n}",
+          "usage": {
+            "input_tokens": 289,
+            "output_tokens": 74,
+            "total_tokens": 363
+          },
+          "done_reason": "stop",
+          "total_duration_ns": 1314967042
+        }
+      ]
+    },
+    {
+      "variant": "boolean",
+      "path": ".scratch/lawref_default_fix/rework-support-boolean.json",
+      "sha256": "sha256:aebc6a0cf35a3532ad71259107a4d56116d3dfdbe94f0365680e0cc038f92fd6",
+      "reasoning": false,
+      "num_predict": 1024,
+      "timeout_seconds": 15,
+      "cases": [
+        {
+          "id": "insufficient-theft-facts",
+          "schema": {
+            "additionalProperties": false,
+            "description": "模型的最终选择；可信来源与要件仍由程序复核。",
+            "properties": {
+              "article_ids": {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "第264条"
+                  ]
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "title": "Article Ids",
+                "type": "array"
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              },
+              "element_support": {
+                "type": "object",
+                "properties": {
+                  "第264条": {
+                    "type": "object",
+                    "properties": {
+                      "e1": {
+                        "type": "boolean"
+                      },
+                      "e2": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "e1",
+                      "e2"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "第264条"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "article_ids",
+              "element_support",
+              "confidence"
+            ],
+            "title": "FinalAnswer",
+            "type": "object"
+          },
+          "content": "{\"article_ids\": [\"第264条\"], \"confidence\": \"high\", \"element_support\": {\"第264条\": {\"e1\": true, \"e2\": true}}}",
+          "usage": {
+            "input_tokens": 223,
+            "output_tokens": 45,
+            "total_tokens": 268
+          },
+          "done_reason": "stop",
+          "total_duration_ns": 947628125
+        },
+        {
+          "id": "denied-theft-behavior",
+          "schema": {
+            "additionalProperties": false,
+            "description": "模型的最终选择；可信来源与要件仍由程序复核。",
+            "properties": {
+              "article_ids": {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "第264条"
+                  ]
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "title": "Article Ids",
+                "type": "array"
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              },
+              "element_support": {
+                "type": "object",
+                "properties": {
+                  "第264条": {
+                    "type": "object",
+                    "properties": {
+                      "e1": {
+                        "type": "boolean"
+                      },
+                      "e2": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "e1",
+                      "e2"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "第264条"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "article_ids",
+              "element_support",
+              "confidence"
+            ],
+            "title": "FinalAnswer",
+            "type": "object"
+          },
+          "content": "{\"article_ids\": [\"第264条\"], \"confidence\": \"high\", \"element_support\": {\"第264条\": {\"e1\": true, \"e2\": true}}}",
+          "usage": {
+            "input_tokens": 231,
+            "output_tokens": 46,
+            "total_tokens": 277
+          },
+          "done_reason": "stop",
+          "total_duration_ns": 957697666
+        },
+        {
+          "id": "natural-theft",
+          "schema": {
+            "additionalProperties": false,
+            "description": "模型的最终选择；可信来源与要件仍由程序复核。",
+            "properties": {
+              "article_ids": {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "第264条"
+                  ]
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "title": "Article Ids",
+                "type": "array"
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              },
+              "element_support": {
+                "type": "object",
+                "properties": {
+                  "第264条": {
+                    "type": "object",
+                    "properties": {
+                      "e1": {
+                        "type": "boolean"
+                      },
+                      "e2": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "e1",
+                      "e2"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "第264条"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "article_ids",
+              "element_support",
+              "confidence"
+            ],
+            "title": "FinalAnswer",
+            "type": "object"
+          },
+          "content": "{\"article_ids\": [\"第264条\"], \"confidence\": \"high\", \"element_support\": {\"第264条\": {\"e1\": true, \"e2\": true}}}",
+          "usage": {
+            "input_tokens": 233,
+            "output_tokens": 46,
+            "total_tokens": 279
+          },
+          "done_reason": "stop",
+          "total_duration_ns": 923275875
+        }
+      ]
+    },
+    {
+      "variant": "thinking",
+      "path": ".scratch/lawref_default_fix/rework-support-thinking.json",
+      "sha256": "sha256:8ff55cf99aa25ffca90547d8bfd85e4a23ecdc94e5bb124ca7b6ca48568f5fcf",
+      "reasoning": true,
+      "num_predict": 1024,
+      "timeout_seconds": 15,
+      "cases": [
+        {
+          "id": "insufficient-theft-facts",
+          "schema": {
+            "additionalProperties": false,
+            "description": "模型的最终选择；可信来源与要件仍由程序复核。",
+            "properties": {
+              "article_ids": {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "第264条"
+                  ]
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "title": "Article Ids",
+                "type": "array"
+              },
+              "matched_elements": {
+                "type": "object",
+                "properties": {
+                  "第264条": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "盗窃公私财物",
+                        "数额较大或者具备法定盗窃情形之一"
+                      ]
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              }
+            },
+            "required": [
+              "article_ids",
+              "matched_elements",
+              "confidence"
+            ],
+            "title": "FinalAnswer",
+            "type": "object"
+          },
+          "content": "",
+          "usage": {
+            "input_tokens": 277,
+            "output_tokens": 1024,
+            "total_tokens": 1301
+          },
+          "done_reason": "length",
+          "total_duration_ns": 12928093166
+        },
+        {
+          "id": "denied-theft-behavior",
+          "schema": {
+            "additionalProperties": false,
+            "description": "模型的最终选择；可信来源与要件仍由程序复核。",
+            "properties": {
+              "article_ids": {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "第264条"
+                  ]
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "title": "Article Ids",
+                "type": "array"
+              },
+              "matched_elements": {
+                "type": "object",
+                "properties": {
+                  "第264条": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "盗窃公私财物",
+                        "数额较大或者具备法定盗窃情形之一"
+                      ]
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              }
+            },
+            "required": [
+              "article_ids",
+              "matched_elements",
+              "confidence"
+            ],
+            "title": "FinalAnswer",
+            "type": "object"
+          },
+          "content": "",
+          "usage": {
+            "input_tokens": 285,
+            "output_tokens": 1024,
+            "total_tokens": 1309
+          },
+          "done_reason": "length",
+          "total_duration_ns": 13839060917
+        },
+        {
+          "id": "natural-theft",
+          "schema": {
+            "additionalProperties": false,
+            "description": "模型的最终选择；可信来源与要件仍由程序复核。",
+            "properties": {
+              "article_ids": {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "第264条"
+                  ]
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "title": "Article Ids",
+                "type": "array"
+              },
+              "matched_elements": {
+                "type": "object",
+                "properties": {
+                  "第264条": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "盗窃公私财物",
+                        "数额较大或者具备法定盗窃情形之一"
+                      ]
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "title": "Confidence",
+                "type": "string"
+              }
+            },
+            "required": [
+              "article_ids",
+              "matched_elements",
+              "confidence"
+            ],
+            "title": "FinalAnswer",
+            "type": "object"
+          },
+          "content": "",
+          "usage": {
+            "input_tokens": 287,
+            "output_tokens": 1024,
+            "total_tokens": 1311
+          },
+          "done_reason": "length",
+          "total_duration_ns": 12461753500
+        }
+      ]
+    }
+  ],
+  "sequential_runs": [
+    {
+      "path": "evaluation/evidence/lawref_candidate_six_run1_2026-10-01.json",
+      "sha256": "sha256:63c202635a39416bdcad8ebde3cb1c71ac3773568d653d9f1849444818135594",
+      "passed": 4,
+      "total": 6,
+      "runtime_config": {
+        "LAW_KNOWLEDGE_PROFILE": "full",
+        "LAW_FULL_DEMO_ANNOTATIONS": "on",
+        "LAW_FULL_INDEX_DIRECTORY": "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/.scratch/lawref_default_fix/full-qwen3",
+        "LAW_FULL_INDEX_COLLECTION": "criminal_law_full",
+        "LAW_AGENT_MAX_STEPS": "4",
+        "LAW_AGENT_TIMEOUT_SECONDS": "240",
+        "LAW_AGENT_FINAL_PROTOCOL": "native_candidate",
+        "LAW_AGENT_TOOL_TIMEOUT_SECONDS": "90",
+        "LLM_TOTAL_TIMEOUT_SECONDS": "30",
+        "LLM_ATTEMPT_TIMEOUT_SECONDS": "15"
+      },
+      "cases_sha256": "sha256:b5958b42d62ede849bafc245d3e31a4e00ac6c653806471908b3f10bcb7c1985",
+      "cases": [
+        {
+          "id": "dangerous-driving-derived",
+          "passed": true,
+          "selected_article_ids": [
+            "第133条之一"
+          ],
+          "selected_sources": [
+            {
+              "article_number": "第一百三十三条之一",
+              "data_source": "rag_verified",
+              "required_elements": [
+                {
+                  "key": "demo_applicable_branch",
+                  "name": "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+                }
+              ],
+              "elements_matched": [
+                "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+              ],
+              "elements_missing": [],
+              "annotation_usage": "demo",
+              "annotation_source": "demo-reviewed-2026-10-01-v1"
+            }
+          ],
+          "guardrail_passed": null,
+          "termination_reason": "final_answer"
+        },
+        {
+          "id": "core-theft",
+          "passed": true,
+          "selected_article_ids": [
+            "第264条"
+          ],
+          "selected_sources": [
+            {
+              "article_number": "第二百六十四条",
+              "data_source": "rag_verified",
+              "required_elements": [
+                {
+                  "key": "theft_property",
+                  "name": "盗窃公私财物"
+                },
+                {
+                  "key": "theft_threshold",
+                  "name": "数额较大或者具备法定盗窃情形之一"
+                }
+              ],
+              "elements_matched": [
+                "盗窃公私财物",
+                "数额较大或者具备法定盗窃情形之一"
+              ],
+              "elements_missing": [],
+              "annotation_usage": "project_regression",
+              "annotation_source": "project-maintained-v1"
+            }
+          ],
+          "guardrail_passed": null,
+          "termination_reason": "final_answer"
+        },
+        {
+          "id": "natural-theft",
+          "passed": true,
+          "selected_article_ids": [
+            "第264条"
+          ],
+          "selected_sources": [
+            {
+              "article_number": "第二百六十四条",
+              "data_source": "rag_verified",
+              "required_elements": [
+                {
+                  "key": "theft_property",
+                  "name": "盗窃公私财物"
+                },
+                {
+                  "key": "theft_threshold",
+                  "name": "数额较大或者具备法定盗窃情形之一"
+                }
+              ],
+              "elements_matched": [
+                "盗窃公私财物",
+                "数额较大或者具备法定盗窃情形之一"
+              ],
+              "elements_missing": [],
+              "annotation_usage": "project_regression",
+              "annotation_source": "project-maintained-v1"
+            }
+          ],
+          "guardrail_passed": null,
+          "termination_reason": "final_answer"
+        },
+        {
+          "id": "natural-drunk-driving",
+          "passed": true,
+          "selected_article_ids": [
+            "第133条之一"
+          ],
+          "selected_sources": [
+            {
+              "article_number": "第一百三十三条之一",
+              "data_source": "rag_verified",
+              "required_elements": [
+                {
+                  "key": "demo_applicable_branch",
+                  "name": "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+                }
+              ],
+              "elements_matched": [
+                "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+              ],
+              "elements_missing": [],
+              "annotation_usage": "demo",
+              "annotation_source": "demo-reviewed-2026-10-01-v1"
+            }
+          ],
+          "guardrail_passed": null,
+          "termination_reason": "final_answer"
+        },
+        {
+          "id": "insufficient-theft-facts",
+          "passed": false,
+          "selected_article_ids": [
+            "第264条"
+          ],
+          "selected_sources": [
+            {
+              "article_number": "第二百六十四条",
+              "data_source": "rag_verified",
+              "required_elements": [
+                {
+                  "key": "theft_property",
+                  "name": "盗窃公私财物"
+                },
+                {
+                  "key": "theft_threshold",
+                  "name": "数额较大或者具备法定盗窃情形之一"
+                }
+              ],
+              "elements_matched": [
+                "盗窃公私财物",
+                "数额较大或者具备法定盗窃情形之一"
+              ],
+              "elements_missing": [],
+              "annotation_usage": "project_regression",
+              "annotation_source": "project-maintained-v1"
+            }
+          ],
+          "guardrail_passed": false,
+          "termination_reason": "final_answer"
+        },
+        {
+          "id": "denied-theft-behavior",
+          "passed": false,
+          "selected_article_ids": [
+            "第264条"
+          ],
+          "selected_sources": [
+            {
+              "article_number": "第二百六十四条",
+              "data_source": "rag_verified",
+              "required_elements": [
+                {
+                  "key": "theft_property",
+                  "name": "盗窃公私财物"
+                },
+                {
+                  "key": "theft_threshold",
+                  "name": "数额较大或者具备法定盗窃情形之一"
+                }
+              ],
+              "elements_matched": [
+                "盗窃公私财物",
+                "数额较大或者具备法定盗窃情形之一"
+              ],
+              "elements_missing": [],
+              "annotation_usage": "project_regression",
+              "annotation_source": "project-maintained-v1"
+            }
+          ],
+          "guardrail_passed": false,
+          "termination_reason": "final_answer"
+        }
+      ]
+    },
+    {
+      "path": "evaluation/evidence/lawref_candidate_six_run2_2026-10-01.json",
+      "sha256": "sha256:dd40f526d75107c2fe7b43aca4ca70a6027d5514407c43f8f21a499596eae160",
+      "passed": 4,
+      "total": 6,
+      "runtime_config": {
+        "LAW_KNOWLEDGE_PROFILE": "full",
+        "LAW_FULL_DEMO_ANNOTATIONS": "on",
+        "LAW_FULL_INDEX_DIRECTORY": "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/.scratch/lawref_default_fix/full-qwen3",
+        "LAW_FULL_INDEX_COLLECTION": "criminal_law_full",
+        "LAW_AGENT_MAX_STEPS": "4",
+        "LAW_AGENT_TIMEOUT_SECONDS": "240",
+        "LAW_AGENT_FINAL_PROTOCOL": "native_candidate",
+        "LAW_AGENT_TOOL_TIMEOUT_SECONDS": "90",
+        "LLM_TOTAL_TIMEOUT_SECONDS": "30",
+        "LLM_ATTEMPT_TIMEOUT_SECONDS": "15"
+      },
+      "cases_sha256": "sha256:b5958b42d62ede849bafc245d3e31a4e00ac6c653806471908b3f10bcb7c1985",
+      "cases": [
+        {
+          "id": "dangerous-driving-derived",
+          "passed": true,
+          "selected_article_ids": [
+            "第133条之一"
+          ],
+          "selected_sources": [
+            {
+              "article_number": "第一百三十三条之一",
+              "data_source": "rag_verified",
+              "required_elements": [
+                {
+                  "key": "demo_applicable_branch",
+                  "name": "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+                }
+              ],
+              "elements_matched": [
+                "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+              ],
+              "elements_missing": [],
+              "annotation_usage": "demo",
+              "annotation_source": "demo-reviewed-2026-10-01-v1"
+            }
+          ],
+          "guardrail_passed": null,
+          "termination_reason": "final_answer"
+        },
+        {
+          "id": "core-theft",
+          "passed": true,
+          "selected_article_ids": [
+            "第264条"
+          ],
+          "selected_sources": [
+            {
+              "article_number": "第二百六十四条",
+              "data_source": "rag_verified",
+              "required_elements": [
+                {
+                  "key": "theft_property",
+                  "name": "盗窃公私财物"
+                },
+                {
+                  "key": "theft_threshold",
+                  "name": "数额较大或者具备法定盗窃情形之一"
+                }
+              ],
+              "elements_matched": [
+                "盗窃公私财物",
+                "数额较大或者具备法定盗窃情形之一"
+              ],
+              "elements_missing": [],
+              "annotation_usage": "project_regression",
+              "annotation_source": "project-maintained-v1"
+            }
+          ],
+          "guardrail_passed": null,
+          "termination_reason": "final_answer"
+        },
+        {
+          "id": "natural-theft",
+          "passed": true,
+          "selected_article_ids": [
+            "第264条"
+          ],
+          "selected_sources": [
+            {
+              "article_number": "第二百六十四条",
+              "data_source": "rag_verified",
+              "required_elements": [
+                {
+                  "key": "theft_property",
+                  "name": "盗窃公私财物"
+                },
+                {
+                  "key": "theft_threshold",
+                  "name": "数额较大或者具备法定盗窃情形之一"
+                }
+              ],
+              "elements_matched": [
+                "盗窃公私财物",
+                "数额较大或者具备法定盗窃情形之一"
+              ],
+              "elements_missing": [],
+              "annotation_usage": "project_regression",
+              "annotation_source": "project-maintained-v1"
+            }
+          ],
+          "guardrail_passed": null,
+          "termination_reason": "final_answer"
+        },
+        {
+          "id": "natural-drunk-driving",
+          "passed": true,
+          "selected_article_ids": [
+            "第133条之一"
+          ],
+          "selected_sources": [
+            {
+              "article_number": "第一百三十三条之一",
+              "data_source": "rag_verified",
+              "required_elements": [
+                {
+                  "key": "demo_applicable_branch",
+                  "name": "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+                }
+              ],
+              "elements_matched": [
+                "符合以下任一适用分支（分支内部条件共同满足）：在道路上驾驶机动车；追逐竞驶，且情节恶劣；或：在道路上驾驶机动车；醉酒驾驶机动车；或：在道路上驾驶机动车；从事校车业务或旅客运输；严重超额载客，或严重超速；或：在道路上驾驶机动车；违反危化品安全管理规定运输危化品，且危及公共安全；或：所有人或管理人：仅对第一款第三、四项负有直接责任的分支"
+              ],
+              "elements_missing": [],
+              "annotation_usage": "demo",
+              "annotation_source": "demo-reviewed-2026-10-01-v1"
+            }
+          ],
+          "guardrail_passed": null,
+          "termination_reason": "final_answer"
+        },
+        {
+          "id": "insufficient-theft-facts",
+          "passed": false,
+          "selected_article_ids": [
+            "第264条"
+          ],
+          "selected_sources": [
+            {
+              "article_number": "第二百六十四条",
+              "data_source": "rag_verified",
+              "required_elements": [
+                {
+                  "key": "theft_property",
+                  "name": "盗窃公私财物"
+                },
+                {
+                  "key": "theft_threshold",
+                  "name": "数额较大或者具备法定盗窃情形之一"
+                }
+              ],
+              "elements_matched": [
+                "盗窃公私财物",
+                "数额较大或者具备法定盗窃情形之一"
+              ],
+              "elements_missing": [],
+              "annotation_usage": "project_regression",
+              "annotation_source": "project-maintained-v1"
+            }
+          ],
+          "guardrail_passed": false,
+          "termination_reason": "final_answer"
+        },
+        {
+          "id": "denied-theft-behavior",
+          "passed": false,
+          "selected_article_ids": [
+            "第264条"
+          ],
+          "selected_sources": [
+            {
+              "article_number": "第二百六十四条",
+              "data_source": "rag_verified",
+              "required_elements": [
+                {
+                  "key": "theft_property",
+                  "name": "盗窃公私财物"
+                },
+                {
+                  "key": "theft_threshold",
+                  "name": "数额较大或者具备法定盗窃情形之一"
+                }
+              ],
+              "elements_matched": [
+                "盗窃公私财物",
+                "数额较大或者具备法定盗窃情形之一"
+              ],
+              "elements_missing": [],
+              "annotation_usage": "project_regression",
+              "annotation_source": "project-maintained-v1"
+            }
+          ],
+          "guardrail_passed": false,
+          "termination_reason": "final_answer"
+        }
+      ]
+    },
+    {
+      "path": "evaluation/evidence/lawref_default_after_rework_2026-10-01.json",
+      "sha256": "sha256:d318ee50b311d9585728c8ae3da59420f846dc6c34bdf54006ba16195c0658c2",
+      "passed": 0,
+      "total": 1,
+      "runtime_config": {
+        "LAW_KNOWLEDGE_PROFILE": "full",
+        "LAW_FULL_DEMO_ANNOTATIONS": "on",
+        "LAW_FULL_INDEX_DIRECTORY": "/Users/clearguo/Desktop/Multi-Agent Criminal Defense Initial Consultation System/.scratch/lawref_default_fix/full-qwen3",
+        "LAW_FULL_INDEX_COLLECTION": "criminal_law_full",
+        "LAW_AGENT_MAX_STEPS": "4",
+        "LAW_AGENT_TIMEOUT_SECONDS": "240",
+        "LAW_AGENT_FINAL_PROTOCOL": null,
+        "LAW_AGENT_TOOL_TIMEOUT_SECONDS": "90",
+        "LLM_TOTAL_TIMEOUT_SECONDS": "30",
+        "LLM_ATTEMPT_TIMEOUT_SECONDS": "15"
+      },
+      "cases_sha256": "sha256:957f4444857c43bee29d9ea99b51f238d15b6a9d4a17077cb398412860a96bbe",
+      "cases": [
+        {
+          "id": "natural-theft",
+          "passed": false,
+          "selected_article_ids": [],
+          "selected_sources": [],
+          "guardrail_passed": null,
+          "termination_reason": "max_steps"
+        }
+      ]
+    }
+  ],
+  "six_case_input": {
+    "path": ".scratch/lawref_default_fix/rework_six_cases.jsonl",
+    "sha256": "sha256:b5958b42d62ede849bafc245d3e31a4e00ac6c653806471908b3f10bcb7c1985",
+    "note": "First two use original article queries; natural/control query and semantic_query are byte-identical."
+  },
+  "confirmed_observations": [
+    "Default natural theft returns final JSON only within thinking; content is empty despite stop and 199 output tokens.",
+    "Default natural drunk driving final attempts emit thinking until cancellation; completed token counts/done_reason are unavailable.",
+    "Actual HTTP default request omits think; candidate final request includes think=false, native JSON schema and num_predict=1024.",
+    "Native candidate produces structurally valid positive final answers, but incorrectly matches both theft elements on missing and denied facts in both sequential runs.",
+    "Removing string enum or using booleans preserves false positives; explicitly enabling thinking exhausts 1024 tokens without content for the three tested inputs."
+  ],
+  "limits": [
+    "Observed behavior is bounded to these model, corpus, inputs, prompts and budgets; it does not prove all protocols or larger models will fail.",
+    "Format/source/name validation does not establish factual support; candidate is not default enabled.",
+    "No model switch/download, HTTP server launch, deployment, commit, merge, archive or Done transition.",
+    "Partial cancelled responses retain null token/done metrics; internal think=None is distinct from absence on HTTP wire."
+  ],
+  "reviewable_choices": [
+    "Authorize an explicit stronger final-generation model and rerun unchanged positive/negative controls twice.",
+    "Accept a reduced demo limited to retrieval, article reading and candidates without relying on model element-match claims."
+  ]
+}
