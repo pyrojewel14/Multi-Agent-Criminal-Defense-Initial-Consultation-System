@@ -127,8 +127,8 @@ async def test_real_ws_refusal_does_not_summarize_until_consent(memory_db, monke
 
 
 @pytest.mark.asyncio
-async def test_direct_exchange_projection_failure_preserves_reply_and_pending(memory_db, memory_graph, monkeypatch):
-    from app.consultation.memory import coordinator
+async def test_direct_exchange_projection_failure_preserves_reply_and_pending(memory_db, memory_graph, monkeypatch, caplog):
+    from app.consultation.memory import summary
     sid = "memory-direct-save-failure"
     await start(memory_graph, memory_db, sid)
     before = await memory_graph.get_snapshot(sid)
@@ -138,17 +138,21 @@ async def test_direct_exchange_projection_failure_preserves_reply_and_pending(me
             raise RuntimeError("不可写入日志的合成正文")
         return await original(session_id, state, projection_updates=projection_updates)
     monkeypatch.setattr(service, "persist_state", fail_memory)
-    warning = MagicMock()
-    monkeypatch.setattr(coordinator._logger, "warning", warning)
-    for _ in range(2):
-        await service.record_external_exchange(sid, db=memory_db, key="welcome", output="合成欢迎")
+    summary._logger.addHandler(caplog.handler)
+    try:
+        for _ in range(2):
+            await service.record_external_exchange(sid, db=memory_db, key="welcome", output="合成欢迎")
+    finally:
+        summary._logger.removeHandler(caplog.handler)
     rows = (await memory_db.scalars(select(ConsultationMessage))).all()
     assert [row.content for row in rows] == ["合成欢迎"]
     after = await memory_graph.get_snapshot(sid)
     assert after.next == before.next
     assert after.values.get("memory") == before.values.get("memory")
-    assert warning.call_count == 2
-    assert all(call.args == ("记忆投影待刷新: error_type=%s", "RuntimeError") for call in warning.call_args_list)
+    assert caplog.text.count("summary_event=projection_failed") == 2
+    assert "error_code=projection_error" in caplog.text
+    assert "不可写入日志的合成正文" not in caplog.text
+    assert "summary_event=saved" not in caplog.text
     monkeypatch.setattr(service, "persist_state", original)
     await service.record_external_exchange(sid, db=memory_db, key="welcome", output="合成欢迎")
     assert len((await memory_db.scalars(select(ConsultationMessage))).all()) == 1

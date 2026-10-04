@@ -1,3 +1,4 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -16,9 +17,11 @@ from app.api.v1.routers.knowledge_router import knowledge_router
 from app.api.v1.routers.lawyer import lawyer_session_router
 from app.api.v1.routers.lawyers import lawyer_management_router
 from app.api.v1.routers.users import user_router
+from app.consultation.memory.context import MemorySettings
 from app.consultation.workflow import orchestrator
 from app.errors.register import register_exception_handlers
-from app.infrastructure.database.db import close_db, init_db
+from app.infrastructure.database.db import close_db, database_readiness, init_db
+from app.infrastructure.database.readiness import SQLiteReadiness
 from app.infrastructure.database.redis import close_redis, init_redis
 from app.infrastructure.llm.factory import chat_model_factory, embed_model_factory
 from app.infrastructure.logging import get_logger
@@ -29,6 +32,7 @@ from app.security.rbac import attach_user_to_request
 load_dotenv()
 
 _logger = get_logger("Main")
+checkpoint_readiness = SQLiteReadiness()
 
 
 # check_and_download_reranker_model()
@@ -45,12 +49,15 @@ async def lifespan(_app: FastAPI):
         checkpointer = AsyncSqliteSaver(connection, serde=JsonPlusSerializer(allowed_msgpack_modules=None))
         await checkpointer.setup()
         orchestrator.configure_checkpointer(checkpointer, persistent=True)
+        checkpoint_readiness.start(connection, checkpointer.lock)
         try:
             await init_db()
             await init_redis()
             _logger.info("Database and Redis initialized")
             yield
         finally:
+            checkpoint_readiness.close()
+            orchestrator.mark_checkpointer_closed()
             _logger.info("Shutting down application...")
             reorder_service.close()
             chat_model_factory.close()
@@ -100,17 +107,32 @@ async def health_check():
 
 @app.get("/ready")
 async def readiness_check():
-    """报告 API readiness 与可选重排序器的独立状态。"""
+    """保留 HTTP 200，必要存储失败以 JSON not_ready 表示。"""
     reranker_state = reorder_service.readiness()
+    raw_state, checkpoint_state = await asyncio.gather(database_readiness.check(), checkpoint_readiness.check())
+    settings = MemorySettings.from_env()
+    stores_ready = raw_state["available"] and checkpoint_state["available"]
     return {
-        "status": "ready" if reranker_state["available"] else "degraded",
-        "api": "ready",
+        "status": ("ready" if reranker_state["available"] else "degraded") if stores_ready else "not_ready",
+        "api": "ready" if stores_ready else "not_ready",
         "dependencies": {
             "reranker": reranker_state,
+            "raw_transcript": raw_state,
             "checkpoint": {
+                **checkpoint_state,
                 "persistence": orchestrator.checkpoint_persistence,
                 "restart_recovery": orchestrator.can_resume_after_restart,
+                "restart_recovery_scope": "single_worker_normal_restart",
+                "recovery_verified_now": False,
             },
+        },
+        "memory": {
+            "summary": {"enabled": True, "requires_consent": True,
+                        "input_budget": settings.summary_input_budget, "output_budget": settings.summary_output_budget,
+                        "timeout_seconds": settings.summary_timeout},
+            "structured_case": {"enabled": True},
+            "context": {"recent_messages": settings.recent_messages, "token_budget": settings.context_token_budget,
+                        "model_window": settings.model_window, "output_reserve": settings.output_reserve},
         },
     }
 

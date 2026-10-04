@@ -1,6 +1,6 @@
 # Agent Memory 与上下文管理
 
-本页说明原文审计、单案字段记忆、滚动摘要和调用前预算，核对日期为 2026-10-04。源码存在不能代替真实模型质量或部署验收。流程与恢复见 [工作流](../workflow.md)，接口权限见 [API](../api.md)，检索配置见 [全量检索](../knowledge/full_law_retrieval.md)。
+本页说明原文审计、单案字段记忆、滚动摘要和调用前预算，核对日期为 2026-10-05。源码存在不能代替真实模型质量或部署验收。流程与恢复见 [工作流](../workflow.md)，接口权限见 [API](../api.md)，检索配置见 [全量检索](../knowledge/full_law_retrieval.md)。
 
 ## 四类数据的职责
 
@@ -61,6 +61,18 @@ Gateway 的文本、结构化与工具调用经 ContextBuilder 装配输入，�
 
 当前摘要使用一次 attempt、有限总超时，Ollama 单次 `reasoning=False`；输出生成限额按摘要输出预算换算，返回文本仍按保守估算复核。该开关不改变共享模型或其他供应商。摘要是不可信背景，可能遗漏或漂移；调用前会标明未核实并脱敏。
 
+## 就绪状态与有限日志
+
+`GET /ready` 保留 HTTP 200 和原有 `status`、`api`、`dependencies.reranker`、checkpoint 持久化字段。新增 `dependencies.raw_transcript` 和 checkpoint 的 `initialized`、`available`、`status`：未初始化和关闭均不可用；原文数据库或 checkpoint 连接探测失败时，整体 `status` 与 `api` 为 `not_ready`。必要存储可用而可选重排序器不可用时，整体为 `degraded`，`api` 仍为 `ready`。调用方必须检查 JSON 状态，不能只依据 HTTP 200 判断就绪。
+
+两项存储探测并行执行，各有 0.5 秒上限，包含 checkpoint 锁等待。原文探测复用初始化时已使用的 SQLite 驱动连接，checkpoint 探测复用 saver 的连接和锁；仅执行 `SELECT 1`，不签出新连接、不创建数据库、不读取原文或枚举 checkpoint、不调用模型。只返回固定 `timeout` 或 `query_failed`，不返回路径、主机或原始异常。取消不会遗留请求任务或游标；SQLite 工作线程已经排队的只读操作可能在取消后完成。初始化连接失效会保守报告不可用，不通过 readiness 自动重连或修复。
+
+`memory.summary` 报告启用状态、同意前提、输入/输出预算和超时；`memory.structured_case` 报告字段记忆已启用；`memory.context` 报告近期消息目标、输入预算、模型窗口及输出预留。预算采用上文的保守估算单位。`dependencies.checkpoint.restart_recovery` 复用 orchestrator 的持久化配置能力；`restart_recovery_scope=single_worker_normal_restart` 指已有单 worker 正常重启证据边界，`recovery_verified_now=false` 明确本请求没有执行恢复验证。关闭时撤销持久化声明；进程内 MemorySaver 不声明跨重启恢复。
+
+`Memory.Summary` 的 `summary_event` 包括 `skipped`、`blocked`、`failed`、`generated`、`saved` 和 `projection_failed`。事件仅记录压缩条数、前后游标、版本、耗时及固定错误类别；不记录正文、摘要文本、字段值、会话 ID、凭据或原始异常。`generated` 仅表示候选通过校验；只有 `persist_state` 返回成功且摘要游标推进才记录 `saved`。生成或候选校验失败保留旧游标，不阻断已完成的外部命令；投影失败报告旧的权威游标/版本，无法确定尝试条数时写 `batch_count=unknown`。未同意的 skipped 事件也取已有摘要的真实游标与版本，不重读原文或调用模型。核心必要 LLM 的 typed 错误契约保持原样。
+
+`Agent.FactDigger` 在首次和已有案件记忆的候选 schema 校验失败时，都记录固定 `case_candidate_event=rejected`、`error_code=schema_validation_failed` 和校验错误数量。事件复用校验结果，不记录字段名、字段值或 validation 异常；无效候选仍保留原有记忆，必要提取调用抛出的 typed LLM 错误仍向上传播。
+
 ## 恢复与失败边界
 
 - FastAPI lifespan 注入 SQLite `AsyncSqliteSaver`；独立构造 orchestrator 默认是进程内 MemorySaver。保存同一 checkpoint、业务库并持有原 workflow ID，才具备恢复基础。
@@ -70,12 +82,14 @@ Gateway 的文本、结构化与工具调用经 ContextBuilder 装配输入，�
 - 已知 ID 恢复与发现旧会话不同：活跃 `/sessions` 列表读取进程内缓存，不自动枚举旧 checkpoint。业务历史返回可空 `workflow_session_id`，映射存在时可提供恢复 ID，旧记录可能没有。
 - lifecycle 的 `repair_required` 保留独立契约，相同 action 修复审计；待完成消息会阻断冲突生命周期操作。参见 [命令一致性](../architecture.md#生命周期命令先推进图再提交审计)。
 
-当前定向测试与跨进程探针不能外推真实模型多轮质量、全部崩溃窗口、多 worker 或生产稳定性。新增 [阶段3交付记录](phase3-verification.md) 待对应主线程独立验收：隔离宿主真实 fact/summary、法律和 preflight 替身、固定合成样例及单 worker 正常停启。长样例输入减少、短样例增加，回忆延迟没有改善；不能据此宣称总体成本或延迟下降。本轮仅核对文档与源码，未运行行为测试或模型。验证入口见 [testing](../testing.md#memory-与-full-检索契约) 与 [evaluation](../evaluation.md)。
+当前定向测试与跨进程探针不能外推真实模型多轮质量、全部崩溃窗口、多 worker 或生产稳定性。[阶段3交付记录](phase3-verification.md) 保留隔离宿主真实 fact/summary、法律和 preflight 替身、固定合成样例及单 worker 正常停启的证据。长样例输入减少、短样例增加，回忆延迟没有改善；不能据此宣称总体成本或延迟下降。就绪探测与有限日志的验证使用隔离 SQLite、真实图和确定性模型替身，不构成新的真实模型或恢复质量证据。验证入口见 [testing](../testing.md#memory-与-full-检索契约) 与 [evaluation](../evaluation.md)。
 
 ## 源码入口与历史分析
 
 | 入口 | 关键符号与职责 |
 | --- | --- |
+| [main.py](../../backend/main.py) | lifespan / readiness_check，checkpoint 生命周期及就绪 JSON |
+| [readiness.py](../../backend/app/infrastructure/database/readiness.py) | SQLiteReadiness，已初始化连接的限时只读探测 |
 | [service.py](../../backend/app/consultation/service.py) | process_message / process_consent / execute_lifecycle_command，外部入口与串行 |
 | [coordinator.py](../../backend/app/consultation/memory/coordinator.py) | process_external / refresh_memory，消息回执与摘要投影 |
 | [transcript.py](../../backend/app/consultation/memory/transcript.py) | append_record / memory_rows，原文追加与分页 |

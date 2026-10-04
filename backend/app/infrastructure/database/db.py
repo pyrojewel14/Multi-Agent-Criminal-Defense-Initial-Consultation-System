@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.infrastructure.database.readiness import SQLiteReadiness
 from app.infrastructure.logging import get_logger
 from app.models import Base
 
@@ -19,6 +20,7 @@ ASYNC_DATABASE_URL = f"sqlite+aiosqlite:///{DATABASE_PATH}"
 async_engine = create_async_engine(ASYNC_DATABASE_URL, echo=False)
 
 AsyncSessionLocal = async_sessionmaker(bind=async_engine, class_=AsyncSession, expire_on_commit=False)
+database_readiness = SQLiteReadiness()
 
 
 async def init_db():
@@ -46,6 +48,9 @@ async def init_db():
                 await conn.execute(text(f"ALTER TABLE consultation_messages ADD COLUMN {name} {declaration}"))
         await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_message_sequence ON consultation_messages (consultation_id, sequence)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_consultation_messages_command_id ON consultation_messages (command_id)"))
+        runtime_connection = (await conn.get_raw_connection()).driver_connection
+    # 只观察初始化已使用的驱动连接，不为 /ready 签出或创建新连接。
+    database_readiness.start(runtime_connection)
 
 
 async def get_db():
@@ -87,5 +92,6 @@ async def check_database_connection() -> bool:
 
 async def close_db() -> None:
     """关闭数据库连接池。"""
+    database_readiness.close()
     await async_engine.dispose()
     _logger.info("【close_db】数据库连接已关闭")

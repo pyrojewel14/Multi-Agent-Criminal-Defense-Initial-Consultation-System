@@ -479,8 +479,12 @@ class ConsultationOrchestrator:
 
     @property
     def can_resume_after_restart(self) -> bool:
-        """返回当前实例是否明确支持跨进程恢复。"""
+        """返回持久化配置能力；不代表现场完成恢复验证。"""
         return self._checkpoint_persistence == "persistent"
+
+    def mark_checkpointer_closed(self) -> None:
+        """由持有连接的生命周期撤销关闭后的持久化声明。"""
+        self._checkpoint_persistence = "closed"
 
     def _build_workflow(self) -> WorkflowGraph:
         """构建工作流 DAG，包含所有 Agent 节点和条件边。

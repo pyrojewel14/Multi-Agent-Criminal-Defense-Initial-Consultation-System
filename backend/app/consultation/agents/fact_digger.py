@@ -840,8 +840,10 @@ async def fact_intake_node(state: "ConsultationState") -> "ConsultationState":
         state["memory"] = memory
         facts_structured = project_facts(memory["case"])
         _logger.debug("【fact_intake_node】提取结构化事实完成")
-    elif facts_structured:
-        _logger.warning("【fact_intake_node】本轮未提取到结构化事实，保留上一轮有效结果")
+    else:
+        # 首次与已有记忆都报告候选拒绝，不输出字段值或校验异常内容。
+        _logger.warning("case_candidate_event=rejected, error_code=schema_validation_failed, validation_error_count=%d",
+                        len(artifact_result.validation_errors))
 
     state["facts_structured"] = facts_structured
     state["facts_raw"] = facts_raw[-MemorySettings.from_env().recent_messages:]

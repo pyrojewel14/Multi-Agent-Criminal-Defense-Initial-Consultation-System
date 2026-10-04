@@ -1,5 +1,6 @@
 """消息审计与派生记忆协调；跨 SQLite 写入使用待修复回执。"""
 import json
+import time
 import uuid
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -8,7 +9,7 @@ from sqlalchemy import select
 
 from app.consultation.constants import HIGH_RISK_ALERT_MESSAGE
 from app.consultation.memory.context import ContextBuilder, MemorySettings, node_context
-from app.consultation.memory.summary import SUMMARY_SYSTEM_PROMPT, advance_summary
+from app.consultation.memory.summary import SUMMARY_SYSTEM_PROMPT, advance_summary, log_summary_event
 from app.consultation.memory.transcript import append_record, memory_rows, stable_id
 from app.errors.exceptions import AppException
 from app.infrastructure.logging import get_logger
@@ -21,10 +22,15 @@ _logger = get_logger("Memory.Coordinator")
 async def refresh_memory(service, db, session_id, state):
     """摘要候选保存成功才成为权威；失败不影响已完成的消息命令。"""
     # 原文审计不依赖同意；确认同意后，存档原文才可进入有界派生记忆。
-    if state.get("consent_given") is not True:
-        return
+    started = time.perf_counter()
     memory = state.get("memory") or {}
-    cursor = memory.get("summary", {}).get("through_sequence", 0)
+    previous_summary = memory.get("summary") or {}
+    cursor = previous_summary.get("through_sequence", 0)
+    if state.get("consent_given") is not True:
+        log_summary_event("skipped", batch_count=0, cursor_before=cursor, cursor_after=cursor,
+                          version=previous_summary.get("version", 0),
+                          started=started, error_code="consent_required")
+        return
     rows = await memory_rows(db, state["consultation_id"], cursor)
     settings = MemorySettings.from_env()
     async def summarize(old, batch):
@@ -44,14 +50,25 @@ async def refresh_memory(service, db, session_id, state):
     await service.persist_state(session_id, state, projection_updates={"memory": candidate,
         "conversation_history": state.get("conversation_history", [])[-settings.recent_messages:],
         "facts_raw": state.get("facts_raw", [])[-settings.recent_messages:]})
+    summary = candidate["summary"]
+    if summary["through_sequence"] > cursor:
+        log_summary_event("saved", batch_count=sum(row.get("record_kind") == "external" and
+                          cursor < row["sequence"] <= summary["through_sequence"] for row in rows),
+                          cursor_before=cursor, cursor_after=summary["through_sequence"],
+                          version=summary["version"], started=started)
 
 
 async def refresh_optional_memory(service, db, session_id, state):
     """统一隔离原文提交后的可选投影失败；不记录正文或异常详情。"""
+    started = time.perf_counter()
     try:
         await refresh_memory(service, db, session_id, state)
-    except Exception as exc:
-        _logger.warning("记忆投影待刷新: error_type=%s", type(exc).__name__)
+    except Exception:
+        summary = (state.get("memory") or {}).get("summary") or {}
+        cursor = summary.get("through_sequence", 0)
+        # 失败可能发生在读取、候选生成或保存阶段，外层无法可靠得知尝试批次。
+        log_summary_event("projection_failed", batch_count=None, cursor_before=cursor, cursor_after=cursor,
+                          version=summary.get("version", 0), started=started, error_code="projection_error")
 
 
 def _result(service, state, metadata, message_id, content):

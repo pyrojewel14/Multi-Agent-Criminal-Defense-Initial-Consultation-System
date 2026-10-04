@@ -14,10 +14,13 @@
 - OpenAPI：`GET /openapi.json`
 - Swagger UI：`GET /docs`
 - 健康检查：`GET /health`
+- 就绪检查：`GET /ready`，HTTP 200 的 JSON 状态需单独判断
 - Bearer 认证：`Authorization: Bearer <access_token>`
 - WebSocket：`/api/v1/sessions/{session_id}/ws?token=<access_token>`，仅允许会话所有者的 `client` access token
 
 受角色保护的路由在 OpenAPI 中声明 `HTTPBearer`。路由和 operation 数量会随代码变化，本文不保存容易失效的固定计数。
+
+`/health` 只报告存活。`/ready` 保留既有字段，并报告原文数据库与 checkpoint 的真实初始化和只读连接探测状态，以及 `memory` 下的摘要配置、结构化字段记忆开关和上下文预算。必要存储未初始化、关闭、查询失败或超时时，`status` 与 `api` 为 `not_ready`；必要存储可用而可选重排序器不可用时，`status=degraded`、`api=ready`。HTTP 状态仍为 200，调用方应检查 JSON。checkpoint 的 `restart_recovery` 表示持久化配置能力，范围限单 worker 正常重启，`recovery_verified_now=false` 表示本请求未执行恢复验证。探测限时且不调用模型、读取会话或返回存储路径与原始异常；具体字段和日志边界见 [Memory](memory/README.md#就绪状态与有限日志)。
 
 ## 核心接口
 

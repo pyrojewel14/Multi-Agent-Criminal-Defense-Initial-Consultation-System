@@ -1,6 +1,7 @@
 """有界增量滚动摘要，游标与摘要由同一 checkpoint 更新保存。"""
 
 import asyncio
+import time
 from copy import deepcopy
 
 from app.consultation.memory.context import MemorySettings, estimate_tokens, recent_rows
@@ -10,11 +11,24 @@ _logger = get_logger("Memory.Summary")
 SUMMARY_SYSTEM_PROMPT = "增量合并旧摘要和新增对话，保留案件陈述、否认、更正、待核实冲突及问题。不要推断确认或法律结论。只返回简短摘要。"
 
 
+def log_summary_event(event, *, batch_count, cursor_before, cursor_after, version, started, error_code="none"):
+    """事件仅承载计数、游标、版本、耗时与固定错误类别；未知条数显式标记。"""
+    log = _logger.warning if event in {"failed", "blocked", "projection_failed"} else _logger.info
+    log("summary_event=%s, batch_count=%s, cursor_before=%d, cursor_after=%d, version=%d, duration_ms=%.2f, error_code=%s",
+        event, "unknown" if batch_count is None else batch_count,
+        cursor_before, cursor_after, version, (time.perf_counter() - started) * 1000, error_code)
+
+
 async def advance_summary(memory, rows, summarize, settings=None):
     """只压缩新增旧消息；失败不推进游标，并保留有界近期消息。"""
+    started = time.perf_counter()
     settings = settings or MemorySettings.from_env()
     result = deepcopy(memory)
     summary = result.setdefault("summary", {"text": "", "through_sequence": 0, "version": 0, "status": "empty"})
+    cursor_before = summary["through_sequence"]
+    def report(event, count, error_code="none"):
+        log_summary_event(event, batch_count=count, cursor_before=cursor_before, cursor_after=summary["through_sequence"],
+                          version=summary["version"], started=started, error_code=error_code)
     external = [row for row in rows if row.get("record_kind") == "external"]
     recent = recent_rows(external, settings.recent_messages)
     # 极长消息不进入每个 checkpoint 的 recent；原文仍完整留在审计表。
@@ -43,6 +57,9 @@ async def advance_summary(memory, rows, summarize, settings=None):
     if not batch:
         if candidates:
             summary["status"] = "blocked_large_message"
+            report("blocked", 0, "input_budget")
+        else:
+            report("skipped", 0)
         return result
     try:
         text = await asyncio.wait_for(summarize(summary["text"], batch), settings.summary_timeout)
@@ -50,7 +67,12 @@ async def advance_summary(memory, rows, summarize, settings=None):
             raise ValueError("摘要输出不合法或超出预算")
     except Exception as exc:
         summary["status"] = "failed"
-        _logger.warning("摘要降级: error_type=%s, batch_count=%d", type(exc).__name__, len(batch))
+        from app.errors.exceptions import AppException
+        error_code = "timeout" if isinstance(exc, TimeoutError) else ("invalid_candidate" if isinstance(exc, ValueError)
+                     else ("llm_error" if isinstance(exc, AppException) else "generation_error"))
+        report("failed", len(batch), error_code)
         return result
     summary.update(text=text, through_sequence=batch[-1]["sequence"], version=summary["version"] + 1, status="ready")
+    # 此时仅得到候选，不能把生成成功称为 checkpoint 已保存。
+    report("generated", len(batch))
     return result

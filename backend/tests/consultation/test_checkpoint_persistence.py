@@ -162,12 +162,15 @@ async def test_application_lifespan_installs_durable_saver(tmp_path, monkeypatch
             assert runtime_orchestrator.checkpoint_persistence == "persistent"
             assert consultation_service.orchestrator is runtime_orchestrator
             readiness = await main.readiness_check()
-            assert readiness["dependencies"]["checkpoint"] == {
-                "persistence": "persistent",
-                "restart_recovery": True,
-            }
+            checkpoint = readiness["dependencies"]["checkpoint"]
+            assert checkpoint["persistence"] == "persistent"
+            assert checkpoint["restart_recovery"] is True
+            assert checkpoint["available"] is True
+            assert checkpoint["initialized"] is True
             await runtime_orchestrator.start_workflow(_state("startup-session"))
             assert (tmp_path / "app-checkpoints.db").exists()
+        assert runtime_orchestrator.can_resume_after_restart is False
+        assert runtime_orchestrator.checkpoint_persistence == "closed"
 
 
 @pytest.mark.asyncio
