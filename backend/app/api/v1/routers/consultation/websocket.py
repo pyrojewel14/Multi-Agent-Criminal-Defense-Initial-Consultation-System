@@ -186,7 +186,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     )
                     break
 
-                if not state.get("consent_given") and "同意" not in content and "确认" not in content:
+                if not state.get("consent_given") and content.strip() not in {"同意", "确认", "我同意", "已知悉", "我已阅读并同意"}:
+                    await consultation_service.record_external_exchange(session_id,
+                        key=f"consent-required:{idempotency_key or request_id}", input_content=content,
+                        output="请先回复'同意'确认您已阅读并理解权利义务告知。",
+                        metadata={"event": "consent_required", "request_id": request_id})
                     await websocket.send_json(
                         {
                             "type": "message",

@@ -191,3 +191,21 @@ class TestModuleImports:
     def test_database_url_uses_aiosqlite(self):
         """The default URL should be a SQLite aiosqlite URL."""
         assert "aiosqlite" in db_config.ASYNC_DATABASE_URL
+
+
+@pytest.mark.asyncio
+async def test_message_migration_preserves_legacy_content_without_invented_sequence(tmp_path):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'old-messages.db'}")
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE TABLE consultations (id VARCHAR(36) PRIMARY KEY)"))
+            await conn.execute(text("CREATE TABLE consultation_messages (id VARCHAR(36) PRIMARY KEY, consultation_id VARCHAR(36), content TEXT)"))
+            await conn.execute(text("INSERT INTO consultation_messages (id, consultation_id, content) VALUES ('legacy-id', 'legacy-case', '旧原文')"))
+        with patch.object(db_config, "async_engine", engine):
+            await init_db()
+            await init_db()
+        async with engine.connect() as conn:
+            row = (await conn.execute(text("SELECT content, sequence, record_kind FROM consultation_messages WHERE id='legacy-id'"))).one()
+        assert tuple(row) == ("旧原文", None, "legacy")
+    finally:
+        await engine.dispose()

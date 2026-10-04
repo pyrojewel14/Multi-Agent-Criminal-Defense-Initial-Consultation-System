@@ -37,6 +37,15 @@ async def init_db():
                 "ON consultations (workflow_session_id)"
             )
         )
+        message_columns = {row[1] for row in (await conn.execute(text("PRAGMA table_info(consultation_messages)"))).fetchall()}
+        for name, declaration in {
+            "sequence": "INTEGER", "command_id": "VARCHAR(36)",
+            "record_kind": "VARCHAR(20) NOT NULL DEFAULT 'legacy'", "record_metadata": "TEXT",
+        }.items():
+            if name not in message_columns:
+                await conn.execute(text(f"ALTER TABLE consultation_messages ADD COLUMN {name} {declaration}"))
+        await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_message_sequence ON consultation_messages (consultation_id, sequence)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_consultation_messages_command_id ON consultation_messages (command_id)"))
 
 
 async def get_db():

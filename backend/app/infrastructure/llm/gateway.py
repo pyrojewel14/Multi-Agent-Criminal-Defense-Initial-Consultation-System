@@ -7,10 +7,12 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Dict, List, TypeVar
 
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolCall
+from langchain_core.messages import BaseMessage, ToolCall
 from langchain_core.tools import BaseTool
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel
 
+from app.consultation.memory.context import ContextBuilder, ContextLimitError, MemorySettings, current_node_context
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
 from app.infrastructure.llm.factory import chat_model_factory
 from app.infrastructure.logging import get_logger
@@ -32,6 +34,43 @@ except ImportError:  # pragma: no cover - httpx 是项目依赖，仅保留最�
 
 
 ResultT = TypeVar("ResultT")
+
+
+class ContextBudgetException(LLMServiceException):
+    """必要完整输入超限；沿用 typed LLM 契约，同时明确拒绝原因。"""
+
+    status_code = 413
+    message = "消息或必要上下文超出模型输入预算，请拆分补充"
+
+
+def _bounded_messages(system_prompt, user_message, *, history=(), schemas=()):
+    """在供应商调用前统一装配并检查预算；估算不冒充实际 usage。"""
+    context = current_node_context()
+    try:
+        built = ContextBuilder().build(system_prompt, user_message, context[1] if context else {},
+                                       task=context[0] if context else "general", history=history, schemas=schemas)
+        get_logger("Memory.Context").debug("上下文预算: input_estimate=%d, dropped_tool_groups=%d",
+                                           built.estimated_input_tokens, built.dropped_groups)
+        return built
+    except ContextLimitError as exc:
+        raise ContextBudgetException(detail="context_budget_exceeded") from exc
+
+
+def _bounded_model(model, output_limit=None, reasoning=None):
+    """本地模型显式设置窗口及输出上限，不修改共享工厂实例。"""
+    settings = MemorySettings.from_env()
+    if model.__class__.__module__.startswith("langchain_ollama"):
+        updates = {"num_ctx": settings.model_window,
+                   "num_predict": output_limit or settings.output_reserve}
+        if reasoning is not None:
+            updates["reasoning"] = reasoning
+        return model.model_copy(update=updates)
+    if model.__class__.__module__.startswith("langchain_community.chat_models.tongyi"):
+        return model.model_copy(update={"model_kwargs": {**model.model_kwargs,
+                                                        "max_tokens": output_limit or settings.output_reserve}})
+    if output_limit is not None:
+        return model.bind(max_tokens=output_limit)
+    return model
 
 
 def _model_name(model: object) -> str:
@@ -241,6 +280,9 @@ class LLMGateway:
         user_message: str,
         temperature: float = 0.1,
         is_legal: bool = False,
+        *,
+        output_limit: int | None = None,
+        reasoning: bool | None = None,
     ) -> str:
         """调用 LLM 并返回文本响应。
 
@@ -249,6 +291,7 @@ class LLMGateway:
             user_message: 用户的输入文本。
             temperature: 采样温度 (0.0-1.0)，法律场景强制为 0。
             is_legal: 是否为法律场景，为 True 时强制使用 temperature=0。
+            reasoning: Ollama 单次调用的思考开关；不改变共享模型或其他供应商。
 
         Returns:
             模型的文本输出。
@@ -265,13 +308,11 @@ class LLMGateway:
             len(user_message),
         )
 
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_message),
-        ]
+        built = _bounded_messages(system_prompt, user_message)
+        messages = built.messages
 
         async def invoke(attempt: int):
-            model = chat_model_factory.create_precise_model(actual_temp)
+            model = _bounded_model(chat_model_factory.create_precise_model(actual_temp), output_limit, reasoning)
             context = current_trace_context()
             session_id = str(context["session_id"]) if context and context["session_id"] else "unknown"
             if session_id != "unknown":
@@ -284,6 +325,7 @@ class LLMGateway:
                 prompt_version=_prompt_version(system_prompt),
                 attempt=attempt,
                 cache_hit=False,
+                metadata={"estimated_input_tokens": built.estimated_input_tokens},
             ) as event:
                 try:
                     response = await model.ainvoke(messages)
@@ -353,14 +395,14 @@ class LLMGateway:
             len(user_message),
         )
 
-        messages: List[BaseMessage] = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_message),
-            *(message_history or []),
-        ]
+        schemas = [convert_to_openai_tool(tool) for tool in tools]
+        if response_schema is not None:
+            schemas.append(response_schema)
+        built = _bounded_messages(system_prompt, user_message, history=message_history or (), schemas=schemas)
+        messages = built.messages
 
         async def invoke(attempt: int):
-            model = chat_model_factory.create_precise_model(actual_temp)
+            model = _bounded_model(chat_model_factory.create_precise_model(actual_temp))
             local_ollama = model.__class__.__module__.startswith("langchain_ollama")
             if response_schema is not None and local_ollama:
                 # 不改动工厂缓存，避免最终回答落入 thinking 字段或挤占其他节点的预算。
@@ -383,7 +425,9 @@ class LLMGateway:
                 prompt_version=_prompt_version(system_prompt),
                 attempt=attempt,
                 cache_hit=False,
-                metadata=build_safe_metadata({"tool_names": sorted(tool_names)}),
+                metadata={**build_safe_metadata({"tool_names": sorted(tool_names)}),
+                          "estimated_input_tokens": built.estimated_input_tokens,
+                          "dropped_tool_groups": built.dropped_groups},
             ) as event:
                 try:
                     response: Any = await model_with_tools.ainvoke(messages)

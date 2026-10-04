@@ -45,6 +45,7 @@ async def _build_consultation_response(consultation: Consultation, db: AsyncSess
 
     return ConsultationResponse(
         id=consultation.id,
+        workflow_session_id=consultation.workflow_session_id,
         client_id=consultation.client_id,
         client_username=client.username if client else None,
         client_real_name=client.real_name if client else None,
@@ -195,7 +196,7 @@ async def get_consultation_messages(
     messages_result = await db.execute(
         select(ConsultationMessage)
         .where(ConsultationMessage.consultation_id == consultation_id)
-        .order_by(ConsultationMessage.created_at)
+        .order_by(ConsultationMessage.sequence.asc().nulls_first(), ConsultationMessage.created_at, ConsultationMessage.id)
     )
     messages = messages_result.scalars().all()
 
@@ -311,6 +312,7 @@ async def update_consultation_status(
                 workflow_session_id,
                 action="approve" if new_status == ConsultationStatus.COMPLETED else "close",
                 db=db,
+                transport="http",
                 actor_id=current_user["user_id"],
                 final_output=getattr(consultation, "final_output", None),
                 idempotency_key=request.idempotency_key,

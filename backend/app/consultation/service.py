@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import sys
 import uuid
 from collections import OrderedDict
 from contextlib import asynccontextmanager
@@ -262,6 +263,7 @@ async def execute_lifecycle_command(
     target_node: Optional[str] = None,
     reason: Optional[str] = None,
     idempotency_key: Optional[str] = None,
+    transport: str = "internal",
 ) -> ConsultationState:
     """按 session 串行执行唯一生命周期命令，并重放成功结果。"""
     fingerprint = _command_fingerprint(
@@ -294,6 +296,8 @@ async def execute_lifecycle_command(
             feedback=feedback,
             target_node=target_node,
             reason=reason,
+            audit_key=idempotency_key,
+            transport=transport,
         )
         result["command_processed_at"] = datetime.now(timezone.utc)
         _session_commands.remember(
@@ -316,6 +320,8 @@ async def _execute_lifecycle_command_unlocked(
     feedback: Optional[str] = None,
     target_node: Optional[str] = None,
     reason: Optional[str] = None,
+    audit_key: Optional[str] = None,
+    transport: str = "internal",
 ) -> ConsultationState:
     """通过唯一应用命令入口执行 approve、reject 或 close。
 
@@ -330,12 +336,46 @@ async def _execute_lifecycle_command_unlocked(
     if not snapshot or not snapshot.values:
         raise ValueError(f"会话不存在: {session_id}")
     before = dict(snapshot.values)
+    if before.get("message_audit"):
+        raise LifecycleConsistencyError(action=action, failed_stage="message_audit_pending", repair_required=False)
     consultation_id = before.get("consultation_id")
     if not consultation_id:
         raise ValueError(f"会话缺少 consultation_id: {session_id}")
 
     repair_marker = before.get("consistency_error") or {}
     is_repair = before.get("repair_required") or before.get("workflow_status") == "repair_required"
+    audit = before.get("lifecycle_audit")
+    if transport != "internal":
+        from app.consultation.memory.transcript import append_record, stable_id
+        payload = {"action": action, "actor_id": actor_id, "final_output": final_output,
+                   "feedback": feedback, "target_node": target_node, "reason": reason}
+        fingerprint = _command_fingerprint(payload)
+        if audit_key and not is_repair:
+            from sqlalchemy import select
+            completed = await db.scalar(select(ConsultationMessage).where(
+                ConsultationMessage.id == stable_id(session_id, f"lifecycle:{audit_key}", "completed")))
+            if completed is not None:
+                if json.loads(completed.record_metadata)["fingerprint"] != fingerprint:
+                    raise IdempotencyConflictError("幂等键已用于不同请求")
+                return validate_consultation_state(before)
+        if audit and audit["fingerprint"] != fingerprint:
+            raise IdempotencyConflictError("待修复生命周期载荷冲突")
+        if not is_repair and action in {"approve", "reject"} and tuple(snapshot.next) != ("human_review",):
+            raise LifecycleCommandConflictError(action=action)
+        if audit is None:
+            key = f"lifecycle:{audit_key or uuid.uuid4()}"
+            audit = {"payload": payload, "fingerprint": fingerprint,
+                     "input_id": stable_id(session_id, key, "input"),
+                     "event_id": stable_id(session_id, key, "completed")}
+            try:
+                await append_record(db, consultation_id, audit["input_id"], json.dumps(payload, ensure_ascii=False),
+                    "operator", record_kind="external", sender_id=actor_id,
+                    command_id=audit["event_id"], metadata={"fingerprint": fingerprint, "event": "lifecycle_request"})
+                await db.commit()
+            except Exception as exc:
+                await db.rollback()
+                raise LifecycleConsistencyError(action=action, failed_stage="raw_input_commit", repair_required=False) from exc
+            await persist_state(session_id, projection_updates={"lifecycle_audit": audit})
     if is_repair:
         if repair_marker.get("action") != action:
             raise LifecycleConsistencyError(
@@ -373,6 +413,11 @@ async def _execute_lifecycle_command_unlocked(
         else:
             consultation.status = ConsultationStatus.CANCELLED
             consultation.lawyer_review_needed = False
+        if transport != "internal" and audit:
+            await append_record(db, consultation_id, audit["event_id"],
+                json.dumps({"action": action, "workflow_status": after.get("workflow_status")}, ensure_ascii=False),
+                "system", record_kind="internal", command_id=audit["event_id"],
+                metadata={"event": "lifecycle_applied", "fingerprint": audit["fingerprint"]})
         failed_stage = "sqlite_audit_commit"
         await db.commit()
     except Exception as exc:
@@ -413,6 +458,8 @@ async def _execute_lifecycle_command_unlocked(
                 failed_stage="checkpoint_finalize",
             )
         after = finalized
+    if transport != "internal":
+        after = await orchestrator.update_workflow_state(session_id, {"lifecycle_audit": None}) or after
     return cast(ConsultationState, after)
 
 
@@ -486,7 +533,8 @@ async def generate_welcome_message(_user_type: str = "suspect") -> str:
     return get_welcome_message()
 
 
-async def create_consultation_record(_session_id: str, user_id: str, user_type: str, db: AsyncSession) -> str:
+async def create_consultation_record(_session_id: str, user_id: str, user_type: str, db: AsyncSession, *,
+                                     initial_message: Optional[str] = None, source: Optional[str] = None) -> str:
     """创建咨询数据库记录
 
     Args:
@@ -506,6 +554,12 @@ async def create_consultation_record(_session_id: str, user_id: str, user_type: 
         status=ConsultationStatus.PENDING,
     )
     db.add(consultation)
+    if initial_message is not None:
+        from app.consultation.memory.transcript import append_record, stable_id
+        await db.flush()
+        await append_record(db, consultation.id, stable_id(_session_id, "welcome", "user"), initial_message, "user",
+            command_id=stable_id(_session_id, "welcome", "command"), sender_id=user_id,
+            metadata={"event": "creation", "initial_message_ingested": False, "source": source})
     await db.commit()
     await db.refresh(consultation)
     _logger.info("【_create_consultation_record】咨询记录创建: consultation_id=%s", consultation.id)
@@ -631,7 +685,35 @@ async def process_message(
             "sender_id": sender_id,
         }
     )
+    if transport in {"http", "websocket"} and db is None:
+        from app.infrastructure.database.db import AsyncSessionLocal
+        async with AsyncSessionLocal() as owned_db:
+            return await process_message(session_id, content, state, current_agent,
+                idempotency_key=idempotency_key, sender_id=sender_id, db=owned_db,
+                request_id=request_id, transport=transport)
     async with _session_commands.serialize(session_id):
+        if transport in {"http", "websocket"}:
+            from app.consultation.memory.coordinator import process_external
+            snapshot = await orchestrator.get_snapshot(session_id)
+            if snapshot is None or not snapshot.values:
+                raise ValueError(f"会话不存在: {session_id}")
+            authoritative = validate_consultation_state(snapshot.values)
+            consent_options = {}
+            consent_replay = False
+            if transport == "websocket" and idempotency_key:
+                from sqlalchemy import select
+
+                from app.consultation.memory.transcript import stable_id
+                consent_replay = await db.scalar(select(ConsultationMessage.id).where(
+                    ConsultationMessage.id == stable_id(session_id, f"consent:{idempotency_key}", "user"))) is not None
+            if transport == "websocket" and (not authoritative.get("consent_given") or consent_replay):
+                if content.strip() not in {"同意", "确认", "我同意", "已知悉", "我已阅读并同意"}:
+                    raise ValueError("请先确认隐私条款")
+                consent_options = {"state_updates": {"consent_given": True}, "command_name": "consent",
+                    "output_override": "感谢您的同意。请告诉我您的身份类型（嫌疑人、受害者或家属）和案件发生的大概城市。"}
+            return await process_external(sys.modules[__name__], session_id, content,
+                authoritative, db=db, idempotency_key=idempotency_key,
+                sender_id=sender_id, request_id=request_id, transport=transport, fingerprint=fingerprint, **consent_options)
         replay = _session_commands.replay(
             session_id,
             "message",
@@ -797,6 +879,11 @@ async def process_consent(
     session_id: str,
     consent_given: bool,
     identity_info: Optional[dict] = None,
+    *,
+    db: Optional[AsyncSession] = None,
+    raw_payload: Optional[dict] = None,
+    next_prompt: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
 ) -> ConsultationState:
     """处理用户同意确认，通过 resume_workflow 恢复工作流。
 
@@ -812,6 +899,22 @@ async def process_consent(
     if identity_info:
         state_updates["identity_info"] = identity_info
 
+    if db is not None:
+        from app.consultation.memory.coordinator import process_external
+        async with _session_commands.serialize(session_id):
+            state = await get_session_state(session_id)
+            if state is None:
+                raise ValueError("会话不存在")
+            payload = raw_payload or {"consent_given": consent_given, "identity_info": identity_info}
+            processed = await process_external(sys.modules[__name__], session_id,
+                json.dumps(payload, ensure_ascii=False, sort_keys=True), state, db=db,
+                idempotency_key=idempotency_key, sender_id=state.get("user_id"), request_id=None,
+                transport="http", fingerprint=_command_fingerprint(payload), state_updates=state_updates,
+                output_override=next_prompt, command_name="consent")
+            if processed.error:
+                raise RuntimeError(processed.error)
+            return processed.result_state
+
     if consent_given:
         result = await orchestrator.resume_workflow(session_id, state_updates)
     else:
@@ -820,6 +923,49 @@ async def process_consent(
 
     await persist_state(session_id, result)
     return result
+
+
+async def record_external_exchange(session_id: str, *, db: Optional[AsyncSession] = None, key: str,
+                                   output: str, input_content: Optional[str] = None,
+                                   metadata: Optional[dict] = None) -> None:
+    """记录直接入口实际交付的文本；该入口不推进图，重试仅补写审计。"""
+    from app.consultation.memory.coordinator import refresh_optional_memory
+    from app.consultation.memory.transcript import append_record, stable_id
+    if db is None:
+        from app.infrastructure.database.db import AsyncSessionLocal
+        async with AsyncSessionLocal() as owned_db:
+            return await record_external_exchange(session_id, db=owned_db, key=key, output=output,
+                input_content=input_content, metadata=metadata)
+    async with _session_commands.serialize(session_id):
+        state = await get_session_state(session_id)
+        if state is None:
+            raise ValueError("会话不存在")
+        command_id = stable_id(session_id, key, "command")
+        try:
+            if input_content is not None:
+                await append_record(db, state["consultation_id"], stable_id(session_id, key, "user"),
+                    input_content, "user", command_id=command_id, sender_id=state.get("user_id"), metadata=metadata)
+            await append_record(db, state["consultation_id"], stable_id(session_id, key, "reply"),
+                output, "agent", command_id=command_id, agent_name=state.get("current_agent"), metadata=metadata)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+        await refresh_optional_memory(sys.modules[__name__], db, session_id, state)
+
+
+async def record_internal_event(consultation_id: str, session_id: str, *, db: AsyncSession,
+                                content: str, sender_type: str, sender_id: str, event: str) -> None:
+    """直接业务入口与图消息共用顺序锁，只记录事件，不改变图执行位置。"""
+    from app.consultation.memory.transcript import append_record
+    async with _session_commands.serialize(session_id):
+        try:
+            await append_record(db, consultation_id, str(uuid.uuid4()), content, sender_type,
+                sender_id=sender_id, record_kind="internal", metadata={"event": event})
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def process_lawyer_review(

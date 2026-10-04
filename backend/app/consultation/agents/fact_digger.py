@@ -1,10 +1,14 @@
+import hashlib
 import json
 import re
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Dict, List
 
 from pydantic import ValidationError
 
 from app.consultation.fact_data import get_fact_value, is_mapped_fact_key
+from app.consultation.memory.case import LIST_FIELDS, merge_case_memory, project_facts
+from app.consultation.memory.context import MemorySettings
 from app.consultation.schemas.artifacts import (
     ArtifactSource,
     FactArtifact,
@@ -19,6 +23,7 @@ from app.consultation.schemas.law import (
 )
 from app.consultation.tools.fact_tools import extract_case_facts
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
+from app.infrastructure.config.loader import config_loader
 from app.infrastructure.config.prompts import prompt_loader
 from app.infrastructure.llm.gateway import llm_gateway
 from app.infrastructure.logging import get_logger
@@ -76,7 +81,12 @@ DEFAULT_EXTRACT_CASE_FACTS_PROMPT = """从咨询者描述中提取刑事案件�
 - victim_forgiveness: 被害人是否谅解
 - prior_record: 是否有前科劣迹
 
-如果某字段信息不明确，设为 null。"""
+仅提取本轮用户明确陈述的信息，不推断事实真实性。
+未核实的陈述仍应提取；已陈述的相对时间和地点不得因为缺乏证明而设为 null。
+脱敏标记不是地点或事件，不得把其他句子中的标记移入案件字段。
+明确更正时填写本轮新值；明确否认前科或自首时为 false，未提及时为 null。
+必须返回全部字段。未提及的字符串或布尔字段为 null，列表字段为空数组；列表元素必须是对象。
+只返回填写后的 JSON 对象，不输出空值示例或法律判断。"""
 
 DEFAULT_FOLLOW_UP_PROMPT = """你是一个刑事案件事实挖掘专家。
 根据以下缺失的构成要件，生成追问问题。
@@ -487,7 +497,7 @@ async def _generate_fact_summary(facts_structured: Dict[str, Any], facts_raw: Li
 async def _extract_structured_facts(
     facts_raw: List[str],
 ) -> tuple[Dict[str, Any], ArtifactSource]:
-    """使用 LLM Function Calling 提取结构化事实。
+    """通过供应商支持的结构化通道提取本轮事实，仍由业务 schema 严格校验。
 
     Args:
         facts_raw: 原始用户输入列表
@@ -500,12 +510,13 @@ async def _extract_structured_facts(
     source = ArtifactSource.CONTENT_JSON
 
     try:
-        # 使用 LLMGateway 的 generate_with_tools 方法
+        # Ollama 原生 schema 约束嵌套字段；其他供应商保留工具调用契约。
         _logger.debug("【_extract_structured_facts】开始调用 extract_case_facts 工具")
         result = await llm_gateway.generate_with_tools(
             system_prompt=_load_extract_case_facts_prompt(),
             user_message=user_message,
-            tools=[extract_case_facts],
+            tools=[] if config_loader.llm_type == "OLLAMA" else [extract_case_facts],
+            response_schema=FactArtifact.model_json_schema() if config_loader.llm_type == "OLLAMA" else None,
             temperature=0.1,
         )
 
@@ -786,6 +797,11 @@ async def fact_intake_node(state: "ConsultationState") -> "ConsultationState":
 
     if not facts_raw and not user_input:
         return _handle_first_interaction(state)
+    if not user_input and (state.get("memory") or {}).get("case"):
+        # 律师退回或重复确认没有新陈述，不能以旧消息来源重新提取候选。
+        state["current_input"] = None
+        state["current_agent"] = "FactDigger"
+        return state
 
     if user_input:
         state = _handle_high_risk_input(state, user_input, conversation_history)
@@ -797,7 +813,14 @@ async def fact_intake_node(state: "ConsultationState") -> "ConsultationState":
         facts_raw.append(sanitized_input)
         _logger.debug("【fact_intake_node】追加用户输入到 facts_raw，当前共 %d 条", len(facts_raw))
 
-    extracted_facts, artifact_source = await _extract_structured_facts(facts_raw)
+    # 核心提取保留 typed LLM 异常；仅本轮候选标记本轮来源，不能反复重提全历史。
+    candidate_inputs = [sanitized_input] if user_input else facts_raw[-1:]
+    extracted_facts, artifact_source = await _extract_structured_facts(candidate_inputs)
+    if isinstance(extracted_facts, dict):
+        extracted_facts = dict(extracted_facts)
+        for field in LIST_FIELDS:
+            if field in extracted_facts and extracted_facts[field] is None:
+                extracted_facts[field] = []
     fact_artifact, artifact_result = validate_artifact(
         FactArtifact,
         extracted_facts,
@@ -805,13 +828,23 @@ async def fact_intake_node(state: "ConsultationState") -> "ConsultationState":
     )
     record_artifact_result(state, "fact", artifact_result)  # type: ignore
     if fact_artifact is not None:
-        facts_structured = fact_artifact.model_dump(mode="json")
+        memory = deepcopy(state.get("memory") or {})
+        case = memory.get("case") or merge_case_memory({}, facts_structured, "legacy")
+        source_id = state.get("current_message_id") or "internal:" + hashlib.sha256(
+            "\n".join(candidate_inputs).encode("utf-8")
+        ).hexdigest()
+        memory["case"] = merge_case_memory(
+            case, fact_artifact.model_dump(mode="json"), source_id,
+            correction=bool(user_input and any(term in user_input for term in ("更正", "纠正", "之前说错"))),
+        )
+        state["memory"] = memory
+        facts_structured = project_facts(memory["case"])
         _logger.debug("【fact_intake_node】提取结构化事实完成")
     elif facts_structured:
         _logger.warning("【fact_intake_node】本轮未提取到结构化事实，保留上一轮有效结果")
 
     state["facts_structured"] = facts_structured
-    state["facts_raw"] = facts_raw
+    state["facts_raw"] = facts_raw[-MemorySettings.from_env().recent_messages:]
     state["current_input"] = None
     state["current_agent"] = "FactDigger"
     state["conversation_history"] = conversation_history

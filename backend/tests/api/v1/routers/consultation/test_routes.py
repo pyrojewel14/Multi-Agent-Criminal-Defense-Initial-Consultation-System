@@ -941,8 +941,9 @@ class TestConfirmConsentExtra:
                 )
 
         assert response.status_code == 200
-        assert consultation.consent_given is True
-        mock_db_session.commit.assert_awaited()
+        # 同意投影现由 service 与回复原文同事务提交；路由只传递原始载荷。
+        assert mock_proc.call_args.kwargs["db"] is mock_db_session
+        assert mock_proc.call_args.kwargs["raw_payload"]["consent_given"] is True
 
     @pytest.mark.asyncio
     async def test_confirm_consent_declined(self, test_app, client_auth_headers, sample_session_state, mock_db_session):

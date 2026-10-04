@@ -72,6 +72,7 @@ class TestCreateSession:
                 patch("app.consultation.service.start_session", new_callable=AsyncMock) as mock_start,
                 patch("app.consultation.service.generate_welcome_message", new_callable=AsyncMock) as mock_welcome,
                 patch("app.consultation.service.persist_state", new_callable=AsyncMock),
+                patch("app.consultation.service.record_external_exchange", new_callable=AsyncMock) as mock_record,
             ):
                 mock_create.return_value = "consult-001"
                 mock_welcome.return_value = "欢迎语"
@@ -90,6 +91,7 @@ class TestCreateSession:
                 data = response.json()
                 assert "session_id" in data
                 assert data["current_agent"] == "Receptionist"
+                assert mock_record.call_args.kwargs["output"] == data["welcome_message"]
 
     @pytest.mark.asyncio
     async def test_create_session_welcome_matches_state_without_chat_llm(
@@ -110,6 +112,7 @@ class TestCreateSession:
                 patch("app.consultation.service.start_session", new_callable=AsyncMock) as mock_start,
                 patch("app.consultation.service.generate_welcome_message", new_callable=AsyncMock) as mock_welcome,
                 patch("app.consultation.agents.receptionist.llm_gateway") as mock_llm,
+                patch("app.consultation.service.record_external_exchange", new_callable=AsyncMock) as mock_record,
             ):
                 mock_create.return_value = "consult-001"
                 mock_start.side_effect = start_with_receptionist
@@ -127,6 +130,7 @@ class TestCreateSession:
         assert response.json()["welcome_message"] == started_states[0]["final_output"]
         mock_welcome.assert_not_awaited()
         mock_llm.generate.assert_not_awaited()
+        assert mock_record.call_args.kwargs["output"] == response.json()["welcome_message"]
 
     @pytest.mark.asyncio
     async def test_create_session_unauthenticated(self, test_app, mock_db_session):

@@ -3,7 +3,6 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas.consultation_schemas import (
@@ -28,7 +27,6 @@ from app.consultation.state import validate_consultation_state
 from app.consultation.workflow import orchestrator
 from app.infrastructure.database.db import get_db
 from app.infrastructure.logging import get_logger
-from app.models import Consultation
 from app.security.rbac import get_current_user, require_lawyer
 
 _logger = get_logger("Router.Consultation")
@@ -75,7 +73,8 @@ async def create_session(
     user_id = current_user["user_id"]
     user_type = request.user_type if request.user_type else "suspect"
 
-    consultation_id = await consultation_service.create_consultation_record(session_id, user_id, user_type, db)
+    consultation_id = await consultation_service.create_consultation_record(session_id, user_id, user_type, db,
+        initial_message=request.initial_message, source=request.source)
 
     initial_state = validate_consultation_state(
         {
@@ -99,6 +98,9 @@ async def create_session(
     result = await consultation_service.start_session(initial_state)
     current_agent = result.get("current_agent", "Receptionist")
     welcome_message = result.get("final_output") or await consultation_service.generate_welcome_message(user_type)
+    await consultation_service.record_external_exchange(session_id, db=db, key="welcome", output=welcome_message,
+        input_content=request.initial_message,
+        metadata={"event": "creation", "initial_message_ingested": False, "source": request.source})
 
     _logger.info("【create_session】会话创建成功: session_id=%s, consultation_id=%s", session_id, consultation_id)
 
@@ -258,28 +260,22 @@ async def confirm_consent(
         )
         raise HTTPException(status_code=403, detail="无权访问此会话")
 
-    consultation_id = state.get("consultation_id")
-
-    if consultation_id:
-        consultation_result = await db.execute(select(Consultation).where(Consultation.id == consultation_id))
-        consultation = consultation_result.scalar_one_or_none()
-        if consultation:
-            consultation.consent_given = request.consent_given
-            await db.commit()
-
-    # 通过 resume_workflow 恢复，条件边 check_consent 自动路由
-    result = await consultation_service.process_consent(
-        session_id=session_id,
-        consent_given=request.consent_given,
-        identity_info=request.identity_info if request.consent_given else None,
-    )
-
     if request.consent_given:
         next_prompt = "感谢您的同意。请告诉我您的身份类型（嫌疑人、受害者或家属）和案件发生的大概城市。"
         conversation_started = False
     else:
         next_prompt = "如需继续使用咨询服务，请回复'同意'确认您已阅读并理解权利义务告知。"
         conversation_started = False
+
+    try:
+        result = await consultation_service.process_consent(
+            session_id=session_id, consent_given=request.consent_given,
+            identity_info=request.identity_info if request.consent_given else None,
+            db=db, raw_payload=request.model_dump(mode="json"), next_prompt=next_prompt,
+            idempotency_key=request.idempotency_key,
+        )
+    except consultation_service.IdempotencyConflictError as exc:
+        raise HTTPException(status_code=409, detail="幂等键已用于不同请求") from exc
 
     _logger.info(
         "【confirm_consent】隐私同意确认完成: session_id=%s, consent_given=%s",
@@ -467,6 +463,7 @@ async def lawyer_review(
             final_output=request.final_output if request.decision == "approved" else None,
             target_node=target_node,
             idempotency_key=request.idempotency_key,
+            transport="http",
         )
 
         is_finished = await orchestrator.is_workflow_finished(session_id)
@@ -616,6 +613,7 @@ async def close_session(
             actor_id=current_user["user_id"],
             reason=reason,
             idempotency_key=request.idempotency_key if request else None,
+            transport="http",
         )
     except consultation_service.LifecycleConsistencyError as exc:
         _logger.error("【close_session】关闭命令未完成: session_id=%s, error=%s", session_id, exc)

@@ -19,6 +19,7 @@ from app.consultation.agents.receptionist import receptionist_node
 from app.consultation.agents.risk_assessor import risk_assessor_node
 from app.consultation.agents.service_planner import service_planner_node
 from app.consultation.fact_data import get_fact_value
+from app.consultation.memory.context import node_context
 from app.consultation.schemas.law import CoverageCandidateSchema, LawDataSource
 from app.consultation.state import ConsultationState, validate_consultation_state
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
@@ -63,14 +64,21 @@ def _observed_node(
     """为 LangGraph 节点建立统一子 span。"""
 
     async def observed(state: ConsultationState) -> ConsultationState:
-        with trace_span(
+        with node_context(name, state), trace_span(
             trace_store,
             event_type="node",
             name=name,
             session_id=state.get("session_id", "unknown"),
             node=name,
         ):
-            return await node(state)
+            result = await node(state)
+            from app.consultation.memory.context import MemorySettings
+            limit = MemorySettings.from_env().recent_messages
+            result["conversation_history"] = result.get("conversation_history", [])[-limit:]
+            receipt = result.get("message_audit")
+            if receipt and receipt.get("status") == "running" and name in {"wait_for_user", "human_review", "human_alert"}:
+                result["message_audit"] = dict(receipt, status="applied", completed_at=datetime.now(timezone.utc).isoformat())
+            return result
 
     return observed
 
@@ -646,6 +654,8 @@ class ConsultationOrchestrator:
             raise ValueError(f"会话不存在: {session_id}")
 
         workflow_status = snapshot.values.get("workflow_status")
+        if (snapshot.values.get("message_audit") or {}).get("status") == "applied":
+            raise ValueError("消息审计未完成，必须只修复审计，不能再次推进工作流")
         if snapshot.values.get("repair_required") or workflow_status == "repair_required":
             raise ValueError(f"会话存在一致性错误，必须先重试生命周期命令完成修复: {session_id}")
         if workflow_status in {"closed", "completed"}:

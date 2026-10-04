@@ -594,6 +594,8 @@ class TestInterveneSession:
         _setup_db(mock_db_session, scalar_one_or_none=[c])
         mock_db_session.commit = AsyncMock()
         mock_db_session.add = MagicMock()
+        mock_db_session.scalar = AsyncMock(side_effect=[None, 0])
+        mock_db_session.flush = AsyncMock()
 
         async with AsyncClient(transport=ASGITransport(app=lawyer_app), base_url="http://test") as client_http:
             response = await client_http.post(

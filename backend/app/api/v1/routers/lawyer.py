@@ -57,6 +57,7 @@ async def _approve_report_command(
         final_output=final_output,
         feedback=feedback,
         idempotency_key=idempotency_key,
+        transport="http",
     )
 
 
@@ -79,6 +80,7 @@ async def _reject_session_command(
         target_node=target_node,
         feedback=feedback,
         idempotency_key=idempotency_key,
+        transport="http",
     )
 
 
@@ -226,7 +228,7 @@ async def get_session_detail(
     messages_result = await db.execute(
         select(ConsultationMessage)
         .where(ConsultationMessage.consultation_id == session_id)
-        .order_by(ConsultationMessage.created_at)
+        .order_by(ConsultationMessage.sequence.asc().nulls_first(), ConsultationMessage.created_at, ConsultationMessage.id)
     )
     messages = messages_result.scalars().all()
 
@@ -511,16 +513,10 @@ async def intervene_session(
 
     consultation.status = ConsultationStatus.IN_PROGRESS
 
-    message = ConsultationMessage(
-        consultation_id=session_id,
-        sender_type="lawyer",
-        sender_id=lawyer_id,
-        content="律师已人工接管此会话，正在处理中...",
-        message_type="system",
-    )
-    db.add(message)
-
-    await db.commit()
+    await consultation_service.record_internal_event(session_id,
+        getattr(consultation, "workflow_session_id", None) or session_id,
+        db=db, content="律师已人工接管此会话，正在处理中...", sender_type="lawyer",
+        sender_id=lawyer_id, event="manual_intervention")
 
     _logger.info("【intervene_session】会话接管成功: session_id=%s, lawyer_id=%s", session_id, lawyer_id)
 

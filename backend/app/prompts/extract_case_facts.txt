@@ -12,19 +12,13 @@
 - victim_forgiveness: 被害人是否谅解
 - prior_record: 是否有前科劣迹
 
-必须返回全部字段。字符串或布尔字段不明确时设为 null；列表字段不明确时使用空数组，不得省略字段：
-
-```json
-{
-  "incident_time": null,
-  "incident_location": null,
-  "parties": [],
-  "behavior_sequence": [],
-  "consequence": null,
-  "evidence_mentioned": [],
-  "arrest_status": null,
-  "surrender": null,
-  "victim_forgiveness": null,
-  "prior_record": null
-}
-```
+仅从本轮用户描述提取，不补写以前的陈述、助手建议或自行推断的信息。
+所有信息均是未核实的用户陈述；未核实不等于没有陈述，仍应填写用户明确说出的内容。
+保留明确陈述的相对时间（例如昨天晚上）和地点，不因没有证明材料而改成 null。
+脱敏标记（如 [NAME-MASKED]）不是地点或事件；不能把其他句子中的标记移入案件字段。
+地点更正时填写本轮更正后的地点；不要在字符串中自行合并新旧地点，历史由系统保留。
+明确否认前科或自首时，对应布尔值为 false；不知道、未提及或无法确认时为 null。
+证据线索保留用户所说的类型和描述，不推断其证明力、取得情况或真实性。
+parties、behavior_sequence、evidence_mentioned 必须是对象数组，不能返回字符串数组。
+必须返回全部字段：字符串或布尔字段未提及时为 null，列表字段未提及时为空数组。
+只返回根据当前描述填写的 JSON 对象，不输出说明、法律判断或空值示例。

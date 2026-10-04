@@ -3,6 +3,8 @@ from typing import List, Optional, TypedDict
 
 from pydantic import TypeAdapter, ValidationError
 
+from app.consultation.memory.schemas import MemoryState
+
 
 class ConsultationState(TypedDict, total=False):
     """LangGraph 工作流中供所有 Agent 共享的全局状态。"""
@@ -18,11 +20,15 @@ class ConsultationState(TypedDict, total=False):
 
     # 当前输入与多轮对话
     current_input: Optional[str]  # 用户最新一条输入消息，Agent 节点从中读取当前轮内容
+    current_message_id: Optional[str]  # 本轮外部消息来源 ID；内部调用可为空
+    memory: MemoryState  # checkpoint 唯一保存派生摘要、近期上下文与案件字段记忆
+    message_audit: Optional[dict]  # 有界待修复回执，修复不得再次运行图节点
+    lifecycle_audit: Optional[dict]  # 当前生命周期原始载荷，审计修复时复用
     conversation_history: List[dict]  # 对话历史记录，用于维护多轮对话的上下文
     pending_questions: List[str]  # 待提问的后续问题列表
 
     # 案件事实与构成要件覆盖度
-    facts_raw: List[str]  # 原始用户叙述段落，包含未经处理的案件描述
+    facts_raw: List[str]  # 脱敏近期陈述；完整外部原文以业务消息表为准
     facts_structured: dict  # 通过 LLM 函数调用提取的结构化案件事实
     facts_coverage_rate: Optional[float]  # 构成要件覆盖度（0.0-1.0），FactDigger 用于判断是否继续追问
     element_to_law_mapping: Optional[dict]  # 构成要件到法条的映射，LawRef 生成后供 FactDigger 计算覆盖度

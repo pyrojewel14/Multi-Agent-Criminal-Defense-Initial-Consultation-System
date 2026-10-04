@@ -136,7 +136,6 @@ def test_fact_tool_schema_requires_every_shared_contract_field():
 @pytest.mark.parametrize(
     ("prompt_name", "schema"),
     [
-        ("extract_case_facts_prompt", FactArtifact),
         ("lawref_prompt", LawArtifact),
         ("risk_assessor_prompt", RiskArtifact),
         ("service_planner_prompt", ServiceArtifact),

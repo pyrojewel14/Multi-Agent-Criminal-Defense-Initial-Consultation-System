@@ -97,7 +97,8 @@ async def service_planner_node(state: "ConsultationState") -> "ConsultationState
             facts_structured=facts_structured,
             applied_laws=applied_laws,
             risk_assessment=risk_assessment,
-            conversation_history=state.get("conversation_history", []),
+            # 近期对话和摘要由 Gateway 的 ContextBuilder 统一装配。
+            conversation_history=[],
         )
 
         # 加载 ServicePlanner 提示词

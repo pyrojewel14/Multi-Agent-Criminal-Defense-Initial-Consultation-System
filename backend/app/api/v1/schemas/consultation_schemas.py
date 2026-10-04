@@ -26,6 +26,7 @@ class MessageCreateRequest(BaseModel):
 
 class ConsultationResponse(BaseModel):
     id: str
+    workflow_session_id: Optional[str] = None
     client_id: str
     client_username: Optional[str] = None
     client_real_name: Optional[str] = None
@@ -53,6 +54,9 @@ class MessageResponse(BaseModel):
     content: str
     agent_name: Optional[str] = None
     message_type: str
+    sequence: Optional[int] = None
+    command_id: Optional[str] = None
+    record_kind: str = "legacy"
     created_at: datetime
 
     class Config:
@@ -131,6 +135,7 @@ class ConfirmConsentRequest(BaseModel):
     ip_address: Optional[str] = Field(None, description="IP地址")
     user_agent: Optional[str] = Field(None, description="用户代理信息")
     identity_info: Optional[dict] = Field(None, description="身份信息")
+    idempotency_key: Optional[str] = Field(None, min_length=1, max_length=128, description="客户端幂等键")
 
 
 class ConfirmConsentResponse(BaseModel):

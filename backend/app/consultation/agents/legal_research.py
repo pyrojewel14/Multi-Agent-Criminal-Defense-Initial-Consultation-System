@@ -425,6 +425,9 @@ async def run_legal_research(
             # 原生候选协议尚未通过事实支持控制，不作为应用默认行为放行。
             final_phase = final_protocol == "native_candidate" and bool(registry.observed)
             current_prompt, response_schema = _final_input(registry, safe_facts) if final_phase else (prompt, None)
+            if not final_phase and registry.observed:
+                # 工具消息可能按完整调用组淘汰；已读法条和要件保留为独立证据上下文。
+                current_prompt, _ = _final_input(registry, safe_facts)
             if final_phase:
                 final_attempts += 1
             try:
@@ -463,13 +466,15 @@ async def run_legal_research(
                     )
                 )
                 break
-            except Exception:
-                result.termination_reason = "dependency_failure"
+            except Exception as exc:
+                # 上下文预算拒绝与外部依赖失败分别留痕，不记录模型输入。
+                reason = "budget_exceeded" if getattr(exc, "detail", None) == "context_budget_exceeded" else "dependency_failure"
+                result.termination_reason = reason
                 result.trajectory.append(
                     AgentStep(
                         step=step_number,
                         model_decision="invalid",
-                        tool_status="dependency_failure",
+                        tool_status=reason,
                         latency_ms=round((time.monotonic() - step_started) * 1000, 3),
                     )
                 )

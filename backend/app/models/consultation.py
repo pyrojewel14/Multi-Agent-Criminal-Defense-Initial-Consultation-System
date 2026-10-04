@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -65,6 +65,7 @@ class Consultation(Base):
 
 class ConsultationMessage(Base):
     __tablename__ = "consultation_messages"
+    __table_args__ = (UniqueConstraint("consultation_id", "sequence", name="uq_message_sequence"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     consultation_id: Mapped[str] = mapped_column(String(36), ForeignKey("consultations.id"), nullable=False, index=True)
@@ -76,6 +77,10 @@ class ConsultationMessage(Base):
 
     agent_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     message_type: Mapped[str] = mapped_column(String(20), default="text")
+    sequence: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    command_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    record_kind: Mapped[str] = mapped_column(String(20), default="legacy", server_default="legacy")
+    record_metadata: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
