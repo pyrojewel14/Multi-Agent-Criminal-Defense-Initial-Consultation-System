@@ -1,0 +1,826 @@
+{
+  "schema": "full-retrieval-ablation-v1",
+  "created_at": "2026-10-02T11:38:35.259174+00:00",
+  "path": "LegalToolRegistry._search_laws -> search_laws_by_rag -> search_full_index",
+  "scope": "candidate statutory retrieval only; not legal judgment or production acceptance",
+  "case_file_sha256": "sha256:c5637d38c67d499b8bcfbc2b2770d148535080c33de983a2653aeb3b02dd1506",
+  "case_ids": [
+    "phone_taken"
+  ],
+  "case_timeout_seconds": 120,
+  "modes": {
+    "hybrid_rerank": {
+      "rows": [
+        {
+          "id": "phone_taken",
+          "category": "colloquial",
+          "query": "趁店员转身，我把柜台上的手机塞进包里带走了，后来被找到了。",
+          "article_ids": [
+            "第64条",
+            "第270条",
+            "第441条",
+            "第310条",
+            "第16条"
+          ],
+          "candidates": [
+            {
+              "article_id": "第64条",
+              "title": "犯罪物品与违法所得的处理",
+              "score": 0.44158104062080383,
+              "rank": 1,
+              "fusion_score": 0.014492753623188406,
+              "rerank_score": 0.44158104062080383,
+              "recall_ranks": {
+                "vector": 9
+              },
+              "recall_scores": {
+                "vector": 0.6047364473342896
+              },
+              "retrieval_status": {
+                "mode": "hybrid",
+                "vector": "executed",
+                "bm25": "executed",
+                "hyde": "disabled",
+                "rerank": "executed",
+                "degraded": false,
+                "integrity_verified": true,
+                "embedding_model": "qwen3-embedding:0.6b",
+                "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+                "tokenizer": "cjk-char-bigram-v1",
+                "recall_counts": {
+                  "vector": 20,
+                  "bm25": 20
+                },
+                "method": "hybrid_index",
+                "candidate_count": 40,
+                "keyword_recall_count": 0,
+                "rerank_protocol": "qwen3-yes-no-token-ids-v1"
+              },
+              "article_status": "active",
+              "coverage_eligible": false,
+              "provenance": {
+                "corpus_version": "2026-09-30.2.integration1",
+                "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+                "content_sha256": "sha256:d9243395b6bd4c6f4953e56c28207aa53a793d0ec38912ac01973cb2e6742d0a",
+                "official_text_source": "criminal-law-consolidated-amendment-12",
+                "text_provenance": {
+                  "source_id": "criminal-law-consolidated-amendment-12",
+                  "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                  "review_status": "source_attributed",
+                  "validation_status": "program_checked",
+                  "legal_review_status": "pending",
+                  "content_sha256": "sha256:d9243395b6bd4c6f4953e56c28207aa53a793d0ec38912ac01973cb2e6742d0a",
+                  "applicability": {
+                    "consolidation_effective_from": "2024-03-01",
+                    "effective_to": null,
+                    "scope": "consolidated_version_not_individual_article_commencement"
+                  }
+                },
+                "source": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                "text_review_status": "source_attributed",
+                "legal_review_status": "pending"
+              },
+              "source": "text_only",
+              "retrieval_method": "hybrid_index",
+              "fingerprint": "sha256:ba8f652556b3bc4742632371835fe80bb713728eef57bd95a76067a86f804ee5"
+            },
+            {
+              "article_id": "第270条",
+              "title": "侵占罪",
+              "score": 0.24466459453105927,
+              "rank": 2,
+              "fusion_score": 0.01639344262295082,
+              "rerank_score": 0.24466459453105927,
+              "recall_ranks": {
+                "vector": 1
+              },
+              "recall_scores": {
+                "vector": 0.5176423192024231
+              },
+              "retrieval_status": {
+                "mode": "hybrid",
+                "vector": "executed",
+                "bm25": "executed",
+                "hyde": "disabled",
+                "rerank": "executed",
+                "degraded": false,
+                "integrity_verified": true,
+                "embedding_model": "qwen3-embedding:0.6b",
+                "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+                "tokenizer": "cjk-char-bigram-v1",
+                "recall_counts": {
+                  "vector": 20,
+                  "bm25": 20
+                },
+                "method": "hybrid_index",
+                "candidate_count": 40,
+                "keyword_recall_count": 0,
+                "rerank_protocol": "qwen3-yes-no-token-ids-v1"
+              },
+              "article_status": "active",
+              "coverage_eligible": false,
+              "provenance": {
+                "corpus_version": "2026-09-30.2.integration1",
+                "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+                "content_sha256": "sha256:71d7a81a0d5d40c3021ee7eaea19e75c8147a28af0c9a219823ffdf541202664",
+                "official_text_source": "criminal-law-consolidated-amendment-12",
+                "text_provenance": {
+                  "source_id": "criminal-law-consolidated-amendment-12",
+                  "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                  "review_status": "source_attributed",
+                  "validation_status": "program_checked",
+                  "legal_review_status": "pending",
+                  "content_sha256": "sha256:71d7a81a0d5d40c3021ee7eaea19e75c8147a28af0c9a219823ffdf541202664",
+                  "applicability": {
+                    "consolidation_effective_from": "2024-03-01",
+                    "effective_to": null,
+                    "scope": "consolidated_version_not_individual_article_commencement"
+                  }
+                },
+                "source": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                "text_review_status": "source_attributed",
+                "legal_review_status": "pending"
+              },
+              "source": "text_only",
+              "retrieval_method": "hybrid_index",
+              "fingerprint": "sha256:41fca546254e63c1681242ba09261dabf323f55b6d2b28861955f95a80a47b31"
+            },
+            {
+              "article_id": "第441条",
+              "title": "遗失武器装备罪",
+              "score": 0.092649444937706,
+              "rank": 3,
+              "fusion_score": 0.013513513513513514,
+              "rerank_score": 0.092649444937706,
+              "recall_ranks": {
+                "vector": 14
+              },
+              "recall_scores": {
+                "vector": 0.6202083826065063
+              },
+              "retrieval_status": {
+                "mode": "hybrid",
+                "vector": "executed",
+                "bm25": "executed",
+                "hyde": "disabled",
+                "rerank": "executed",
+                "degraded": false,
+                "integrity_verified": true,
+                "embedding_model": "qwen3-embedding:0.6b",
+                "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+                "tokenizer": "cjk-char-bigram-v1",
+                "recall_counts": {
+                  "vector": 20,
+                  "bm25": 20
+                },
+                "method": "hybrid_index",
+                "candidate_count": 40,
+                "keyword_recall_count": 0,
+                "rerank_protocol": "qwen3-yes-no-token-ids-v1"
+              },
+              "article_status": "active",
+              "coverage_eligible": false,
+              "provenance": {
+                "corpus_version": "2026-09-30.2.integration1",
+                "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+                "content_sha256": "sha256:c622c2a152f513c9289fd2a7ca3bf69be2472d2513415824588179cdc1b4ae0c",
+                "official_text_source": "criminal-law-consolidated-amendment-12",
+                "text_provenance": {
+                  "source_id": "criminal-law-consolidated-amendment-12",
+                  "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                  "review_status": "source_attributed",
+                  "validation_status": "program_checked",
+                  "legal_review_status": "pending",
+                  "content_sha256": "sha256:c622c2a152f513c9289fd2a7ca3bf69be2472d2513415824588179cdc1b4ae0c",
+                  "applicability": {
+                    "consolidation_effective_from": "2024-03-01",
+                    "effective_to": null,
+                    "scope": "consolidated_version_not_individual_article_commencement"
+                  }
+                },
+                "source": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                "text_review_status": "source_attributed",
+                "legal_review_status": "pending"
+              },
+              "source": "text_only",
+              "retrieval_method": "hybrid_index",
+              "fingerprint": "sha256:418054b1d47dd863b5c9b69cbeccecf36caf618ee0a329de52015be51ffccc22"
+            },
+            {
+              "article_id": "第310条",
+              "title": "窝藏、包庇罪",
+              "score": 0.08840800076723099,
+              "rank": 4,
+              "fusion_score": 0.014084507042253521,
+              "rerank_score": 0.08840800076723099,
+              "recall_ranks": {
+                "vector": 11
+              },
+              "recall_scores": {
+                "vector": 0.6122111082077026
+              },
+              "retrieval_status": {
+                "mode": "hybrid",
+                "vector": "executed",
+                "bm25": "executed",
+                "hyde": "disabled",
+                "rerank": "executed",
+                "degraded": false,
+                "integrity_verified": true,
+                "embedding_model": "qwen3-embedding:0.6b",
+                "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+                "tokenizer": "cjk-char-bigram-v1",
+                "recall_counts": {
+                  "vector": 20,
+                  "bm25": 20
+                },
+                "method": "hybrid_index",
+                "candidate_count": 40,
+                "keyword_recall_count": 0,
+                "rerank_protocol": "qwen3-yes-no-token-ids-v1"
+              },
+              "article_status": "active",
+              "coverage_eligible": false,
+              "provenance": {
+                "corpus_version": "2026-09-30.2.integration1",
+                "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+                "content_sha256": "sha256:c2579c8298e7e392e1632ca46607c12c509bf0c220e89490544dcd9b7afa705d",
+                "official_text_source": "criminal-law-consolidated-amendment-12",
+                "text_provenance": {
+                  "source_id": "criminal-law-consolidated-amendment-12",
+                  "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                  "review_status": "source_attributed",
+                  "validation_status": "program_checked",
+                  "legal_review_status": "pending",
+                  "content_sha256": "sha256:c2579c8298e7e392e1632ca46607c12c509bf0c220e89490544dcd9b7afa705d",
+                  "applicability": {
+                    "consolidation_effective_from": "2024-03-01",
+                    "effective_to": null,
+                    "scope": "consolidated_version_not_individual_article_commencement"
+                  }
+                },
+                "source": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                "text_review_status": "source_attributed",
+                "legal_review_status": "pending"
+              },
+              "source": "text_only",
+              "retrieval_method": "hybrid_index",
+              "fingerprint": "sha256:6ece955ff5e23b4ae83ed8052ec7d3e9a8ec75cd0408a741fceebb8623dc03d9"
+            },
+            {
+              "article_id": "第16条",
+              "title": "不可抗力与意外事件",
+              "score": 0.04063558951020241,
+              "rank": 5,
+              "fusion_score": 0.014285714285714285,
+              "rerank_score": 0.04063558951020241,
+              "recall_ranks": {
+                "bm25": 10
+              },
+              "recall_scores": {
+                "bm25": 15.456406832835075
+              },
+              "retrieval_status": {
+                "mode": "hybrid",
+                "vector": "executed",
+                "bm25": "executed",
+                "hyde": "disabled",
+                "rerank": "executed",
+                "degraded": false,
+                "integrity_verified": true,
+                "embedding_model": "qwen3-embedding:0.6b",
+                "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+                "tokenizer": "cjk-char-bigram-v1",
+                "recall_counts": {
+                  "vector": 20,
+                  "bm25": 20
+                },
+                "method": "hybrid_index",
+                "candidate_count": 40,
+                "keyword_recall_count": 0,
+                "rerank_protocol": "qwen3-yes-no-token-ids-v1"
+              },
+              "article_status": "active",
+              "coverage_eligible": false,
+              "provenance": {
+                "corpus_version": "2026-09-30.2.integration1",
+                "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+                "content_sha256": "sha256:2cd83c8be5f99d921ad77908eacf3e5db0817ea4eab72ee99d09a07602ef776b",
+                "official_text_source": "criminal-law-consolidated-amendment-12",
+                "text_provenance": {
+                  "source_id": "criminal-law-consolidated-amendment-12",
+                  "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                  "review_status": "source_attributed",
+                  "validation_status": "program_checked",
+                  "legal_review_status": "pending",
+                  "content_sha256": "sha256:2cd83c8be5f99d921ad77908eacf3e5db0817ea4eab72ee99d09a07602ef776b",
+                  "applicability": {
+                    "consolidation_effective_from": "2024-03-01",
+                    "effective_to": null,
+                    "scope": "consolidated_version_not_individual_article_commencement"
+                  }
+                },
+                "source": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                "text_review_status": "source_attributed",
+                "legal_review_status": "pending"
+              },
+              "source": "text_only",
+              "retrieval_method": "hybrid_index",
+              "fingerprint": "sha256:9d380f2c81a89050b5125a08414bb5c4128e6c3e6d1d3536e9c9888e3abdf3cb"
+            }
+          ],
+          "retrieval_status": {
+            "mode": "hybrid",
+            "vector": "executed",
+            "bm25": "executed",
+            "hyde": "disabled",
+            "rerank": "executed",
+            "degraded": false,
+            "integrity_verified": true,
+            "embedding_model": "qwen3-embedding:0.6b",
+            "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+            "tokenizer": "cjk-char-bigram-v1",
+            "recall_counts": {
+              "vector": 20,
+              "bm25": 20
+            },
+            "method": "hybrid_index",
+            "candidate_count": 40,
+            "keyword_recall_count": 0,
+            "rerank_protocol": "qwen3-yes-no-token-ids-v1"
+          },
+          "rag_dependency_failed": false,
+          "latency_ms": 11495.766,
+          "metrics": {
+            "recall_at_1": 0.0,
+            "recall_at_5": 0.0,
+            "mrr": 0.0
+          }
+        }
+      ],
+      "summary": {
+        "case_count": 1,
+        "scored_count": 1,
+        "recall_at_1": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "failed_count": 0,
+        "degraded_count": 0,
+        "latency_mean_ms": 11495.766,
+        "latency_p95_ms": 11495.766,
+        "stage_states": {
+          "vector": {
+            "executed": 1
+          },
+          "bm25": {
+            "executed": 1
+          },
+          "rerank": {
+            "executed": 1
+          },
+          "hyde": {
+            "disabled": 1
+          }
+        }
+      }
+    },
+    "hybrid_rerank_hyde": {
+      "rows": [
+        {
+          "id": "phone_taken",
+          "category": "colloquial",
+          "query": "趁店员转身，我把柜台上的手机塞进包里带走了，后来被找到了。",
+          "article_ids": [
+            "第264条",
+            "第269条",
+            "第266条",
+            "第64条",
+            "第267条"
+          ],
+          "candidates": [
+            {
+              "article_id": "第264条",
+              "title": "盗窃罪",
+              "score": 0.9976592063903809,
+              "rank": 1,
+              "fusion_score": 0.01639344262295082,
+              "rerank_score": 0.9976592063903809,
+              "recall_ranks": {
+                "hyde": 1
+              },
+              "recall_scores": {
+                "hyde": 0.10271745920181274
+              },
+              "retrieval_status": {
+                "mode": "hybrid",
+                "vector": "executed",
+                "bm25": "executed",
+                "hyde": "executed",
+                "rerank": "executed",
+                "degraded": false,
+                "integrity_verified": true,
+                "embedding_model": "qwen3-embedding:0.6b",
+                "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+                "tokenizer": "cjk-char-bigram-v1",
+                "hyde_attempt_count": 1,
+                "recall_counts": {
+                  "vector": 20,
+                  "bm25": 20,
+                  "hyde": 10
+                },
+                "method": "hybrid_index",
+                "candidate_count": 49,
+                "keyword_recall_count": 0,
+                "rerank_protocol": "qwen3-yes-no-token-ids-v1"
+              },
+              "article_status": "active",
+              "coverage_eligible": true,
+              "provenance": {
+                "corpus_version": "2026-09-30.2.integration1",
+                "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+                "content_sha256": "sha256:e8039bad3e0b6a6c106e5a42f90166f9c2bf1c276b3ea5366749c39ce0e9d9d8",
+                "official_text_source": "criminal-law-consolidated-amendment-12",
+                "text_provenance": {
+                  "source_id": "criminal-law-consolidated-amendment-12",
+                  "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                  "review_status": "source_attributed",
+                  "validation_status": "program_checked",
+                  "legal_review_status": "pending",
+                  "content_sha256": "sha256:e8039bad3e0b6a6c106e5a42f90166f9c2bf1c276b3ea5366749c39ce0e9d9d8",
+                  "applicability": {
+                    "consolidation_effective_from": "2024-03-01",
+                    "effective_to": null,
+                    "scope": "consolidated_version_not_individual_article_commencement"
+                  }
+                },
+                "source": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                "text_review_status": "source_attributed",
+                "legal_review_status": "pending"
+              },
+              "source": "rag_verified",
+              "retrieval_method": "hybrid_index",
+              "fingerprint": "sha256:c0e83852ccbfed677cbacd0c5e22198cc8e265204243586886b0ec20fba9b597"
+            },
+            {
+              "article_id": "第269条",
+              "title": "转化的抢劫罪",
+              "score": 0.9648901224136353,
+              "rank": 2,
+              "fusion_score": 0.014925373134328358,
+              "rerank_score": 0.9648901224136353,
+              "recall_ranks": {
+                "hyde": 7
+              },
+              "recall_scores": {
+                "hyde": 0.3343459367752075
+              },
+              "retrieval_status": {
+                "mode": "hybrid",
+                "vector": "executed",
+                "bm25": "executed",
+                "hyde": "executed",
+                "rerank": "executed",
+                "degraded": false,
+                "integrity_verified": true,
+                "embedding_model": "qwen3-embedding:0.6b",
+                "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+                "tokenizer": "cjk-char-bigram-v1",
+                "hyde_attempt_count": 1,
+                "recall_counts": {
+                  "vector": 20,
+                  "bm25": 20,
+                  "hyde": 10
+                },
+                "method": "hybrid_index",
+                "candidate_count": 49,
+                "keyword_recall_count": 0,
+                "rerank_protocol": "qwen3-yes-no-token-ids-v1"
+              },
+              "article_status": "active",
+              "coverage_eligible": false,
+              "provenance": {
+                "corpus_version": "2026-09-30.2.integration1",
+                "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+                "content_sha256": "sha256:b89fbaa352b9f73a6b6e942dd98f0bc8743945dee2853ec24234555c08038cab",
+                "official_text_source": "criminal-law-consolidated-amendment-12",
+                "text_provenance": {
+                  "source_id": "criminal-law-consolidated-amendment-12",
+                  "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                  "review_status": "source_attributed",
+                  "validation_status": "program_checked",
+                  "legal_review_status": "pending",
+                  "content_sha256": "sha256:b89fbaa352b9f73a6b6e942dd98f0bc8743945dee2853ec24234555c08038cab",
+                  "applicability": {
+                    "consolidation_effective_from": "2024-03-01",
+                    "effective_to": null,
+                    "scope": "consolidated_version_not_individual_article_commencement"
+                  }
+                },
+                "source": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                "text_review_status": "source_attributed",
+                "legal_review_status": "pending"
+              },
+              "source": "text_only",
+              "retrieval_method": "hybrid_index",
+              "fingerprint": "sha256:8ccc43b93c75c02473b26559209d930af735c0ae6637b59c541e741f0d5b38b2"
+            },
+            {
+              "article_id": "第266条",
+              "title": "诈骗罪",
+              "score": 0.8713191747665405,
+              "rank": 3,
+              "fusion_score": 0.015873015873015872,
+              "rerank_score": 0.8713191747665405,
+              "recall_ranks": {
+                "hyde": 3
+              },
+              "recall_scores": {
+                "hyde": 0.3073500990867615
+              },
+              "retrieval_status": {
+                "mode": "hybrid",
+                "vector": "executed",
+                "bm25": "executed",
+                "hyde": "executed",
+                "rerank": "executed",
+                "degraded": false,
+                "integrity_verified": true,
+                "embedding_model": "qwen3-embedding:0.6b",
+                "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+                "tokenizer": "cjk-char-bigram-v1",
+                "hyde_attempt_count": 1,
+                "recall_counts": {
+                  "vector": 20,
+                  "bm25": 20,
+                  "hyde": 10
+                },
+                "method": "hybrid_index",
+                "candidate_count": 49,
+                "keyword_recall_count": 0,
+                "rerank_protocol": "qwen3-yes-no-token-ids-v1"
+              },
+              "article_status": "active",
+              "coverage_eligible": true,
+              "provenance": {
+                "corpus_version": "2026-09-30.2.integration1",
+                "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+                "content_sha256": "sha256:351dde6bd8cebcb90b46e0af30ec6221759eab226f1f0e00691a5bc830a5c0ea",
+                "official_text_source": "criminal-law-consolidated-amendment-12",
+                "text_provenance": {
+                  "source_id": "criminal-law-consolidated-amendment-12",
+                  "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                  "review_status": "source_attributed",
+                  "validation_status": "program_checked",
+                  "legal_review_status": "pending",
+                  "content_sha256": "sha256:351dde6bd8cebcb90b46e0af30ec6221759eab226f1f0e00691a5bc830a5c0ea",
+                  "applicability": {
+                    "consolidation_effective_from": "2024-03-01",
+                    "effective_to": null,
+                    "scope": "consolidated_version_not_individual_article_commencement"
+                  }
+                },
+                "source": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                "text_review_status": "source_attributed",
+                "legal_review_status": "pending"
+              },
+              "source": "rag_verified",
+              "retrieval_method": "hybrid_index",
+              "fingerprint": "sha256:dcbd6ae201a2960e4c7f0e7956be39fc9ceb82b34955ec3b526f1d8e206ff9a5"
+            },
+            {
+              "article_id": "第64条",
+              "title": "犯罪物品与违法所得的处理",
+              "score": 0.44158104062080383,
+              "rank": 4,
+              "fusion_score": 0.014492753623188406,
+              "rerank_score": 0.44158104062080383,
+              "recall_ranks": {
+                "vector": 9
+              },
+              "recall_scores": {
+                "vector": 0.6047933101654053
+              },
+              "retrieval_status": {
+                "mode": "hybrid",
+                "vector": "executed",
+                "bm25": "executed",
+                "hyde": "executed",
+                "rerank": "executed",
+                "degraded": false,
+                "integrity_verified": true,
+                "embedding_model": "qwen3-embedding:0.6b",
+                "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+                "tokenizer": "cjk-char-bigram-v1",
+                "hyde_attempt_count": 1,
+                "recall_counts": {
+                  "vector": 20,
+                  "bm25": 20,
+                  "hyde": 10
+                },
+                "method": "hybrid_index",
+                "candidate_count": 49,
+                "keyword_recall_count": 0,
+                "rerank_protocol": "qwen3-yes-no-token-ids-v1"
+              },
+              "article_status": "active",
+              "coverage_eligible": false,
+              "provenance": {
+                "corpus_version": "2026-09-30.2.integration1",
+                "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+                "content_sha256": "sha256:d9243395b6bd4c6f4953e56c28207aa53a793d0ec38912ac01973cb2e6742d0a",
+                "official_text_source": "criminal-law-consolidated-amendment-12",
+                "text_provenance": {
+                  "source_id": "criminal-law-consolidated-amendment-12",
+                  "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                  "review_status": "source_attributed",
+                  "validation_status": "program_checked",
+                  "legal_review_status": "pending",
+                  "content_sha256": "sha256:d9243395b6bd4c6f4953e56c28207aa53a793d0ec38912ac01973cb2e6742d0a",
+                  "applicability": {
+                    "consolidation_effective_from": "2024-03-01",
+                    "effective_to": null,
+                    "scope": "consolidated_version_not_individual_article_commencement"
+                  }
+                },
+                "source": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                "text_review_status": "source_attributed",
+                "legal_review_status": "pending"
+              },
+              "source": "text_only",
+              "retrieval_method": "hybrid_index",
+              "fingerprint": "sha256:ba8f652556b3bc4742632371835fe80bb713728eef57bd95a76067a86f804ee5"
+            },
+            {
+              "article_id": "第267条",
+              "title": "抢夺罪",
+              "score": 0.3760903775691986,
+              "rank": 5,
+              "fusion_score": 0.016129032258064516,
+              "rerank_score": 0.3760903775691986,
+              "recall_ranks": {
+                "hyde": 2
+              },
+              "recall_scores": {
+                "hyde": 0.2692788243293762
+              },
+              "retrieval_status": {
+                "mode": "hybrid",
+                "vector": "executed",
+                "bm25": "executed",
+                "hyde": "executed",
+                "rerank": "executed",
+                "degraded": false,
+                "integrity_verified": true,
+                "embedding_model": "qwen3-embedding:0.6b",
+                "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+                "tokenizer": "cjk-char-bigram-v1",
+                "hyde_attempt_count": 1,
+                "recall_counts": {
+                  "vector": 20,
+                  "bm25": 20,
+                  "hyde": 10
+                },
+                "method": "hybrid_index",
+                "candidate_count": 49,
+                "keyword_recall_count": 0,
+                "rerank_protocol": "qwen3-yes-no-token-ids-v1"
+              },
+              "article_status": "active",
+              "coverage_eligible": false,
+              "provenance": {
+                "corpus_version": "2026-09-30.2.integration1",
+                "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+                "content_sha256": "sha256:718af1b5c45c30d81797397edc33c800a66ebb5f6d09ca1b45beb29d3a64ef6b",
+                "official_text_source": "criminal-law-consolidated-amendment-12",
+                "text_provenance": {
+                  "source_id": "criminal-law-consolidated-amendment-12",
+                  "url": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                  "review_status": "source_attributed",
+                  "validation_status": "program_checked",
+                  "legal_review_status": "pending",
+                  "content_sha256": "sha256:718af1b5c45c30d81797397edc33c800a66ebb5f6d09ca1b45beb29d3a64ef6b",
+                  "applicability": {
+                    "consolidation_effective_from": "2024-03-01",
+                    "effective_to": null,
+                    "scope": "consolidated_version_not_individual_article_commencement"
+                  }
+                },
+                "source": "https://fgw.sh.gov.cn/cmsres/cb/cba3dfde07c1437c9c55f9ec15f91e11/51e0f21bda99e0b7e33eaa22e4cc9f4e.pdf",
+                "text_review_status": "source_attributed",
+                "legal_review_status": "pending"
+              },
+              "source": "text_only",
+              "retrieval_method": "hybrid_index",
+              "fingerprint": "sha256:8f73376fe758feaf9d20c0d852957ddb972ecf40f44031cf002d564cf8bc58f8"
+            }
+          ],
+          "retrieval_status": {
+            "mode": "hybrid",
+            "vector": "executed",
+            "bm25": "executed",
+            "hyde": "executed",
+            "rerank": "executed",
+            "degraded": false,
+            "integrity_verified": true,
+            "embedding_model": "qwen3-embedding:0.6b",
+            "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+            "tokenizer": "cjk-char-bigram-v1",
+            "hyde_attempt_count": 1,
+            "recall_counts": {
+              "vector": 20,
+              "bm25": 20,
+              "hyde": 10
+            },
+            "method": "hybrid_index",
+            "candidate_count": 49,
+            "keyword_recall_count": 0,
+            "rerank_protocol": "qwen3-yes-no-token-ids-v1"
+          },
+          "rag_dependency_failed": false,
+          "latency_ms": 11335.968,
+          "metrics": {
+            "recall_at_1": 1.0,
+            "recall_at_5": 1.0,
+            "mrr": 1.0
+          }
+        }
+      ],
+      "summary": {
+        "case_count": 1,
+        "scored_count": 1,
+        "recall_at_1": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "failed_count": 0,
+        "degraded_count": 0,
+        "latency_mean_ms": 11335.968,
+        "latency_p95_ms": 11335.968,
+        "stage_states": {
+          "vector": {
+            "executed": 1
+          },
+          "bm25": {
+            "executed": 1
+          },
+          "rerank": {
+            "executed": 1
+          },
+          "hyde": {
+            "executed": 1
+          }
+        }
+      }
+    }
+  },
+  "complete": true,
+  "identity": {
+    "index_manifest": {
+      "schema_version": "full-index-v1",
+      "corpus_version": "2026-09-30.2.integration1",
+      "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+      "official_text_source": "criminal-law-consolidated-amendment-12",
+      "document_count": 504,
+      "excluded_article_ids": [
+        "第199条"
+      ],
+      "collection": "criminal_law_full",
+      "embedding_engine": "ollama",
+      "embedding_model": "qwen3-embedding:0.6b",
+      "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+      "embedding_dimension": 1024,
+      "documents_sha256": "sha256:913a6682b01fe140ce353f215c6f4d4f6118ec236ec84af7ef6b756285566d95",
+      "embeddings_sha256": "sha256:b4540a5781b39d0f6362c03a565a4451752de5b877cbf0311b1e64077a6dad02",
+      "legal_review_completed": false
+    },
+    "retrieval_code_sha256": {
+      "backend/app/knowledge/full_law_index.py": "sha256:7950ee9e0d51c00694907f714787386403b36410105225900f393064d4dfeeee",
+      "backend/app/knowledge/full_law_retrieval.py": "sha256:60a3885bfefc16e2a527cadb842f362209d82decea87f2ae2b855693ad3dcdbc",
+      "backend/app/knowledge/full_law_reranker.py": "sha256:76889b260d88f4f7f7bed886fd006b8c8cfda32f5ce6e528ac220bfad3ae13ed",
+      "backend/app/knowledge/law_retrieval.py": "sha256:787700a9d41cee772086b95262d2fcc2c64adffbe33b6b203c91cda9b30ff7ad",
+      "backend/app/consultation/agents/legal_research.py": "sha256:362a70b5d4f74bb3abe4ac3774debc801704abb6cdebaeb68428406deead205f"
+    },
+    "reranker_model": "Qwen/Qwen3-Reranker-0.6B",
+    "reranker_files": {
+      "model.safetensors": "sha256:27cd75a405b9c1b46b59abfd88aaa209e6fed2a1972cde9b70e7659537c5e65b"
+    },
+    "reranker_config_sha256": "sha256:d479c427a9ca5295218063d4f9aca4f297ab4ac27487cca7af42c84643d51ef0",
+    "reranker_tokenizer_sha256": "sha256:aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "reranker_template_sha256": "sha256:5f091c59aacde855296202831a8ace490bffcee6c5562ae03b6ffe095611d06b",
+    "reranker_instruction": "Given a criminal law search query, retrieve relevant statutory provisions for further review",
+    "reranker_decision_tokens": {
+      "yes": 9693,
+      "no": 2152
+    },
+    "reranker_max_length": 512,
+    "hyde_model": "qwen3.5:0.8b",
+    "recall_k": 20,
+    "rerank_timeout_seconds": 30.0,
+    "hyde_timeout_seconds": 10.0,
+    "hyde_call_budget": 1,
+    "baseline_contract": "vector top5 + JSON verification + keyword merge + legacy source priority + top5",
+    "actual_model_digests": {
+      "qwen3.5:0.8b": "f3817196d142eaf72ce79dfebe53dcb20bd21da87ce13e138a8f8e10a866b3a4",
+      "qwen3-embedding:0.6b": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d"
+    }
+  }
+}

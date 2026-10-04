@@ -1,0 +1,225 @@
+{
+  "schema": "full-retrieval-verification-v1",
+  "created_at": "2026-10-02T11:37:24.946190+00:00",
+  "final_ablation_sha256": "sha256:9881259cc4b40cb2d3de1b9ae9656221dca3c31eb5907ca30af1f4499e916e6f",
+  "code_snapshot_matches": true,
+  "case_snapshot_matches": true,
+  "boundary_checks": {
+    "vector": {
+      "repealed": true,
+      "nonexistent": true,
+      "empty": true,
+      "parent_suffix_distinct": true
+    },
+    "hybrid": {
+      "repealed": true,
+      "nonexistent": true,
+      "empty": true,
+      "parent_suffix_distinct": true
+    },
+    "hybrid_rerank": {
+      "repealed": true,
+      "nonexistent": true,
+      "empty": true,
+      "parent_suffix_distinct": true
+    },
+    "hybrid_rerank_hyde": {
+      "repealed": true,
+      "nonexistent": true,
+      "empty": true,
+      "parent_suffix_distinct": true
+    }
+  },
+  "natural_language_summaries": {
+    "vector": {
+      "case_count": 26,
+      "scored_count": 24,
+      "recall_at_1": 0.4583333333333333,
+      "recall_at_5": 0.8125,
+      "mrr": 0.6194444444444445,
+      "failed_count": 0,
+      "degraded_count": 0,
+      "latency_mean_ms": 379.3172692307692,
+      "latency_p95_ms": 391.775,
+      "stage_states": {
+        "vector": {
+          "executed": 25,
+          "skipped_empty": 1
+        },
+        "bm25": {
+          "disabled": 26
+        },
+        "rerank": {
+          "disabled": 25,
+          "skipped_empty": 1
+        },
+        "hyde": {
+          "disabled": 25,
+          "skipped_empty": 1
+        }
+      }
+    },
+    "hybrid": {
+      "case_count": 26,
+      "scored_count": 24,
+      "recall_at_1": 0.3125,
+      "recall_at_5": 0.75,
+      "mrr": 0.47847222222222224,
+      "failed_count": 0,
+      "degraded_count": 0,
+      "latency_mean_ms": 384.75738461538464,
+      "latency_p95_ms": 462.443,
+      "stage_states": {
+        "vector": {
+          "executed": 25,
+          "skipped_empty": 1
+        },
+        "bm25": {
+          "executed": 25,
+          "disabled": 1
+        },
+        "rerank": {
+          "disabled": 25,
+          "skipped_empty": 1
+        },
+        "hyde": {
+          "disabled": 25,
+          "skipped_empty": 1
+        }
+      }
+    },
+    "hybrid_rerank": {
+      "case_count": 26,
+      "scored_count": 24,
+      "recall_at_1": 0.7291666666666666,
+      "recall_at_5": 0.9583333333333334,
+      "mrr": 0.8472222222222222,
+      "failed_count": 0,
+      "degraded_count": 0,
+      "latency_mean_ms": 10179.570884615385,
+      "latency_p95_ms": 17191.89,
+      "stage_states": {
+        "vector": {
+          "executed": 25,
+          "skipped_empty": 1
+        },
+        "bm25": {
+          "executed": 25,
+          "disabled": 1
+        },
+        "rerank": {
+          "executed": 25,
+          "skipped_empty": 1
+        },
+        "hyde": {
+          "disabled": 25,
+          "skipped_empty": 1
+        }
+      }
+    },
+    "hybrid_rerank_hyde": {
+      "case_count": 26,
+      "scored_count": 24,
+      "recall_at_1": 0.7291666666666666,
+      "recall_at_5": 1.0,
+      "mrr": 0.8680555555555556,
+      "failed_count": 0,
+      "degraded_count": 0,
+      "latency_mean_ms": 13134.327730769231,
+      "latency_p95_ms": 17302.487,
+      "stage_states": {
+        "vector": {
+          "executed": 25,
+          "skipped_empty": 1
+        },
+        "bm25": {
+          "executed": 25,
+          "disabled": 1
+        },
+        "rerank": {
+          "executed": 25,
+          "skipped_empty": 1
+        },
+        "hyde": {
+          "executed": 25,
+          "skipped_empty": 1
+        }
+      }
+    }
+  },
+  "validation": [
+    {
+      "command": "pytest -q tests/knowledge/test_full_law_retrieval.py tests/knowledge/test_full_law_corpus.py tests/consultation/agents/test_legal_research.py ../evaluation/test_full_retrieval_ablation.py ../evaluation/test_full_index.py",
+      "cwd": "backend",
+      "exit_code": 0,
+      "passed": 73,
+      "kind": "contract/dependency substitutes plus actual local tokenizer; not live model quality"
+    },
+    {
+      "command": "pytest -q tests/knowledge tests/consultation/agents/test_legal_research.py",
+      "cwd": "backend",
+      "exit_code": 0,
+      "passed": 394
+    },
+    {
+      "command": "pytest -q evaluation/test_full_retrieval_ablation.py evaluation/test_full_index.py evaluation/test_full_eval.py evaluation/test_full_text.py",
+      "cwd": ".",
+      "exit_code": 0,
+      "passed": 11
+    },
+    {
+      "command": "pytest",
+      "cwd": "backend",
+      "exit_code": 1,
+      "passed": 1417,
+      "failed": 2,
+      "failures": [
+        "tests/integration/test_concurrent_consistency.py::test_rate_limiter_concurrency",
+        "tests/integration/test_concurrent_consistency.py::test_redis_connection_pool_stress"
+      ],
+      "boundary": "sandbox denied loopback Redis connection with Operation not permitted; raw local logs kept outside public evidence"
+    },
+    {
+      "command": "ruff check <changed Python files>",
+      "cwd": ".",
+      "exit_code": 0
+    },
+    {
+      "command": "git diff --check",
+      "cwd": ".",
+      "exit_code": 0
+    },
+    {
+      "command": "verify_delivery (code/cases, 120 rows, boundaries, executed stage counts, public content)",
+      "cwd": ".",
+      "exit_code": 0
+    }
+  ],
+  "live_exit_code": 0,
+  "scope": "statutory candidate retrieval only; no legal judgment or production acceptance",
+  "artifact_history": {
+    "full_retrieval_sandbox_blocked_2026-10-02.json": "preflight ConnectError; no live metrics; preserved exit 1",
+    "full_retrieval_probe_2026-10-02.json": "four-case early real probe; initial vector ordering appended keyword candidates without legacy source priority",
+    "full_retrieval_ablation_2026-10-02.json": "early 30-case real run; initial vector ordering appended keyword candidates without legacy source priority; hyde_call_count meant attempts",
+    "full_retrieval_ablation_final_2026-10-02.json": "final 30-case four-mode live evidence with code hashes and preserved legacy vector ranking; hyde_attempt_count is not a model call count"
+  },
+  "changed_files": [
+    "backend/app/knowledge/full_law_index.py",
+    "backend/app/knowledge/full_law_retrieval.py",
+    "backend/app/knowledge/full_law_reranker.py",
+    "backend/app/knowledge/law_retrieval.py",
+    "backend/app/consultation/agents/legal_research.py",
+    "backend/tests/knowledge/test_full_law_retrieval.py",
+    "backend/.env.example",
+    "evaluation/run_full_retrieval_ablation.py",
+    "evaluation/full_retrieval_cases.jsonl",
+    "evaluation/test_full_retrieval_ablation.py",
+    "docs/knowledge/full_law_retrieval.md",
+    "evaluation/evidence/full_retrieval_sandbox_blocked_2026-10-02.json",
+    "evaluation/evidence/full_retrieval_probe_2026-10-02.json",
+    "evaluation/evidence/full_retrieval_ablation_2026-10-02.json",
+    "evaluation/evidence/full_retrieval_ablation_final_2026-10-02.json",
+    "evaluation/evidence/full_retrieval_verification_2026-10-02.json"
+  ],
+  "publication_status": "WIP; requires independent parent review; no commit/push/archive"
+}

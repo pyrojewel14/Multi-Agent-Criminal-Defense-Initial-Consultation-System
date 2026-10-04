@@ -1,0 +1,55 @@
+{
+  "schema": "full-retrieval-ablation-v1",
+  "created_at": "2026-10-02T11:10:04.142623+00:00",
+  "path": "LegalToolRegistry._search_laws -> search_laws_by_rag -> search_full_index",
+  "scope": "candidate statutory retrieval only; not legal judgment or production acceptance",
+  "case_file_sha256": "sha256:c5637d38c67d499b8bcfbc2b2770d148535080c33de983a2653aeb3b02dd1506",
+  "case_ids": [
+    "phone_taken",
+    "found_phone",
+    "fake_investment",
+    "photo_threat"
+  ],
+  "case_timeout_seconds": 120,
+  "modes": {},
+  "complete": false,
+  "identity": {
+    "index_manifest": {
+      "schema_version": "full-index-v1",
+      "corpus_version": "2026-09-30.2.integration1",
+      "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+      "official_text_source": "criminal-law-consolidated-amendment-12",
+      "document_count": 504,
+      "excluded_article_ids": [
+        "第199条"
+      ],
+      "collection": "criminal_law_full",
+      "embedding_engine": "ollama",
+      "embedding_model": "qwen3-embedding:0.6b",
+      "embedding_model_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+      "embedding_dimension": 1024,
+      "documents_sha256": "sha256:913a6682b01fe140ce353f215c6f4d4f6118ec236ec84af7ef6b756285566d95",
+      "embeddings_sha256": "sha256:b4540a5781b39d0f6362c03a565a4451752de5b877cbf0311b1e64077a6dad02",
+      "legal_review_completed": false
+    },
+    "reranker_model": "Qwen/Qwen3-Reranker-0.6B",
+    "reranker_files": {
+      "model.safetensors": "sha256:27cd75a405b9c1b46b59abfd88aaa209e6fed2a1972cde9b70e7659537c5e65b"
+    },
+    "reranker_config_sha256": "sha256:d479c427a9ca5295218063d4f9aca4f297ab4ac27487cca7af42c84643d51ef0",
+    "reranker_tokenizer_sha256": "sha256:aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "reranker_template_sha256": "sha256:5f091c59aacde855296202831a8ace490bffcee6c5562ae03b6ffe095611d06b",
+    "reranker_instruction": "Given a criminal law search query, retrieve relevant statutory provisions for further review",
+    "reranker_decision_tokens": {
+      "yes": 9693,
+      "no": 2152
+    },
+    "reranker_max_length": 512,
+    "hyde_model": "qwen3.5:0.8b",
+    "recall_k": 20,
+    "rerank_timeout_seconds": 30.0,
+    "hyde_timeout_seconds": 10.0,
+    "hyde_call_budget": 1
+  },
+  "preflight_error": "ConnectError"
+}
