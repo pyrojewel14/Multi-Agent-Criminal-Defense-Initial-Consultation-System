@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "source": "saved_parent_live_run",
+  "source_public_report": "evaluation/evidence/memory_parent_live_original_2026-10-04.json",
+  "source_public_report_fingerprint": "0809cbf1b3f23ba8c93c1ad87fb1fd3469d2ec55e30ebb01cdca78bc4485393a",
+  "source_private_report_fingerprint": "7e75be9a7caf78545ca81e2d91299cbf5bbe6ee5f825cd67efc3aa71b4e57079",
+  "scorer_fingerprint": "42f067c48b7aa7300b2bfc5643efcc1cbe536007039c0e425757368a6019c484",
+  "reason": "explicit_correction_synonym",
+  "reran_model": false,
+  "reran_api_scenarios": false,
+  "original_failed_checks": {
+    "short": [],
+    "long": [
+      "recall_active_context"
+    ]
+  },
+  "contexts": [
+    {
+      "id": "short",
+      "kind": "full_history",
+      "answer_fingerprint": "e73ec4c9d3acf23bba56a3bc47321438e7dd46da3ed134ee7d96138ffd10d22b",
+      "original_recall_checks": {
+        "unverified": true,
+        "prior_denial": true,
+        "location": true
+      },
+      "rescored_recall_checks": {
+        "unverified": true,
+        "prior_denial": true,
+        "location": true
+      },
+      "changed_checks": {}
+    },
+    {
+      "id": "short",
+      "kind": "active_context",
+      "answer_fingerprint": "268e508a74ef2278bee2f31eb090c169223acc177d268fa814e658cae252f6b8",
+      "original_recall_checks": {
+        "unverified": true,
+        "prior_denial": true,
+        "location": true
+      },
+      "rescored_recall_checks": {
+        "unverified": true,
+        "prior_denial": true,
+        "location": true
+      },
+      "changed_checks": {}
+    },
+    {
+      "id": "long",
+      "kind": "full_history",
+      "answer_fingerprint": "9730117544494edc712cbe4560be86c100cfb8baf7ef1432e1963194ad64d350",
+      "original_recall_checks": {
+        "unverified": true,
+        "prior_denial": true,
+        "time": true,
+        "old_locations": true,
+        "correction": true,
+        "evidence": true,
+        "surrender_denial": true
+      },
+      "rescored_recall_checks": {
+        "unverified": true,
+        "prior_denial": true,
+        "time": true,
+        "old_locations": true,
+        "correction": true,
+        "evidence": true,
+        "surrender_denial": true
+      },
+      "changed_checks": {}
+    },
+    {
+      "id": "long",
+      "kind": "active_context",
+      "answer_fingerprint": "385023ae43ea35305cc33b95afc5816383a1c136140e1dbfc0ae72ed6d31c3a4",
+      "original_recall_checks": {
+        "unverified": true,
+        "prior_denial": true,
+        "time": true,
+        "old_locations": true,
+        "correction": false,
+        "evidence": true,
+        "surrender_denial": true
+      },
+      "rescored_recall_checks": {
+        "unverified": true,
+        "prior_denial": true,
+        "time": true,
+        "old_locations": true,
+        "correction": true,
+        "evidence": true,
+        "surrender_denial": true
+      },
+      "changed_checks": {
+        "correction": {
+          "before": false,
+          "after": true
+        }
+      }
+    }
+  ],
+  "rescored_recall_checks_all_passed": true,
+  "limitations": [
+    "coarse_keyword_checks",
+    "not_fact_accuracy",
+    "not_legal_quality"
+  ]
+}

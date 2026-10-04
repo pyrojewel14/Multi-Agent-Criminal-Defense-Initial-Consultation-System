@@ -1,0 +1,522 @@
+{
+  "schema_version": 1,
+  "mode": "deterministic",
+  "model": null,
+  "code_fingerprints": {
+    "evaluation/memory_cases.json": "74ddfa4988d84ccbb27bc08207ee5dc428a3221e516deb696ec15e9bba5e061a",
+    "evaluation/run_memory_eval.py": "79720eff0919a6d771688c72ef4749e1238a46f7d5c361be6664afecc7be5924",
+    "evaluation/memory_eval_app.py": "66883bea42561e1795002fb0920db45e61d9a7ffcddb8a07df9f8a42d18b4af6",
+    "backend/app/consultation/agents/fact_digger.py": "24bcd450f7d649e3636ab78d3ab02d88f0fdfe64f4d9b8f62309ada2c3dfa2b9",
+    "backend/app/prompts/extract_case_facts.txt": "1f18712343676929ab6849ad002b384b069553f31083f568667e62dfd76f98e9",
+    "backend/app/infrastructure/llm/gateway.py": "220523d42c3447d617db43c553d4f651af9d8cf9e7d402cc07683ae0e63c1084",
+    "backend/app/consultation/workflow.py": "7962ca1a8049694ee9302bc58fd872ededc65f41373933d3c17f49dc767f1b50",
+    "backend/app/consultation/service.py": "a4f38b43ed1e07e522d33e36dec62f123499a11d47d206d639a453866dad3440",
+    "backend/main.py": "b1b9fc2edd9fe43a1d279703ab2df42fbfa55cebc8bd5aaa7224130418043ea0",
+    "backend/app/consultation/memory/coordinator.py": "b2ef930c9b283f07a97d378ee3d5648789c7e1a771cda560136a7c16f7ad5d9b",
+    "backend/app/consultation/memory/transcript.py": "2adb29b86cb7ab8f897432dbcae30fda959d6ec16e7ddf9af07268a07fed48bc",
+    "backend/app/consultation/memory/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "backend/app/consultation/memory/summary.py": "079e96fe71477c73a1324ba83dc246560a8d6e770cb30c1338cbcfdec174619f",
+    "backend/app/consultation/memory/context.py": "a5d188e293333fd7a5e848930948facb8cb21dd08293214ff1fa90c19c99f6f2",
+    "backend/app/consultation/memory/schemas.py": "3873d6a8ed62be4180473753fba367035df3b858a75c34f1d218fa22b1566fcd",
+    "backend/app/consultation/memory/case.py": "6516ad214d7657559700c15a3256c1cf28e196c8f16db27ff323920b17e55eae"
+  },
+  "scenarios": [
+    {
+      "id": "short",
+      "recent": 8,
+      "raw_count": 5,
+      "checks": {
+        "raw_complete": true,
+        "raw_ordered": true,
+        "inputs_exact": true,
+        "sources_traceable": true,
+        "all_fact_artifacts_valid": true,
+        "short_not_compressed": true,
+        "location_recalled": true,
+        "denial_retained": true,
+        "raw_restored": true,
+        "summary_restored": true,
+        "case_restored": true,
+        "recent_restored": true,
+        "pending_restored": true,
+        "replay_raw_unchanged": true,
+        "replay_graph_unchanged": true,
+        "continued": true
+      },
+      "context": [
+        {
+          "kind": "full_history",
+          "estimated_input_tokens": 2463,
+          "utf8_bytes": 1726,
+          "seconds": 0.0,
+          "actual_usage": null,
+          "messages_fingerprint": "a9e09acff085ff236b127ef948e3d3a03c76c89a1fe4ffce70b7aaebeb4fc59b",
+          "system_fingerprint": "31f783aafeebb82766a5040d6605a7c49300725421100d4a10f69854cf56d91d",
+          "question_fingerprint": "fa07e8f667510333deb5d07e540edd93873a0d3eca030b99bda8a8fa0c5454da",
+          "answer_fingerprint": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "recall_checks": {}
+        },
+        {
+          "kind": "active_context",
+          "estimated_input_tokens": 3312,
+          "utf8_bytes": 2441,
+          "seconds": 0.0,
+          "actual_usage": null,
+          "messages_fingerprint": "546e37a268470f625c983bfd83f7a216217942d041902a71195af3c8292916e7",
+          "system_fingerprint": "31f783aafeebb82766a5040d6605a7c49300725421100d4a10f69854cf56d91d",
+          "question_fingerprint": "fa07e8f667510333deb5d07e540edd93873a0d3eca030b99bda8a8fa0c5454da",
+          "answer_fingerprint": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "recall_checks": {}
+        }
+      ],
+      "calls": [
+        {
+          "node": "fact_intake",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 1024,
+          "reasoning": false,
+          "summary_sequences": null,
+          "system_fingerprint": "20e55cd3ac6455445ac77c59d0b7ad05ae05145f88395dd35100c1a4db4e56ff",
+          "messages_fingerprint": "32eeb1b037da5d34af01933f9027070c71817c8abc842a8189d768120295d86e",
+          "schema_fingerprint": "66730a4212d6428c317a2c38e9585d27870d09472ba049b5bfcec46cda7546d5",
+          "temperature": 0.1
+        },
+        {
+          "node": "fact_intake",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 1024,
+          "reasoning": false,
+          "summary_sequences": null,
+          "system_fingerprint": "20e55cd3ac6455445ac77c59d0b7ad05ae05145f88395dd35100c1a4db4e56ff",
+          "messages_fingerprint": "19afa602564d356ffff8a3762a8c7a5ceea1af0d080698514cd7626829f9597a",
+          "schema_fingerprint": "66730a4212d6428c317a2c38e9585d27870d09472ba049b5bfcec46cda7546d5",
+          "temperature": 0.1
+        }
+      ],
+      "summary": {
+        "version": 0,
+        "through_sequence": 0,
+        "status": "empty",
+        "text_fingerprint": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "api": {
+        "restart_checks": {
+          "raw_restored": true,
+          "summary_restored": true,
+          "case_restored": true,
+          "recent_restored": true,
+          "pending_restored": true
+        },
+        "replay_raw_unchanged": true,
+        "replay_graph_unchanged": true,
+        "continued_raw_delta": 2,
+        "auth_status": 401,
+        "permission_status": 403,
+        "consent_status": 403,
+        "shutdown_exit_codes": [
+          -15,
+          -15
+        ]
+      },
+      "config": {
+        "recent_messages": 8,
+        "context_token_budget": 24000,
+        "model_window": 32768,
+        "output_reserve": 2048,
+        "summary_input_budget": 6000,
+        "summary_output_budget": 1000,
+        "summary_timeout": 20.0,
+        "llm_policy": {
+          "total_timeout_seconds": 120.0,
+          "attempt_timeout_seconds": 60.0,
+          "max_attempts": 2,
+          "backoff_seconds": 0.25
+        }
+      }
+    },
+    {
+      "id": "long",
+      "recent": 2,
+      "raw_count": 15,
+      "checks": {
+        "raw_complete": true,
+        "raw_ordered": true,
+        "inputs_exact": true,
+        "sources_traceable": true,
+        "all_fact_artifacts_valid": true,
+        "long_compressed": true,
+        "incremental_summary_once": true,
+        "repeat_no_new_version": true,
+        "conflict_retained": true,
+        "correction_with_history": true,
+        "old_facts_retained": true,
+        "denials_retained": true,
+        "raw_restored": true,
+        "summary_restored": true,
+        "case_restored": true,
+        "recent_restored": true,
+        "pending_restored": true,
+        "replay_raw_unchanged": true,
+        "replay_graph_unchanged": true,
+        "continued": true
+      },
+      "context": [
+        {
+          "kind": "full_history",
+          "estimated_input_tokens": 6223,
+          "utf8_bytes": 4526,
+          "seconds": 0.0,
+          "actual_usage": null,
+          "messages_fingerprint": "48986a870ab93af1c7dec02a201978d705dcbe0e74975ecd3a93d72d0c81267c",
+          "system_fingerprint": "31f783aafeebb82766a5040d6605a7c49300725421100d4a10f69854cf56d91d",
+          "question_fingerprint": "25e932dd41bb14f450529b7ce03c09f10ff01bd03b2317b64fb8fa1193d34d31",
+          "answer_fingerprint": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "recall_checks": {}
+        },
+        {
+          "kind": "active_context",
+          "estimated_input_tokens": 2254,
+          "utf8_bytes": 1649,
+          "seconds": 0.0,
+          "actual_usage": null,
+          "messages_fingerprint": "9846036852a4029e0328e0341b4e7edd998822c0b6c7c5bd67b5dbe603d04d87",
+          "system_fingerprint": "31f783aafeebb82766a5040d6605a7c49300725421100d4a10f69854cf56d91d",
+          "question_fingerprint": "25e932dd41bb14f450529b7ce03c09f10ff01bd03b2317b64fb8fa1193d34d31",
+          "answer_fingerprint": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "recall_checks": {}
+        }
+      ],
+      "calls": [
+        {
+          "node": "summary",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 333,
+          "reasoning": false,
+          "summary_sequences": [
+            1
+          ],
+          "system_fingerprint": "0bd7d926742e5647c36ff30cb72ccda951fc9de9fd11d009d7ad2b1a6fd9a1dd",
+          "messages_fingerprint": "ae2b9b82f8e71e6d4482781cfccada842ea3d3aad3a54dcd30e15aecfda3fb1e",
+          "schema_fingerprint": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "temperature": 0.1
+        },
+        {
+          "node": "fact_intake",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 1024,
+          "reasoning": false,
+          "summary_sequences": null,
+          "system_fingerprint": "20e55cd3ac6455445ac77c59d0b7ad05ae05145f88395dd35100c1a4db4e56ff",
+          "messages_fingerprint": "b4ca8d69e5d0870c52ddff176dd360758b642cc0298cdb3643d8dbb55e18e302",
+          "schema_fingerprint": "66730a4212d6428c317a2c38e9585d27870d09472ba049b5bfcec46cda7546d5",
+          "temperature": 0.1
+        },
+        {
+          "node": "summary",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 333,
+          "reasoning": false,
+          "summary_sequences": [
+            2,
+            3
+          ],
+          "system_fingerprint": "0bd7d926742e5647c36ff30cb72ccda951fc9de9fd11d009d7ad2b1a6fd9a1dd",
+          "messages_fingerprint": "efecd1dd73998d3f26126610f87383c0e9ca7e5b36e486b211b85fbabd51e463",
+          "schema_fingerprint": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "temperature": 0.1
+        },
+        {
+          "node": "fact_intake",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0001,
+          "num_ctx": 32768,
+          "num_predict": 1024,
+          "reasoning": false,
+          "summary_sequences": null,
+          "system_fingerprint": "20e55cd3ac6455445ac77c59d0b7ad05ae05145f88395dd35100c1a4db4e56ff",
+          "messages_fingerprint": "e1fe6773a0b98e4f62f0b5eed2335bd0d2b35b57b77e0c430676e0aad2139c65",
+          "schema_fingerprint": "66730a4212d6428c317a2c38e9585d27870d09472ba049b5bfcec46cda7546d5",
+          "temperature": 0.1
+        },
+        {
+          "node": "summary",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 333,
+          "reasoning": false,
+          "summary_sequences": [
+            4,
+            5
+          ],
+          "system_fingerprint": "0bd7d926742e5647c36ff30cb72ccda951fc9de9fd11d009d7ad2b1a6fd9a1dd",
+          "messages_fingerprint": "4ed6475e489f9a69a2866098c1f9f82b96159e42838291be086cd49c84e0cfd5",
+          "schema_fingerprint": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "temperature": 0.1
+        },
+        {
+          "node": "fact_intake",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 1024,
+          "reasoning": false,
+          "summary_sequences": null,
+          "system_fingerprint": "20e55cd3ac6455445ac77c59d0b7ad05ae05145f88395dd35100c1a4db4e56ff",
+          "messages_fingerprint": "754dcd9ddd4967f9f4088f2ecbf5de2c2fa534e4322ed7e836a097d127c6d38b",
+          "schema_fingerprint": "66730a4212d6428c317a2c38e9585d27870d09472ba049b5bfcec46cda7546d5",
+          "temperature": 0.1
+        },
+        {
+          "node": "summary",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 333,
+          "reasoning": false,
+          "summary_sequences": [
+            6,
+            7
+          ],
+          "system_fingerprint": "0bd7d926742e5647c36ff30cb72ccda951fc9de9fd11d009d7ad2b1a6fd9a1dd",
+          "messages_fingerprint": "13cb4dd171ce5df54bfa1082343848ccab985e852b03ad8e300ef1d355b18a19",
+          "schema_fingerprint": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "temperature": 0.1
+        },
+        {
+          "node": "fact_intake",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 1024,
+          "reasoning": false,
+          "summary_sequences": null,
+          "system_fingerprint": "20e55cd3ac6455445ac77c59d0b7ad05ae05145f88395dd35100c1a4db4e56ff",
+          "messages_fingerprint": "3051e963c42a016977f75644f23a68d88e4229b39ea180642657e093218dee0c",
+          "schema_fingerprint": "66730a4212d6428c317a2c38e9585d27870d09472ba049b5bfcec46cda7546d5",
+          "temperature": 0.1
+        },
+        {
+          "node": "summary",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 333,
+          "reasoning": false,
+          "summary_sequences": [
+            8,
+            9
+          ],
+          "system_fingerprint": "0bd7d926742e5647c36ff30cb72ccda951fc9de9fd11d009d7ad2b1a6fd9a1dd",
+          "messages_fingerprint": "88287579229f742ff3e151aa884413f23c5a8ce7dbd21baebbfbc6d1629e89ab",
+          "schema_fingerprint": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "temperature": 0.1
+        },
+        {
+          "node": "fact_intake",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 1024,
+          "reasoning": false,
+          "summary_sequences": null,
+          "system_fingerprint": "20e55cd3ac6455445ac77c59d0b7ad05ae05145f88395dd35100c1a4db4e56ff",
+          "messages_fingerprint": "1b7ea2cd065b375c0a6f6aeda9688547fcddfe1af1ca9741e351104a5fee2f0d",
+          "schema_fingerprint": "66730a4212d6428c317a2c38e9585d27870d09472ba049b5bfcec46cda7546d5",
+          "temperature": 0.1
+        },
+        {
+          "node": "summary",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 333,
+          "reasoning": false,
+          "summary_sequences": [
+            10,
+            11
+          ],
+          "system_fingerprint": "0bd7d926742e5647c36ff30cb72ccda951fc9de9fd11d009d7ad2b1a6fd9a1dd",
+          "messages_fingerprint": "13a4dea46aea1c80ac815340836fbe8b3e9264d4bcd54f641705ac0bea26fa7b",
+          "schema_fingerprint": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "temperature": 0.1
+        },
+        {
+          "node": "fact_intake",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 1024,
+          "reasoning": false,
+          "summary_sequences": null,
+          "system_fingerprint": "20e55cd3ac6455445ac77c59d0b7ad05ae05145f88395dd35100c1a4db4e56ff",
+          "messages_fingerprint": "1422feed78498ed4be62b078f7f39e36f38ee6692b3e1c5fb7750a0781d3fc98",
+          "schema_fingerprint": "66730a4212d6428c317a2c38e9585d27870d09472ba049b5bfcec46cda7546d5",
+          "temperature": 0.1
+        },
+        {
+          "node": "summary",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 333,
+          "reasoning": false,
+          "summary_sequences": [
+            12,
+            13
+          ],
+          "system_fingerprint": "0bd7d926742e5647c36ff30cb72ccda951fc9de9fd11d009d7ad2b1a6fd9a1dd",
+          "messages_fingerprint": "29fb773d6a449272ac227d1c608f59698288b0e7f2bd637179724d9f04b2350a",
+          "schema_fingerprint": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "temperature": 0.1
+        },
+        {
+          "node": "fact_intake",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 1024,
+          "reasoning": false,
+          "summary_sequences": null,
+          "system_fingerprint": "20e55cd3ac6455445ac77c59d0b7ad05ae05145f88395dd35100c1a4db4e56ff",
+          "messages_fingerprint": "19afa602564d356ffff8a3762a8c7a5ceea1af0d080698514cd7626829f9597a",
+          "schema_fingerprint": "66730a4212d6428c317a2c38e9585d27870d09472ba049b5bfcec46cda7546d5",
+          "temperature": 0.1
+        },
+        {
+          "node": "summary",
+          "model": "qwen3.5:9b",
+          "outcome": "success",
+          "usage": null,
+          "seconds": 0.0,
+          "num_ctx": 32768,
+          "num_predict": 333,
+          "reasoning": false,
+          "summary_sequences": [
+            14,
+            15
+          ],
+          "system_fingerprint": "0bd7d926742e5647c36ff30cb72ccda951fc9de9fd11d009d7ad2b1a6fd9a1dd",
+          "messages_fingerprint": "cf54251d44b7207e10b3d2cf23db854b407abbbb0009e5df531d5c2ea0e451e3",
+          "schema_fingerprint": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "temperature": 0.1
+        }
+      ],
+      "summary": {
+        "version": 7,
+        "through_sequence": 13,
+        "status": "ready",
+        "text_fingerprint": "061cee748b9f9f8579d465cc6f68609ea3f0ded36a6ab0927b35ad1003107489"
+      },
+      "api": {
+        "restart_checks": {
+          "raw_restored": true,
+          "summary_restored": true,
+          "case_restored": true,
+          "recent_restored": true,
+          "pending_restored": true
+        },
+        "replay_raw_unchanged": true,
+        "replay_graph_unchanged": true,
+        "continued_raw_delta": 2,
+        "auth_status": 401,
+        "permission_status": 403,
+        "consent_status": 403,
+        "shutdown_exit_codes": [
+          -15,
+          -15
+        ]
+      },
+      "config": {
+        "recent_messages": 2,
+        "context_token_budget": 24000,
+        "model_window": 32768,
+        "output_reserve": 2048,
+        "summary_input_budget": 6000,
+        "summary_output_budget": 1000,
+        "summary_timeout": 20.0,
+        "llm_policy": {
+          "total_timeout_seconds": 120.0,
+          "attempt_timeout_seconds": 60.0,
+          "max_attempts": 2,
+          "backoff_seconds": 0.25
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "synthetic_small_sample",
+    "legal_nodes_stubbed",
+    "single_worker",
+    "graceful_restart_only",
+    "cross_sqlite_not_atomic",
+    "summary_loss_possible"
+  ],
+  "export_validation": {
+    "source": "saved_original_run",
+    "source_report_fingerprint": "77a5203dc4112cef5242d20b2bfbf0c52c99a93605d02d636d6e6e85b76fd085",
+    "reason": "code_fingerprint_allowlist",
+    "reran_model": false,
+    "reran_api_scenarios": false,
+    "current_code_fingerprints": {
+      "backend/app/consultation/agents/fact_digger.py": "24bcd450f7d649e3636ab78d3ab02d88f0fdfe64f4d9b8f62309ada2c3dfa2b9",
+      "backend/app/consultation/memory/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "backend/app/consultation/memory/case.py": "6516ad214d7657559700c15a3256c1cf28e196c8f16db27ff323920b17e55eae",
+      "backend/app/consultation/memory/context.py": "a5d188e293333fd7a5e848930948facb8cb21dd08293214ff1fa90c19c99f6f2",
+      "backend/app/consultation/memory/coordinator.py": "b2ef930c9b283f07a97d378ee3d5648789c7e1a771cda560136a7c16f7ad5d9b",
+      "backend/app/consultation/memory/schemas.py": "3873d6a8ed62be4180473753fba367035df3b858a75c34f1d218fa22b1566fcd",
+      "backend/app/consultation/memory/summary.py": "079e96fe71477c73a1324ba83dc246560a8d6e770cb30c1338cbcfdec174619f",
+      "backend/app/consultation/memory/transcript.py": "2adb29b86cb7ab8f897432dbcae30fda959d6ec16e7ddf9af07268a07fed48bc",
+      "backend/app/consultation/service.py": "a4f38b43ed1e07e522d33e36dec62f123499a11d47d206d639a453866dad3440",
+      "backend/app/consultation/workflow.py": "7962ca1a8049694ee9302bc58fd872ededc65f41373933d3c17f49dc767f1b50",
+      "backend/app/infrastructure/llm/gateway.py": "220523d42c3447d617db43c553d4f651af9d8cf9e7d402cc07683ae0e63c1084",
+      "backend/app/prompts/extract_case_facts.txt": "1f18712343676929ab6849ad002b384b069553f31083f568667e62dfd76f98e9",
+      "backend/main.py": "b1b9fc2edd9fe43a1d279703ab2df42fbfa55cebc8bd5aaa7224130418043ea0",
+      "evaluation/memory_cases.json": "74ddfa4988d84ccbb27bc08207ee5dc428a3221e516deb696ec15e9bba5e061a",
+      "evaluation/memory_eval_app.py": "66883bea42561e1795002fb0920db45e61d9a7ffcddb8a07df9f8a42d18b4af6",
+      "evaluation/run_memory_eval.py": "42f067c48b7aa7300b2bfc5643efcc1cbe536007039c0e425757368a6019c484"
+    }
+  }
+}
