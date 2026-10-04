@@ -40,7 +40,7 @@ make install
 cp backend/.env.example backend/.env
 ```
 
-配置 `backend/.env` 中的 `JWT_SECRET_KEY`，启动 Redis，然后分别运行 `make run-backend` 和 `make run-frontend`。默认前端位于 `http://127.0.0.1:5173`，API 文档位于 `http://127.0.0.1:8000/docs`。不要提交真实密钥、上传资料或运行数据。
+配置 `backend/.env` 中的 `JWT_SECRET_KEY` 和模型。默认 full 检索还需运行 `make build-law-index`，把索引目录与模型 digest 写入配置，步骤见 [安装说明](docs/setup.md#4-构建并连接全量法条索引)。启动 Redis，然后分别运行 `make run-backend` 和 `make run-frontend`。默认前端位于 `http://127.0.0.1:5173`，API 文档位于 `http://127.0.0.1:8000/docs`。不要提交真实密钥、上传资料或运行数据。
 
 ## 验证与边界
 
@@ -48,13 +48,11 @@ cp backend/.env.example backend/.env
 
 ## 文档导航
 
-| 主题 | 文档 |
-| --- | --- |
-| 安装、本地运行与 Docker Compose | [安装与启动](docs/setup.md) |
-| 系统组成、状态与工作流 | [架构](docs/architecture.md) · [工作流](docs/workflow.md) |
-| API、检索与数据边界 | [API](docs/api.md) · [RAG](docs/rag.md) |
-| Demo、测试与评估 | [Demo](docs/demo.md) · [测试](docs/testing.md) · [评估](docs/evaluation.md) |
-| 已知失败场景和限制 | [限制](docs/limitations.md) |
+本页负责项目概览与快速开始；长期技术说明统一在 [文档首页](docs/README.md) 按主题维护。按目的进入：
+
+- **运行与联调**：[安装与启动](docs/setup.md) → [确定性 Demo](docs/demo.md) → [API 联调](docs/api.md)。读到 API 可按接口完成会话与律师审核联调，示例入口见 [demos 导航](demos/README.md)。
+- **开发与排错**：[架构](docs/architecture.md) → [工作流](docs/workflow.md) → [RAG](docs/rag.md)。全量检索与协议诊断的后续入口见 [开发路线](docs/README.md#开发与排错)。
+- **评估与能力判断**：[限制](docs/limitations.md) → [测试](docs/testing.md) → [证据解读](docs/evaluation.md) → [评测执行入口](evaluation/README.md)。读到执行入口可选择对应范围的评测。
 
 系统不得用于规避侦查、毁灭证据、串供或其他违法活动；高风险提示不是紧急服务或自动报案。报告草案须经有权限的律师复核后，方可作为后续工作的参考。
 

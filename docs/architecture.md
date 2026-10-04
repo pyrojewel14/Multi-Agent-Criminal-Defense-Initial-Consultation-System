@@ -1,139 +1,125 @@
-# 系统架构与状态边界
+# 系统架构
 
-本文概述当前仓库的组件关系。详细节点行为见 [workflow.md](workflow.md)，部署限制见 [setup.md](setup.md)，法条来源边界见 [rag.md](rag.md)。
+这篇说明组件如何连接、状态存在哪里、一次命令失败后如何恢复。
+读完可以定位接口、工作流、检索和存储的职责。
+节点细节读 [工作流](workflow.md)，启动操作读 [安装说明](setup.md)，能力范围见 [边界说明](limitations.md)。
 
-系统采用 **deterministic workflow + bounded agentic subsystem**。LangGraph 的条件边、中断与审核控制顶层流程；仅 LawRef 节点内部有受步数、工具白名单和预算约束的检索决策循环。系统不是 autonomous multi-agent architecture。`HumanReview`、`HumanAlert`、`WaitForUser` 是人工/控制节点；仓库名称是历史名称，不用于推断有多少自主 Agent。
+## 组件关系
 
-## 组件
-
-```text
-React / TypeScript
-        |
-        v
-FastAPI routes ---- JWT / RBAC
-        |
-        v
-ConsultationService
-        |
-        v
-LangGraph StateGraph
-  receptionist
-  fact_intake -> law_ref -> fact_digger
-  wait_for_user / human_alert
-  risk_assessor -> service_planner -> human_review
-        |
-        +--> AsyncSqliteSaver -> checkpoint SQLite（执行状态）
-        +--> Redis projection/cache（当前启动必需）
-        +--> SQLite users / consultations / messages（业务审计）
-        +--> LLM / embedding / Chroma / reranker（外部或本地依赖）
-```
-
-前端通过 FastAPI 访问会话与审核接口。服务层负责认证资源边界、LangGraph checkpoint 恢复、同 session 命令串行化、成功结果幂等重放以及 lifecycle application command 的 SQLite 审计同步。Agent 共享 `ConsultationState`，条件边决定下一节点。
-
-## LangGraph 节点
-
-当前注册 9 个执行节点：
-
-1. `receptionist`
-2. `fact_intake`
-3. `law_ref`
-4. `fact_digger`
-5. `wait_for_user`
-6. `risk_assessor`
-7. `service_planner`
-8. `human_review`
-9. `human_alert`
-
-`fact_intake` 和 `fact_digger` 都属于 FactDigger 角色。拆分的目的不是增加一个业务 Agent，而是保证法条检索始终看到本轮最新事实，并使 `current_input` 成为一次性状态。
-
-`human_review` 等待真实律师决定；`human_alert` 终止高风险自动路径；`wait_for_user` 在事实不足时等待新输入。它们提供可核验的控制流边界，而非模型推理能力。评测入口及目前缺失的 live-chain 条件见 [评估说明](evaluation.md)。
-
-## 关键状态
-
-| 领域 | 字段 | 契约 |
-| --- | --- | --- |
-| 身份 | `user_id`、`user_role`、`session_id`、`consultation_id` | RAG 权限使用 `user_id`；工作流与数据库 ID 不混用 |
-| 本轮输入 | `current_input` | 仅在 `fact_intake` 前写入，成功摄取后清空 |
-| 事实 | `facts_raw`、`facts_structured`、`pending_questions` | 原始输入先脱敏，再更新结构化事实 |
-| 法条 | `applied_laws`、`element_to_law_mapping`、`law_search_status`、`law_research` | 候选保留来源；局部工具轨迹只存摘要与指纹；未验证来源不能参与覆盖计算 |
-| 覆盖 | `facts_coverage_rate` | 仅由可信候选的权威 `required_elements` 计算 |
-| 重试 | `fact_law_attempts`、`fact_law_failure_streak`、`fact_law_last_failure` | 记录每次尝试，并对所有非事实失败共享连续窗口 |
-| 降级 | `workflow_status`、`fact_law_termination_reason` | 连续 3 次非事实失败后标记 degraded 并转人工 |
-| LLM 产物 | `artifact_results`、`degraded_reason`、`source`、`validation_errors` | 保存 Fact/Law/Risk/Service 的 schema 校验与降级元数据，不含模型原文 |
-| 人审 | `lawyer_review_needed`、`awaiting_lawyer_review`、`lawyer_decision` | 缺少有效决定时保持中断，不默认批准 |
-
-## 事实、法条与覆盖的数据流
+主流程由 LangGraph 控制节点顺序、条件路由和人工中断；LawRef 内部另有受工具、步骤和超时限制的模型决策循环。
 
 ```text
-current_input
-  -> fact_intake
-       高风险检测
-       脱敏并追加 facts_raw
-       刷新 facts_structured
-       current_input = None
-  -> law_ref
-       LLM 决策 -> 白名单 Tool -> observation -> 再决策（最多 4 步）
-       search_laws 复用 RAG、JSON 验证与关键词召回
-       get_article / search_elements 精确读取验证快照
-       最终答案复核 data_source 与 required_elements
-  -> fact_digger
-       校验 LawDataSource
-       仅可信候选进入 CoverageCandidateSchema
-       每个候选独立计算覆盖率
-       生成追问、摘要或 degraded 人工转交
+React / TypeScript 用户界面
+  → FastAPI 路由 → JWT 身份校验 / RBAC 角色权限
+  → ConsultationService：授权、恢复、串行执行、幂等与业务审计
+  → LangGraph 工作流：9 个执行节点
+      → LLM Gateway：模型调用、deadline 与有限重试
+      → 法条检索：full 公共索引 / snapshot 通用 RagService
+      → LangGraph checkpoint SQLite：图执行状态
+      → 业务 SQLite：用户、咨询与消息审计
+      → Redis：缓存与观测投影
 ```
 
-`required_elements` 必须来自与候选法条编号成功连接的受控知识条目。模型生成的匹配/缺失判断可用于候选内部说明，但不能自行创建权威要件或改变数据来源。
+JWT 是签名访问令牌，RBAC 是按角色控制权限，LangGraph 是保存状态并执行图流程的框架。人工和等待节点也是图节点；仓库名称不能直接解释为自主 Agent 数量。
 
-## 失败处理
+## 一次咨询经过哪些层
 
-`LawRef` 将结果区分为：
+1. 路由校验 token、角色与会话归属，调用统一 service 命令。
+2. `fact_intake` 消费本轮输入，检测高风险、脱敏并刷新结构化事实。
+3. `law_ref` 检索并读取法条；程序核验候选来源与最终答案。
+4. `fact_digger` 计算覆盖，决定追问、继续分析或交给人工。
+5. 风险与服务节点生成草案，律师明确审核后才可完成普通流程。
 
-- `success`：存在可信且带权威要件的候选；
-- `missing_facts`：尚无足够结构化事实；
-- `no_law_match`：依赖可用但没有可信匹配；
-- `dependency_failure`：运行中的 RAG 等外部依赖失败。法条验证快照缺失或损坏会在 startup preflight 阶段直接阻止服务启动。
+9 个节点、五种法条结果和三次连续失败窗口只在 [工作流](workflow.md) 维护。语料与覆盖资格见 [法条与检索](rag.md)，混合召回与重排由 [全量检索说明](knowledge/full_law_retrieval.md) 维护，原文、派生记忆和上下文预算由 [Memory 说明](memory/README.md) 维护。
 
-`no_law_match` 与 `dependency_failure` 共享三次连续失败预算。第 3 次失败时写入 degraded 状态并进入 `human_review`。这条路径保留审计记录，不会把依赖故障误当作事实已经充分，也不会绕过人工审核直接进入风险评估。
+## 存储与恢复
 
-四类 LLM 产物共用严格 Pydantic 契约。`source` 表示实际产物通道：Fact 可为 `tool_call` 或 `content_json`，Law/Risk/Service 为 `content_json`。LawRef 最终答案无法通过工具证据与 schema 校验时不再把候选标为成功；Fact 校验失败时保留上一轮有效事实；Risk 或 Service 缺字段、错类型或非 JSON 时不生成默认成功产物，并直接进入 `human_review`。风险降级使用真实条件边跳过 ServicePlanner。
+checkpoint 保存图状态与待执行节点（pending node），是恢复执行位置的依据。
 
-LLM Gateway 对每个 attempt 和整个调用分别设置 deadline，最多执行两次。只有明确的 429、短暂 5xx、单次超时或网络瞬态错误可在带有界抖动的退避后重试；其他 4xx 和未知错误不重试。日志只记录 attempt、outcome、错误类型和状态码，不记录 prompt、案件事实、工具参数值或模型原文。
-
-## 调用链与预算
-
-HTTP 消息和 WebSocket 消息都生成或校验 UUID correlation id，并通过 `contextvars` 贯穿 `workflow -> node -> LLM/RAG`。每个事件用 `trace_id`、`span_id`、`parent_span_id` 表示父子关系，不依赖日志文本推断。统一字段包括 `request_id`、`session_id`、`node`、`route_reason`、`model`、`prompt_version`、输入/输出 token、`duration_ms`、`attempt`、`outcome`、`cache_hit` 与 `cost_usd`；不适用于某类事件的字段保持空值。供应商未返回 usage 时 token 和成本都记为 `unknown`，不会填 0。
-
-观测事件只允许保存字段名、长度和规范化值 hash，不保存 prompt、案件事实、工具参数值或模型原文。`TRACE_MAX_EVENTS` 限制进程内事件总量，`SESSION_BUDGET_MAX_SESSIONS` 限制预算 registry 的 session 数量。`SESSION_MAX_CALLS` 和 `SESSION_MAX_TOKENS` 为单会话宽松上限；每次 LLM attempt、HyDE 调用与 RAG 检索先占用 call budget，已知 usage 再计入 token budget。超限抛出类型化 `SESSION_BUDGET_EXCEEDED`，不会改写既有 `repair_required` 或 `degraded` 状态。
-
-LawRef 的 `law_research` 字段补充工具调用数、成功/失败/重复数、每步摘要、总耗时与终止原因，供后续 Eval Harness 读取，不修改当前离线评估口径。其局部预算耗尽会记录为 `budget_exceeded`，并通过既有 `dependency_failure` 重试窗口转人工；该字段和 trace/budget 存储仍是进程内观测，只有工作流 state 随 checkpointer 保存。
-
-`MODEL_PRICING_USD_PER_MILLION` 可按模型显式配置输入、输出单价；只有模型有价格且 usage 完整时才估算 `cost_usd`。当前不自动抓取供应商价格，避免价格漂移或错误的零成本假设。
-
-## 存储一致性
-
-| 存储 | 当前用途 | 不能保证的内容 |
+| 存储 | 保存什么 | 使用范围 |
 | --- | --- | --- |
-| LangGraph checkpoint SQLite | `AsyncSqliteSaver` 保存完整 workflow state 与 pending node；单实例进程重启可恢复 | 多 worker 分布式一致性、共享锁与 exactly-once |
-| Redis | 缓存/观测投影；当前 lifespan 强制连接 | pending node 推断、完整图恢复、与 SQLite 强一致 |
-| 业务 SQLite | 用户、咨询、生命周期与消息审计关系 | LangGraph pending node 推断 |
-| Chroma | 文档向量索引 | clean clone 自带语料、法律正确性 |
-| 进程内 trace/budget | 最近的有界事件、单会话调用/token 用量 | 跨进程共享、重启恢复、多 worker 全局预算 |
+| LangGraph checkpoint SQLite | 完整 workflow state、待执行节点 | FastAPI lifespan 注入 `AsyncSqliteSaver`，当前单实例可重启恢复 |
+| 业务 SQLite | users、consultations、生命周期、HTTP/WS 外部原文与回复审计 | 不用这些行推断图执行位置 |
+| Redis | 缓存、观测投影 | 启动硬依赖；不是恢复来源 |
+| Chroma | 公共全量法条与用户上传的两套文档索引 | 分别配置；不随仓库预填充 |
+| 进程内 trace / budget | 有界调用事件、会话调用/token 预算 | 不跨进程，重启清空 |
 
-服务重启后，应用用相同 checkpoint SQLite 文件与 `session_id` 恢复原执行位置；Redis 与业务 SQLite 记录不能替代它。checkpoint 文件包含原始事实、对话和报告等敏感 workflow state，应作为本地敏感数据保护且不提交 Git。律师工作台通过 `workflow_session_id` 关联业务记录，再用对应的 `session_id` 操作 workflow。
+直接构造 `ConsultationOrchestrator()` 的单元测试默认使用进程内 `MemorySaver`。它与服务的 SQLite saver 不是同一种持久化方式；恢复配置、注入约束见 [工作流](workflow.md#中断恢复与持久化边界)。
 
-## 命令并发与幂等边界
+`session_id` 是 LangGraph 的流程标识，`consultation_id` 是业务 SQLite 主键，两者通过 `consultations.workflow_session_id` 关联。接口使用哪一种 ID，见 [API](api.md#核心接口)。
 
-HTTP 与 WebSocket 消息复用 `process_message` application command；approve、reject 与 close 复用 `execute_lifecycle_command`。当前实现只在同一 `session_id` 内串行执行，其他会话可并发推进，不使用覆盖工作流执行期的全局锁。会话锁 registry 统计持有者与等待者，最后一个引用退出后立即删除锁项。
+checkpoint 会保存咨询事实、对话和报告等敏感状态。保留原 checkpoint 文件才能恢复；删除业务库、checkpoint 或索引分别影响不同的数据域。
 
-客户端可为消息和生命周期操作提供最长 128 字符的 `idempotency_key`。可安全重放的结果按 `(session_id, command_type, idempotency_key)` 缓存在当前进程；同 key 同载荷返回原结果，同 key 不同载荷返回 409。缓存只保存载荷摘要与结果，默认保留一小时，并按最近使用顺序限制为 2048 条。生命周期命令的跨存储失败不缓存，因此 `repair_required` 可继续用同 key 重试审计修复。消息命令若已推进 workflow、但后续 checkpoint 投影或 SQLite 写入失败，则缓存原错误结果，避免同 key 再次调用 LLM 或追加 history；该路径不会自动补写缺失的 SQLite 消息，需要另行对账。
+## 并发与幂等
 
-这些锁和幂等结果仍是单进程边界：进程重启会丢失，多 worker 或多实例之间也不共享。当前 SQLite checkpoint 不提供多实例协调；实现不宣称跨进程 exactly-once。
+HTTP 和 WebSocket 消息复用 `process_message`；approve/reject/close 复用 `execute_lifecycle_command`。幂等指同一请求重试时返回原结果，避免重复推进。
 
-## 数据发布边界
+| 规则 | 当前行为 |
+| --- | --- |
+| 串行范围 | 只锁同一 `session_id`；不同会话可并发 |
+| 锁回收 | 最后一个持有者或等待者退出后删除锁项 |
+| 幂等键 | `idempotency_key` 最长 128 字符；外部消息以会话、命令类型与键生成稳定 ID，并校验载荷指纹 |
+| 重放 | 同 key 同载荷返回原结果；载荷不同返回 409 |
+| 进程内 registry | 内部兼容消息与生命周期结果最多缓存 2048 条，默认保留一小时 |
+| 外部消息回执 | HTTP/WS 以业务消息表和 checkpoint `message_audit` 修复或重放，不依赖该结果缓存 |
+| 跨进程 | 重启、多 worker、多实例不共享串行锁与进程内 registry；持久外部回执的恢复仍依赖同一业务库与 checkpoint |
 
-Git 与 Docker 构建对 `backend/data/` 使用精确 allowlist：只放行 `backend/data/law_knowledge/criminal_law_chapters.json` 六条最小验证快照，SQLite、Chroma、模型、旧来源文件和上传资料仍被排除。应用在数据库与 Redis 初始化前校验快照来源/版本元数据、字段完整性、唯一条号和覆盖清单；校验失败时拒绝启动，不把缺失可信数据伪装成可服务状态。
+这不是跨进程 exactly-once（一次且仅一次执行）保证。
 
-旧数据文件仍可能存在于既有 Git/远端历史。当前删除不会清理历史；如未来因合规要求需要改写历史，必须先做独立 provenance 审计并取得明确授权。
+### 生命周期命令：先推进图，再提交审计
 
-这是一项已知限制，不是已完成的数据治理或知识库交付。
+- 首次 approve/reject 只允许在真实 `human_review` 断点调用；其他位置返回 409。
+- checkpoint 推进后若 SQLite 提交失败，标记 `repair_required`，保留真实执行位置。
+- `consistency_error` 只记录 action、失败阶段和错误码；不会伪造回滚。
+- 修复前阻断普通 resume；相同 action 可重试业务审计，即使图已到 END。
+- 此类失败不缓存为终局结果，修复成功后清除故障标记。
+
+### 消息命令：原文先提交，执行后修复审计
+
+HTTP/WS 的 `process_message` 在同会话锁内重读 checkpoint，再交给 `process_external`。业务 SQLite 先提交完整输入；checkpoint 回执从 `prepared` 进入 `running`，图完成后记录 `applied` 与回复元数据，最后提交回复并清回执。
+
+- 同键同载荷且回复已存在时返回已记录结果；不同载荷返回冲突。
+- 已有 `applied` 回执而回复提交失败时，相同键只补写审计，不再次 resume。
+- 崩溃遗留 `running`，或原文存在但没有可判定回执时，保守停止并要求核验 checkpoint；不能猜测是否执行过。
+- 可选摘要/投影失败不撤销成功的消息命令；重试只刷新投影。
+
+原文日志是审计来源，checkpoint 是唯一执行权威，两套 SQLite 没有共同事务。详见 [Memory 的恢复与失败边界](memory/README.md#恢复与失败边界)。
+
+## 模型产物与失败处理
+
+Fact、Law、Risk、Service 产物使用 Pydantic schema，即字段和类型校验契约。校验失败时：
+
+- Fact 保留上一轮有效事实；保留不等于完成本轮提取。
+- Law 不补造 `applied_laws`，按结果进入有限失败窗口。
+- Risk/Service 转人工，风险降级通过条件边跳过 ServicePlanner。
+
+LLM Gateway 对单次 attempt 和整个调用分别设 deadline，最多两次 attempt。只重试明确的 429、短暂 5xx、超时或网络瞬态错误；其他 4xx 和未知错误不重试。日志保存错误类型、状态码和结果，不保存模型原文或案件文本。
+
+## 观测与预算
+
+HTTP/WebSocket 请求生成或校验 UUID correlation id（请求关联标识）。`contextvars` 沿调用链传递上下文，事件用 `trace_id`、`span_id`、`parent_span_id` 表示父子关系。
+
+| 配置/字段 | 用途 |
+| --- | --- |
+| `TRACE_MAX_EVENTS` | 限制进程内事件总量，超过后淘汰最早事件 |
+| `SESSION_BUDGET_MAX_SESSIONS` | 限制预算 registry 中的会话数；满后拒绝新会话，不重置旧预算 |
+| `SESSION_MAX_CALLS` / `SESSION_MAX_TOKENS` | 单会话调用/token 上限；调用前占用 call budget，返回已知 usage 后计 token |
+| `SESSION_BUDGET_EXCEEDED` | 类型化预算错误；不覆盖已有 `repair_required` / `degraded` 状态 |
+| `MODEL_PRICING_USD_PER_MILLION` | 显式静态模型单价，仅用于成本估算 |
+
+事件含请求/会话/节点、模型与提示词版本、attempt、耗时、结果、缓存命中、token 和成本等字段；不适用的字段留空。usage 缺失时 token 为 `unknown`；价格或 usage 不完整时成本为 `unknown`，不能填零。观测 metadata 只保留允许的字段名、长度与规范化值 hash，不保存工具参数值或案件事实。
+
+LawRef 的 `law_research` 摘要随 workflow state 保存；trace/budget registry 仍在进程内。局部工具预算与轨迹字段见 [工作流](workflow.md#法条来源与覆盖契约)。这些能力不是生产 APM（应用性能监控）、计费账本或全局配额。
+
+## 代码入口与边界
+
+| 入口 | 负责的层 |
+| --- | --- |
+| `backend/main.py` | FastAPI lifespan、路由和异常处理 |
+| `backend/app/consultation/workflow.py` | 图节点、条件边和中断恢复 |
+| `backend/app/consultation/agents/` | 各节点实现与 LawRef 局部工具循环 |
+| `backend/app/knowledge/` | 语料加载、来源核验、两种检索路径 |
+| `frontend/src/` | 客户端与律师界面 |
+| `evaluation/` | 离线与真实组件评测入口 |
+
+测试命令见 [testing.md](testing.md)。当前边界是单实例工程原型：没有多实例协调、完整备份恢复演练或法律专家质量验收。历史源文件可能仍在 Git 对象或远端引用中；当前文档修订不改写历史。更多限制见 [limitations.md](limitations.md)。

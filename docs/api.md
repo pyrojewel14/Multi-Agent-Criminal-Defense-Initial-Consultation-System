@@ -1,6 +1,12 @@
 # FastAPI 接口与权限边界
 
-本文以 `backend/main.py` 和当前路由实现为准。它说明可调用接口及已知边界，不代表生产部署、真实 LLM/RAG 质量或完整故障恢复能力。运行时 schema 应通过目标提交的 `/openapi.json` 重新取得。
+这篇带你调用注册、会话消息和律师审核接口，并解释权限与错误响应。
+读完可以串起一次本地 HTTP 联调，区分 workflow ID 和数据库 ID。
+先启动服务请读 [安装说明](setup.md)，能力范围见 [边界说明](limitations.md)。
+
+## 联调顺序
+
+注册普通用户 → 登录并保存 token → 创建会话 → 确认同意 → 发消息/查状态。律师审核还需要管理员分配和律师账号。下文响应字段按当前代码契约说明，不是本轮真实 HTTP 实跑记录。
 
 ## 基础信息
 
@@ -23,7 +29,7 @@
 | 当前用户 / 登出 | `GET /api/v1/auth/me`、`POST /api/v1/auth/logout` | 已认证 | SQLite；登出只撤销 refresh token |
 | 创建会话 | `POST /api/v1/sessions` | 已认证 | SQLite 创建 `consultations`；LangGraph 启动状态 |
 | 知情同意 | `POST /api/v1/sessions/{session_id}/confirm-consent` | 会话所有者 | LangGraph checkpoint；`consent_given` 同步 SQLite |
-| 发送消息 | `POST /api/v1/sessions/{session_id}/message` | 会话所有者 | workflow；HTTP 用户/Agent 消息写入 SQLite |
+| 发送消息 | `POST /api/v1/sessions/{session_id}/message` | 会话所有者 | checkpoint；HTTP/WS 外部原文与回复写入业务 SQLite |
 | 查询实时状态 | `GET /api/v1/sessions/{session_id}/state` | 所有者、已分配律师、管理员 | LangGraph checkpoint；不从 Redis/内存猜测 pending node |
 | 获取报告草案 | `GET /api/v1/sessions/{session_id}/report-draft` | 已分配律师、管理员 | LangGraph checkpoint state，不从业务 SQLite 的报告列恢复 |
 | workflow 律师审核 | `PUT /api/v1/sessions/{session_id}/review` | 已分配律师、管理员 | application command；checkpoint + SQLite 审计 |
@@ -34,7 +40,7 @@
 | 用户 / 律师管理 | `/api/v1/users*`、`/api/v1/lawyers*` | admin | SQLite |
 | 知识库管理 | `/api/v1/knowledge*` | admin | Chroma、MD5 store 与文档处理链；依赖本地模型/解析组件 |
 
-`session_id` 是 LangGraph 的工作流 ID；`consultation_id` 是 SQLite 主键，二者通过 `consultations.workflow_session_id` 关联。创建会话响应同时返回两者。律师工作台和历史接口中的路径 ID 实际使用 `consultation_id`，不能与 workflow `session_id` 混用。
+`session_id` 是 LangGraph 的工作流 ID；`consultation_id` 是 SQLite 主键，二者通过 `consultations.workflow_session_id` 关联。创建会话响应同时返回两者；业务历史的 `ConsultationResponse` 也返回可空的 `workflow_session_id`，旧记录可能没有映射。律师工作台和历史接口中的路径 ID 实际使用 `consultation_id`，不能与 workflow `session_id` 混用。
 
 ## 权限矩阵
 
@@ -53,12 +59,8 @@ JWT 会校验签名、过期时间、token 类型、非空 `sub` 和 `client/law
 
 ## 可复制 HTTP 示例
 
-以下命令从仓库根目录启动服务；启动阶段要求 SQLite 可写、Redis 可连接，并需要能加载当前配置：
-
-```bash
-cd backend
-.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
-```
+先按 [setup.md](setup.md) 启动服务，再打开 `http://127.0.0.1:8000/docs`。
+下面的 curl 用占位密码与 token 演示请求结构；请在本地替换，不要原样发送占位值。`ACCESS_TOKEN`、`SESSION_ID` 等变量需手动从响应中取得。
 
 注册（真实 HTTP 状态为 201）：
 
@@ -91,6 +93,8 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login \
   -d '{"username":"demo_client","password":"<strong-password-entered-locally>"}'
 ```
 
+预期 HTTP 200，成功 wrapper 的 `data` 中包含 `access_token`、`refresh_token`、`token_type`、`expires_in` 和 `user`。将 `data.access_token` 保存为终端变量 `ACCESS_TOKEN`；不要把完整 token 写进文档。
+
 创建会话。`client_id` 是兼容字段，可以省略；所有者始终取自 token：
 
 ```bash
@@ -99,6 +103,8 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/sessions \
   -H 'Content-Type: application/json' \
   -d '{"user_type":"suspect"}'
 ```
+
+预期 HTTP 200，响应是裸会话对象；把 `session_id` 和 `consultation_id` 分别保存为 `SESSION_ID` 和 `CONSULTATION_ID`：
 
 ```json
 {
@@ -110,19 +116,26 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/sessions \
 }
 ```
 
-确认知情同意并发送消息：
+确认知情同意。先设置 `CONSENT_TIMESTAMP` 为本次同意的 ISO-8601 时间，不要复用历史时间：
 
 ```bash
 curl -s -X POST "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/confirm-consent" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H 'Content-Type: application/json' \
-  -d "{\"session_id\":\"${SESSION_ID}\",\"consent_given\":true,\"consent_timestamp\":\"2026-07-16T08:00:00Z\",\"consent_version\":\"v1\"}"
+  -d "{\"session_id\":\"${SESSION_ID}\",\"consent_given\":true,\"consent_timestamp\":\"${CONSENT_TIMESTAMP}\",\"consent_version\":\"v1\"}"
 
+```
+
+预期 HTTP 200，响应含 `success=true`、`current_agent`、`next_prompt` 和 `conversation_started`。随后发送合成输入：
+
+```bash
 curl -s -X POST "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/message" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H 'Content-Type: application/json' \
   -d "{\"session_id\":\"${SESSION_ID}\",\"content\":\"事情发生在昨天晚上，请继续询问。\",\"idempotency_key\":\"client-message-001\"}"
 ```
+
+消息成功时返回 `message_id`、`agent_name`、`response_content`、`is_complete`、`pending_questions` 和 `alert_triggered`。值取决于实际流程；模型超时等情况按下方错误表处理。
 
 查询状态：
 
@@ -130,6 +143,8 @@ curl -s -X POST "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/message" \
 curl -s "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/state" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}"
 ```
+
+预期 HTTP 200，状态响应含 `session_id`、`consultation_id`、`current_agent`、`consent_given`、`pending_questions` 和 `status`。它未暴露全部底层状态字段；不能用业务角色推断 pending node。
 
 管理员先用数据库 `consultation_id` 分配律师；之后已分配律师用 workflow `session_id` 读取草案并审核：
 
@@ -147,6 +162,8 @@ curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/review" \
   -H 'Content-Type: application/json' \
   -d '{"decision":"approved","feedback":"同意该草案","final_output":"律师确认后的报告","idempotency_key":"lawyer-review-001"}'
 ```
+
+分配成功返回 `{code,message,data}` wrapper；草案响应含 `report_draft`。首次审核必须在真实 `human_review` 断点：否则 409，跨存储提交失败为 503。具体重试方式见 [命令一致性](architecture.md#生命周期命令先推进图再提交审计)。
 
 公开注册只创建 `client`。项目没有公开的管理员初始化接口；管理员 token 和律师账号必须来自已有受信任初始化数据或管理员接口，不能通过修改注册请求中的 `role` 获得。
 
@@ -169,6 +186,9 @@ curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/review" \
 | 401 | `UNAUTHORIZED` | 缺少、过期或声明无效的 access token |
 | 403 | `FORBIDDEN` | 角色或资源权限不足 |
 | 404 | `NOT_FOUND` | 路由、会话、记录或草案不存在 |
+| 409 | `HTTP_ERROR` | 状态、幂等载荷或操作冲突 |
+| 503 | `INTERNAL_ERROR` | 生命周期审计待修复；按响应要求重试相同操作 |
+| 413 | `LLM_SERVICE_ERROR` | 必要完整输入超出上下文预算；拆分输入后补充 |
 | 422 | `VALIDATION_ERROR` | Pydantic/FastAPI 请求校验失败 |
 | 429 | `RATE_LIMITED` | 请求超过限流窗口 |
 | 500 | `INTERNAL_ERROR` | 未处理错误或路由显式内部错误 |
@@ -177,21 +197,28 @@ curl -s -X PUT "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/review" \
 
 高风险短路目前通过 HTTP 403 和谨慎提示返回；它不等同于外部律师工单或通知已发送。
 
-## Redis 与 SQLAlchemy 边界
+## 状态、消息与审计
 
-- 应用 lifespan 依次执行 `init_db()` 和 `init_redis()`。Redis 在启动时是硬依赖，连接失败会阻断应用启动。
-- Redis 的职责是缓存/观测投影，不是执行状态源；当前 lifespan 仍强制初始化 Redis，不能按可选启动依赖理解。API 查询和恢复只读取 LangGraph checkpoint。
-- `persist_state()` 对 LangGraph 已写入的完整 state 只刷新进程内兼容投影；只有调用方明确给出新增投影字段时才最小更新 checkpoint，且不能据此推断 pending node。
-- SQLite 持久化用户、咨询记录和 HTTP 消息，并作为 approve/reject/close 的业务审计源；定向测试使用内存 SQLite 验证相关落库契约。
-- 完整 workflow state 从独立的 LangGraph checkpoint SQLite 恢复，不从业务 SQLite 的 `Consultation` 表恢复。`facts_structured`、`applied_laws`、`risk_assessment`、`service_plan`、`report_draft` 等虽在 `Consultation` 模型定义，但当前自然 workflow 尚未统一回写这些列。新增报告草案接口因此明确读取实时 state，而不是宣称数据库已完整持久化。
-- HTTP 与 WebSocket 消息都接受 `idempotency_key`；WebSocket 也兼容把 `message_id` 作为该键。HTTP 的 workflow 推进、checkpoint history 与 `consultation_messages` 写入位于同一 service 命令边界；WebSocket 仍不写 `consultation_messages`。生命周期命令先推进 checkpoint，再提交 SQLite；SQLite 失败时保留真实执行位置并标记 `repair_required`，503 会要求使用相同操作和相同 key 重试修复，普通 resume 在修复前被阻断。
-- 幂等键最长 128 字符，作用域为 `(session_id, command_type, idempotency_key)`。同 key 不同载荷返回 409。可安全重放结果只在当前进程缓存一小时且总量最多 2048 条；消息若已推进 workflow、但随后 SQLite 写入失败，同 key 会重放原错误而不再次 resume，也不会自动补写缺失消息。重启或多 worker 不共享，跨进程部署必须增加持久化幂等表和共享并发控制。
-- 首次 approve/reject 仅接受处于 `human_review` 断点的工作流；其他执行位置返回 409，不推进工作流也不写 SQLite。该限制不阻止已标记 `repair_required` 的同 action 审计修复。
-- SQLAlchemy async 连接需要 `greenlet`；依赖已列入 `pyproject.toml` 和 `requirements.txt`。
+- 实时状态、草案和恢复读取 LangGraph checkpoint；业务库不能替代执行状态。详见 [存储与恢复](architecture.md#存储与恢复)。
+- `Consultation` 虽定义事实、法条和报告等列，自然 workflow 尚未统一回写这些列；草案接口因此读取实时 state。
+- HTTP 与 WebSocket 共用 `process_message`；缺少数据库会话时由服务创建 `AsyncSessionLocal`，再进入 `process_external`。完整输入先提交业务消息表，随后执行图并记录实际回复；checkpoint 回执与跨存储修复统一见 [架构](architecture.md#并发与幂等)。
+- WebSocket 可用 `message_id` 兼容提供幂等键。
+- Redis 在 lifespan 中强制连接；`persist_state()` 的兼容投影不能用来推断待执行节点。
+- SQLAlchemy 异步连接需要 `greenlet`，依赖已列入安装清单。
 
 ## OpenAPI 与运行时已知差异
 
 - 部分历史路由使用 `success_response()` 返回 `{code,message,data}` wrapper，但装饰器的 `response_model` 仍描述裸 data 模型；运行时成功响应以上述 wrapper 为准。
 - FastAPI 自动生成的 422 OpenAPI schema 仍可能显示默认 `detail` 结构；运行时已由全局处理器转换为统一 `error` envelope。
 - ASGI 测试会 mock LLM、RAG、Redis 或路由数据库依赖；它证明路由、鉴权和错误契约，不证明外部模型、Chroma 或真实 Redis 在线。
-- 当前没有 Alembic migration、checkpoint 备份恢复演练、access-token 撤销列表或多实例状态一致性；checkpoint SQLite 仅证明单实例进程重启恢复。
+- 当前没有 Alembic migration、checkpoint 备份恢复演练、access-token 撤销列表或多实例状态一致性；已有确定性证据覆盖 SQLite saver 跨进程恢复；[阶段 3 正常停启交付](memory/phase3-verification.md)待对应主线程独立验收，运行中崩溃和多 worker 尚未验证。已知 workflow ID 的恢复与旧会话发现见 [Memory 说明](memory/README.md#恢复与失败边界)。
+
+## 术语速查
+
+| 术语 | 含义 |
+| --- | --- |
+| JWT / Bearer | 签名访问令牌 / 在 Authorization 请求头携带令牌的方式 |
+| RBAC | 按角色校验访问权限，资源归属仍需单独检查 |
+| OpenAPI / ASGI | 接口描述标准 / Python 异步 Web 服务接口 |
+| Pydantic | 字段、类型和约束校验库 |
+| greenlet | SQLAlchemy 异步适配需要的协作执行组件 |
