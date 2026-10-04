@@ -153,38 +153,104 @@ class LegalToolRegistry:
     async def _search_laws(self, query: str) -> dict[str, Any]:
         """复用原有 RAG、快照验证和关键词召回，不重复实现索引。"""
         query_facts = {"behavior_sequence": [query.strip()], "consequence": ""}
-        rag_results = await law_retrieval.search_laws_by_rag(query_facts, self.user_id)
+        full_profile = os.getenv("LAW_KNOWLEDGE_PROFILE", "full") == "full"
+        if full_profile:
+            rag_results = await law_retrieval.search_laws_by_rag(query_facts, self.user_id, candidate_pool=True)
+        else:
+            rag_results = await law_retrieval.search_laws_by_rag(query_facts, self.user_id)
         self.rag_dependency_failed = bool(getattr(rag_results, "dependency_failed", False))
         index = _build_article_index(self.law_data)
         verified_rag = law_retrieval._verify_and_enrich_with_json(rag_results, index)
         keyword = await law_retrieval.search_laws_by_keyword(query_facts, self.law_data)
         merged = law_retrieval._merge_and_deduplicate(verified_rag, keyword)
-        merged.sort(key=lambda law: law.get("data_source") not in {"rag_verified", "json_keyword"})
-        merged = merged[:5]
+        retrieval_status = dict(getattr(rag_results, "retrieval_status", {}))
+        if full_profile and retrieval_status.get("method") in {"hybrid_index", "vector_index", "article_id_index"}:
+            from app.knowledge.full_law_retrieval import RetrievalConfig, finalize_candidates
+
+            config = RetrievalConfig.from_env()
+            # 精确条号不扩展到其他候选；自然语言合并后只重排一次。
+            if retrieval_status["method"] == "article_id_index":
+                merged = verified_rag
+            elif retrieval_status["method"] == "hybrid_index":
+                keyword = keyword[:config.recall_k]
+                merged = law_retrieval._merge_and_deduplicate(verified_rag, keyword)
+                retrieval_status["keyword_recall_count"] = len(keyword)
+                by_id = {
+                    _normalize_article_number(law["article_number"]): {
+                        **law,
+                        "recall_ranks": dict(law.get("recall_ranks", {})),
+                        "recall_scores": dict(law.get("recall_scores", {})),
+                    }
+                    for law in merged
+                }
+                for rank, law in enumerate(keyword, 1):
+                    candidate = by_id[_normalize_article_number(law["article_number"])]
+                    candidate["fusion_score"] = candidate.get("fusion_score", 0) + 1 / (60 + rank)
+                    candidate["recall_ranks"]["keyword"] = rank
+                    candidate["recall_scores"]["keyword"] = law.get("relevance_score")
+                merged = sorted(by_id.values(), key=lambda law: -law.get("fusion_score", 0))
+            elif not config.rerank:
+                # 显式 vector 消融保留历史工具排序，避免改写对照基线。
+                merged.sort(key=lambda law: law.get("data_source") not in {"rag_verified", "json_keyword"})
+                retrieval_status["ranking_contract"] = "legacy_source_priority"
+            merged = await finalize_candidates(query.strip(), merged, retrieval_status, config)
+        else:
+            merged.sort(key=lambda law: law.get("data_source") not in {"rag_verified", "json_keyword"})
+            merged = merged[:5]
         candidates = []
         for law in merged:
             article_id = _normalize_article_number(law.get("article_number", ""))
             if not article_id:
                 continue
             source = law.get("data_source", "rag_unverified")
-            if article_id in index and is_article_in_force(index[article_id]) and (
-                (is_lawref_eligible(index[article_id]) and source in {"rag_verified", "json_keyword"})
-                or (index[article_id].get("text_provenance") and source == "text_only")
+            if (
+                article_id in index
+                and is_article_in_force(index[article_id])
+                and (
+                    (is_lawref_eligible(index[article_id]) and source in {"rag_verified", "json_keyword"})
+                    or (index[article_id].get("text_provenance") and source == "text_only")
+                )
             ):
                 self.searched[article_id] = {**law, **index[article_id], "data_source": source}
             candidates.append(
                 {
                     "article_id": article_id,
                     "title": law.get("title") or law.get("display_title", ""),
-                    "score": law.get("relevance_score") if source == "json_keyword" else None,
+                    "score": law.get("rerank_score", law.get("fusion_score", law.get("relevance_score"))),
+                    "rank": law.get("rank"),
+                    "fusion_score": law.get("fusion_score"),
+                    "rerank_score": law.get("rerank_score"),
+                    "recall_ranks": law.get("recall_ranks", {}),
+                    "recall_scores": law.get("recall_scores", {}),
+                    "retrieval_status": law.get("retrieval_status", retrieval_status),
+                    "article_status": index.get(article_id, {}).get("status"),
+                    "coverage_eligible": article_id in self.searched and is_lawref_eligible(index[article_id]),
+                    "provenance": {
+                        key: law.get(key) or index.get(article_id, {}).get(key)
+                        for key in (
+                            "corpus_version",
+                            "corpus_sha256",
+                            "content_sha256",
+                            "official_text_source",
+                            "text_provenance",
+                            "source",
+                            "text_review_status",
+                            "legal_review_status",
+                        )
+                    },
                     "source": source,
-                    "retrieval_method": law.get("retrieval_method") or ("rag" if source.startswith("rag_") else "keyword"),
+                    "retrieval_method": law.get("retrieval_method")
+                    or ("rag" if source.startswith("rag_") else "keyword"),
                     "fingerprint": _article_fingerprint(index[article_id], self.law_data)
                     if article_id in index
                     else _fingerprint("unverified_article", {"article_id": article_id}),
                 }
             )
-        return {"candidates": candidates, "rag_dependency_failed": self.rag_dependency_failed}
+        return {
+            "candidates": candidates,
+            "rag_dependency_failed": self.rag_dependency_failed,
+            "retrieval_status": retrieval_status,
+        }
 
     def _verified_article(self, article_id: str) -> tuple[str, dict[str, Any] | None]:
         normalized = _normalize_article_number(article_id.strip())

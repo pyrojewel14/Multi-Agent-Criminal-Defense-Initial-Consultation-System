@@ -1,5 +1,6 @@
 """法条候选召回、RAG 访问和快照核验。"""
 
+import os
 import re
 from typing import Any, Dict, List
 
@@ -19,9 +20,11 @@ class LawSearchResults(list):
         values: List[Dict[str, Any]] | None = None,
         *,
         dependency_failed: bool = False,
+        retrieval_status: Dict[str, Any] | None = None,
     ):
         super().__init__(values or [])
         self.dependency_failed = dependency_failed
+        self.retrieval_status = retrieval_status or {}
 
 
 def _extract_article_number_from_text(text: str | None) -> str:
@@ -65,15 +68,29 @@ def _verify_and_enrich_with_json(
             continue
 
         full_match = bool(json_match and json_match.get("text_provenance"))
-        if json_match is not None and full_match and (
-            rag_law.get("corpus_sha256") != json_match.get("corpus_sha256")
-            or rag_law.get("corpus_version") != json_match.get("corpus_version")
-            or rag_law.get("content") != f"{json_match['article_number']} {json_match['content']}"
+        if (
+            json_match is not None
+            and full_match
+            and (
+                rag_law.get("corpus_sha256") != json_match.get("corpus_sha256")
+                or rag_law.get("corpus_version") != json_match.get("corpus_version")
+                or rag_law.get("content") != f"{json_match['article_number']} {json_match['content']}"
+            )
         ):
             enriched.append({**rag_law, "elements": [], "required_elements": [], "data_source": "rag_unverified"})
             continue
         if json_match is not None and full_match and not is_lawref_eligible(json_match):
-            enriched.append({**json_match, "elements": [], "required_elements": [], "data_source": "text_only", "coverage_eligible": False, "retrieval_method": rag_law.get("retrieval_method", "rag")})
+            enriched.append(
+                {
+                    **rag_law,
+                    **json_match,
+                    "elements": [],
+                    "required_elements": [],
+                    "data_source": "text_only",
+                    "coverage_eligible": False,
+                    "retrieval_method": rag_law.get("retrieval_method", "rag"),
+                }
+            )
             continue
         if json_match and is_lawref_eligible(json_match):
             # 项目维护标注通过安全门槛后，才可增强 RAG 结果。
@@ -242,7 +259,9 @@ async def search_laws_by_keyword(facts_structured: Dict[str, Any], law_data: Dic
     return matched_laws
 
 
-async def search_laws_by_rag(facts_structured: Dict[str, Any], user_id: str | None) -> List[Dict[str, Any]]:
+async def search_laws_by_rag(
+    facts_structured: Dict[str, Any], user_id: str | None, *, candidate_pool: bool = False
+) -> List[Dict[str, Any]]:
     """通过 RAG 向量检索搜索匹配的刑法条文。
 
     返回原始 RAG 文档内容，元数据由后续 _verify_and_enrich_with_json 通过
@@ -261,10 +280,10 @@ async def search_laws_by_rag(facts_structured: Dict[str, Any], user_id: str | No
         return []
 
     try:
-        import os
         if os.getenv("LAW_KNOWLEDGE_PROFILE", "full") == "full":
             from app.knowledge.full_law_index import search_full_index
-            return LawSearchResults(await search_full_index(facts_structured))
+
+            return await search_full_index(facts_structured, candidate_pool=candidate_pool)
         from app.knowledge.rag.rag_service import RagService
 
         behavior_sequence = facts_structured.get("behavior_sequence", [])
@@ -323,4 +342,11 @@ async def search_laws_by_rag(facts_structured: Dict[str, Any], user_id: str | No
             "【search_laws_by_rag】RAG 检索失败: error_type=%s",
             type(e).__name__,
         )
-        return LawSearchResults(dependency_failed=True)
+        return LawSearchResults(
+            dependency_failed=True,
+            retrieval_status={
+                "method": "full_index" if os.getenv("LAW_KNOWLEDGE_PROFILE", "full") == "full" else "legacy",
+                "error": type(e).__name__,
+                "degraded": True,
+            },
+        )

@@ -198,13 +198,24 @@ def verify_full_index(
     return manifest
 
 
-async def search_full_index(facts: dict[str, Any]) -> list[dict[str, Any]]:
-    """查询显式配置的公共全量索引，拒绝语料、模型及实际模型 digest 不一致。"""
+async def search_full_index(facts: dict[str, Any], *, candidate_pool: bool = False) -> list[dict[str, Any]]:
+    """核验独立公共索引后扩大召回；工具合并阶段可请求未截断候选池。"""
     import chromadb
     import httpx
 
-    from app.knowledge.law_retrieval import _extract_article_number_from_text, _flatten_fact_terms
+    from app.infrastructure.observability.tracing import SessionBudgetExceeded
+    from app.knowledge import full_law_retrieval as retrieval
+    from app.knowledge.law_retrieval import LawSearchResults, _extract_article_number_from_text, _flatten_fact_terms
 
+    config = retrieval.RetrievalConfig.from_env()
+    status: dict[str, Any] = {
+        "mode": config.mode,
+        "vector": "not_started",
+        "bm25": "disabled",
+        "hyde": "disabled",
+        "rerank": "deferred",
+        "degraded": False,
+    }
     directory = os.getenv("LAW_FULL_INDEX_DIRECTORY")
     digest = os.getenv("LAW_FULL_EMBEDDING_DIGEST")
     if not directory or not digest or os.getenv("EMBED_MODEL_TYPE", "OLLAMA") != "OLLAMA":
@@ -212,61 +223,94 @@ async def search_full_index(facts: dict[str, Any]) -> list[dict[str, Any]]:
     model = os.getenv("TEXT_EMBEDDING_MODEL_NAME", "qwen3-embedding:0.6b")
     collection = os.getenv("LAW_FULL_INDEX_COLLECTION", "criminal_law_full")
     corpus_path = Path(os.getenv("LAW_FULL_CORPUS_PATH", str(FULL_CORPUS_PATH)))
+    url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
     async with httpx.AsyncClient(trust_env=False, timeout=10) as client:
-        response = await client.get(os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/") + "/api/tags")
+        response = await client.get(url + "/api/tags")
         response.raise_for_status()
         models = response.json().get("models", [])
     if not any(m.get("name") == model and m.get("digest") == digest for m in models):
         raise ValueError("实际 embedding 模型 digest 不一致")
     manifest = await asyncio.to_thread(verify_full_index, corpus_path, Path(directory), collection, model, digest)
+    status.update(integrity_verified=True, embedding_model=model, embedding_model_digest=digest)
     query = " ".join(
         _flatten_fact_terms(facts.get("behavior_sequence", [])) + _flatten_fact_terms(facts.get("consequence", ""))
     )
     target = chromadb.PersistentClient(path=str(Path(directory).resolve())).get_collection(collection)
+
+    def hit(document: str, metadata: dict[str, Any], **extra: Any) -> dict[str, Any]:
+        """保留经索引核验的完整来源与身份，资格仍由 JSON 核验决定。"""
+        return {**metadata, "content": document, "data_source": "rag_unverified", **extra}
+
     exact_id = _normalize_article_number(_extract_article_number_from_text(query))
     if exact_id:
+        status.update(method="article_id_index", vector="skipped_exact", bm25="skipped_exact", hyde="skipped_exact")
         exact = await asyncio.to_thread(target.get, where={"article_id": exact_id}, include=["documents", "metadatas"])
         if exact["documents"] is None or exact["metadatas"] is None:
-            return []
-        return [
-            {
-                "article_number": m["article_number"],
-                "content": document,
-                "corpus_sha256": m["corpus_sha256"],
-                "corpus_version": m["corpus_version"],
-                "data_source": "rag_unverified",
-                "retrieval_method": "article_id_index",
-            }
-            for document, m in zip(exact["documents"], exact["metadatas"])
-        ]
-    async with httpx.AsyncClient(trust_env=False, timeout=90) as client:
-        response = await client.post(
-            os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/") + "/api/embed",
-            json={"model": model, "input": [query], "truncate": False},
+            raise ValueError("exact documents missing")
+        laws = [hit(d, m, retrieval_method="article_id_index") for d, m in zip(exact["documents"], exact["metadatas"])]
+        laws = await retrieval.finalize_candidates(query, laws, status, config)
+        return LawSearchResults(laws, retrieval_status=status)
+    if not query.strip():
+        status.update(method="empty_query", vector="skipped_empty", hyde="skipped_empty", rerank="skipped_empty")
+        return LawSearchResults(retrieval_status=status)
+
+    async def vector_recall(text: str, k: int) -> list[dict[str, Any]]:
+        """向量通道只查询当前已核验的公共 collection。"""
+        async with httpx.AsyncClient(trust_env=False, timeout=60) as client:
+            response = await client.post(url + "/api/embed", json={"model": model, "input": [text], "truncate": False})
+            response.raise_for_status()
+            vector = _vectors(response.json()["embeddings"], 1)[0]
+        if len(vector) != manifest["embedding_dimension"]:
+            raise ValueError("查询 embedding 维度不一致")
+        results = await asyncio.to_thread(
+            target.query,
+            query_embeddings=[vector],
+            n_results=min(k, manifest["document_count"]),
+            where={"is_public": True},
+            include=["documents", "metadatas", "distances"],
         )
-        response.raise_for_status()
-        vector = response.json()["embeddings"][0]
-    vector = _vectors([vector], 1)[0]
-    if len(vector) != manifest["embedding_dimension"]:
-        raise ValueError("查询 embedding 维度不一致")
-    target = chromadb.PersistentClient(path=str(Path(directory).resolve())).get_collection(collection)
-    results = await asyncio.to_thread(
-        target.query,
-        query_embeddings=[vector],
-        n_results=5,
-        where={"is_public": True},
-        include=["documents", "metadatas", "distances"],
-    )
-    if results["documents"] is None or results["metadatas"] is None:
-        raise ValueError("query documents missing")
-    return [
-        {
-            "article_number": m["article_number"],
-            "content": document,
-            "corpus_sha256": m["corpus_sha256"],
-            "corpus_version": m["corpus_version"],
-            "data_source": "rag_unverified",
-            "retrieval_method": "vector_index",
-        }
-        for document, m in zip(results["documents"][0], results["metadatas"][0])
-    ]
+        if results["documents"] is None or results["metadatas"] is None or results["distances"] is None:
+            raise ValueError("query documents missing")
+        return [
+            hit(d, m, vector_distance=float(distance))
+            for d, m, distance in zip(results["documents"][0], results["metadatas"][0], results["distances"][0])
+        ]
+
+    # vector 模式保持既有 top5 基线；混合模式扩大原查询召回。
+    channels = {"vector": await vector_recall(query, config.recall_k if config.mode == "hybrid" else 5)}
+    status["vector"] = "executed"
+    if config.mode == "hybrid":
+        corpus, corpus_hash = await asyncio.to_thread(_load, corpus_path)
+        if corpus_hash != manifest["corpus_sha256"]:
+            raise ValueError("corpus changed during retrieval")
+        rows = _rows(corpus, corpus_hash)
+        lexical = await asyncio.to_thread(retrieval.lexical_recall, query, rows, corpus_hash, config.recall_k)
+        channels["bm25"] = [hit(r["document"], r["metadata"], bm25_score=r["bm25_score"]) for r in lexical]
+        status.update(bm25="executed", tokenizer=retrieval.TOKENIZER_VERSION)
+    if config.hyde and config.mode == "hybrid":
+        if config.hyde_budget == 0:
+            status.update(hyde="budget_exhausted", degraded=True)
+        else:
+
+            async def extra_recall() -> list[dict[str, Any]]:
+                hypothetical = await retrieval.generate_hyde(query)
+                return await vector_recall(hypothetical, config.hyde_k)
+
+            status["hyde_attempt_count"] = 1
+            try:
+                channels["hyde"] = await asyncio.wait_for(extra_recall(), timeout=config.hyde_timeout)
+                status["hyde"] = "executed"
+            except SessionBudgetExceeded:
+                status.update(hyde="budget_exhausted", degraded=True)
+            except asyncio.TimeoutError:
+                status.update(hyde="timeout", degraded=True)
+            except Exception as exc:
+                status.update(hyde="failed", hyde_error=type(exc).__name__, degraded=True)
+    status["recall_counts"] = {name: len(laws) for name, laws in channels.items()}
+    laws = retrieval.fuse(channels)
+    method = "hybrid_index" if config.mode == "hybrid" else "vector_index"
+    status.update(method=method, candidate_count=len(laws))
+    laws = [{**law, "retrieval_method": method, "retrieval_status": dict(status)} for law in laws]
+    if not candidate_pool:
+        laws = await retrieval.finalize_candidates(query, laws, status, config)
+    return LawSearchResults(laws, retrieval_status=status)
