@@ -128,7 +128,7 @@ FactDigger 对每个可信候选分别算覆盖率，选择支持率最高者；
 - 注入非 `MemorySaver` 的 durable checkpointer 并显式设置 `persistent=True` 后才声明跨进程恢复；缺少 saver 或把 `MemorySaver` 标为 persistent 会在构造时被拒绝；
 - `session_id` 是工作流标识，`consultation_id` 是 SQLite 记录标识，两者不能混用；
 - API 鉴权和律师分配校验不能由 LangGraph 中断机制替代；
-- 已知 `session_id` 恢复与进程内活跃列表发现旧会话不同；业务历史返回可空的 `workflow_session_id`。外部消息回执和保守崩溃处理见 [Memory](memory/README.md#恢复与失败边界)，[阶段 3 正常停启交付](memory/phase3-verification.md)待对应主线程独立验收；多 worker 未由上述配置能力验证。
+- 已知 `session_id` 恢复与进程内活跃列表发现旧会话不同；业务历史返回可空的 `workflow_session_id`。外部消息回执和保守崩溃处理见 [Memory](memory/README.md#恢复与失败边界)，[阶段 3 正常停启验证](memory/phase3-verification.md)已于 2026-10-04 由主线程独立验收，限合成小样例、单 worker 正常停启；多 worker 未由上述配置能力验证。
 
 生命周期命令的执行断点校验、`repair_required` 与相同 action 审计修复，统一见 [架构的命令一致性说明](architecture.md#生命周期命令先推进图再提交审计)。API 的角色和分配校验见 [接口说明](api.md)。
 

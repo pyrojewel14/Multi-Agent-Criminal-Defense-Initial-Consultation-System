@@ -33,7 +33,7 @@
 - 业务 SQLite 保留 raw transcript；checkpoint 中保存案件字段、近期消息、滚动摘要及游标。`facts_raw` 是有界兼容输入，不能当作完整历史原文。
 - 每次模型调用使用 ContextBuilder。预算按 UTF-8 字节加协议开销保守估算，实际 token 仍依赖供应商 usage；没有部署模型 tokenizer 的精确测量。
 - 必要的本轮输入与最新工具调用组完整保留，超过预算明确拒绝；背景记忆按完整组淘汰。摘要需要已同意，失败保留旧摘要/游标且不回退无限原文。
-- 来源、空值、冲突和显式更正是当前字段合并契约；它们不验证用户陈述真实性，也不能替代律师确认。真实模型多轮质量尚未完成验收，技术主说明见 [Memory](memory/README.md)。
+- 来源、空值、冲突和显式更正是当前字段合并契约；它们不验证用户陈述真实性，也不能替代律师确认。[阶段 3](memory/phase3-verification.md)已于 2026-10-04 由主线程独立验收固定合成样例的真实提取、摘要和服务停启功能；摘要有损、模型误提取及脱敏误伤仍是内容质量限制，技术主说明见 [Memory](memory/README.md)。
 
 ## LLM 输出
 
@@ -52,7 +52,7 @@
 
 - FastAPI lifespan 使用独立的 LangGraph checkpoint SQLite 文件，单实例后端进程重启后可恢复原图执行位置；直接构造 orchestrator 的纯单元测试默认仍使用进程内 `MemorySaver`。checkpoint 包含完整咨询工作流状态，属于敏感本地数据，Git 已忽略运行数据库。
 - 同 session 串行锁与内部兼容/生命周期结果 registry 是进程内能力；HTTP/WS 原文、回复和 `message_audit` 回执另行持久保存，不能概括为重启后全部丢失。它们不构成跨进程锁或 exactly-once 保证。
-- 外部输入先提交业务 SQLite，图执行后记录 checkpoint `applied` 回执。该回执已确定执行成功时，相同键只补审计；崩溃留下 `running` 或缺少明确回执时保守停下。[阶段 3 正常停启交付](memory/phase3-verification.md)待对应主线程独立验收，完整崩溃窗口与多 worker 仍需验证，见 [Memory 说明](memory/README.md#恢复与失败边界)。
+- 外部输入先提交业务 SQLite，图执行后记录 checkpoint `applied` 回执。该回执已确定执行成功时，相同键只补审计；崩溃留下 `running` 或缺少明确回执时保守停下。[阶段 3 正常停启验证](memory/phase3-verification.md)已于 2026-10-04 由主线程独立验收，范围限合成小样例与单 worker 正常停启；完整崩溃窗口与多 worker 仍需验证，见 [Memory 说明](memory/README.md#恢复与失败边界)。
 
 - Redis 不是执行状态源；SQLite 是生命周期/消息审计源。approve/reject/close 先推进 checkpoint，再提交 SQLite；审计提交失败时不会伪造回滚，而是在真实执行位置标记 `repair_required` 并阻断普通 resume，等待相同操作重试修复。
 - `session_id` 与 `consultation_id` 属于不同存储域，不能混用。
