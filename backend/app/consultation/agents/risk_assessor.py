@@ -116,7 +116,7 @@ async def _generate_risk_assessment(
     """
     system_prompt = _load_prompt()
 
-    # P0-1: 对传给 LLM 的案件事实进行 PII 脱敏
+    # 保留 PII 处理入口；当前案件事实原样传给配置的模型。
     facts_text = mask_pii(json.dumps(facts_structured, ensure_ascii=False))
 
     user_message_parts = [

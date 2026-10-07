@@ -11,7 +11,7 @@
 | 执行节点 | 角色 | 主要职责 |
 | --- | --- | --- |
 | `receptionist` | Receptionist | 告知、知情同意与身份入口 |
-| `fact_intake` | FactDigger | 单次消费本轮输入，高风险检测、脱敏、结构化事实刷新 |
+| `fact_intake` | FactDigger | 单次消费本轮输入，高风险检测、输入原样透传、结构化事实刷新 |
 | `law_ref` | LawRef | 有界工具决策、RAG/JSON 召回、来源核验和权威要件连接 |
 | `fact_digger` | FactDigger | 基于刷新事实与法条候选计算覆盖度，生成追问或摘要 |
 | `wait_for_user` | WaitForUser | 覆盖不足时中断，等待下一条用户输入 |

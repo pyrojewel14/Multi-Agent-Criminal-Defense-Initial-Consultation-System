@@ -79,6 +79,12 @@ backend/.venv/bin/python -m pytest -q \
 
 Memory 组核对原文/回执、增量字段、游标与预算；名称中的 `live_contract` 仍需核对具体替身和外部依赖范围。full 组核对召回、重排协议与设备失败边界。[阶段 3 定向验证](memory/phase3-verification.md)已于 2026-10-04 由主线程独立验收固定合成样例的真实事实/摘要及单 worker 正常停启，法律检索/覆盖度/预检使用替身；该历史验收不代表当前全量测试通过，也不证明完整咨询质量、任意 kill 或多 worker 恢复。历史验收状态的文档更正没有重跑测试或模型；新的质量与耗时评测按 [评测说明](evaluation.md) 执行，源码职责见 [Memory](memory/README.md) 和 [全量检索](knowledge/full_law_retrieval.md)。
 
+## 输入透传与挂载调用树
+
+`tests/security/test_sensitive_filter.py` 核对保留的 PII 入口原样透传、幂等、长度日志不含正文及风险检测独立性。`tests/consultation/test_pii_boundaries.py` 在供应商接收消息处检查 LawRef、事实摄取、Memory 背景与增量摘要保留原始合成事实和 PII；当前不再期待输入被替换为掩码占位符。[日志过滤回归](../backend/tests/infrastructure/config/test_utils.py)继续检查日志侧手机号、身份证号和邮箱过滤，不能将输入透传推广为允许日志记录正文。2026-10-07 主线程独立复跑相关五文件定向组，211 项通过；范围限入口及确定性调用契约。
+
+`tests/infrastructure/observability/test_call_tree_integration.py` 通过真实挂载 HTTP、独立 SQLite、真实图和 LawRef 工具循环检查调用树、请求隔离与 metadata 不含原文，RAG 使用 snapshot 路径及外部依赖替身。替换 trace store 时须包含外部消息的 Memory coordinator，不应只替换 service 的旧入口，也不能依赖本地业务库已有表结构。上述确定性测试不替代真实模型或默认 full 检索验收。
+
 ## LLM deadline 与结构化产物契约
 
 ```bash

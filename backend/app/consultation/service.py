@@ -776,7 +776,7 @@ async def _process_message_unlocked(
     command_applied = False
     correlation_id = request_id or str(uuid.uuid4())
     try:
-        # FactDigger 是追加和脱敏 facts_raw 的唯一入口，服务层只传递本轮输入。
+        # FactDigger 是追加 facts_raw 的唯一入口；当前输入不掩码，服务层只传递本轮输入。
         state_updates: Dict[str, Any] = {"current_input": content}
 
         root_name = {

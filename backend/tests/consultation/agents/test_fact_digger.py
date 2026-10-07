@@ -606,7 +606,7 @@ async def test_high_risk_input_triggers_alert():
 
 
 @pytest.mark.asyncio
-async def test_node_appends_current_input_once_and_only_after_pii_masking():
+async def test_node_appends_current_input_once_without_masking():
     state = make_consultation_state(
         facts_raw=[],
         current_input="联系电话是13812345678",
@@ -622,7 +622,7 @@ async def test_node_appends_current_input_once_and_only_after_pii_masking():
     ):
         result = await fact_digger_node(state)
 
-    assert result["facts_raw"] == ["联系电话是[PHONE-MASKED]"]
+    assert result["facts_raw"] == ["联系电话是13812345678"]
 
 
 @pytest.mark.asyncio
@@ -795,14 +795,14 @@ async def test_generate_fact_summary_returns_text():
 
 
 @pytest.mark.asyncio
-async def test_generate_fact_summary_masks_pii_in_legacy_raw_facts():
+async def test_generate_fact_summary_preserves_legacy_raw_facts():
     with patch("app.consultation.agents.fact_digger.llm_gateway") as mock_llm:
-        mock_llm.generate = AsyncMock(return_value="已脱敏摘要")
+        mock_llm.generate = AsyncMock(return_value="合成摘要")
         await _generate_fact_summary({"consequence": "轻伤"}, ["联系电话是13812345678"])
 
     user_message = mock_llm.generate.await_args.kwargs["user_message"]
-    assert "13812345678" not in user_message
-    assert "[PHONE-MASKED]" in user_message
+    assert "13812345678" in user_message
+    assert "[PHONE-MASKED]" not in user_message
 
 
 @pytest.mark.asyncio

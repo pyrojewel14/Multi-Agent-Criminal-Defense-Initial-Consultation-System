@@ -411,7 +411,7 @@ async def run_legal_research(
     context = current_trace_context()
     session_id = str(context["session_id"]) if context and context["session_id"] else None
     initial_tokens = session_budget.snapshot(session_id)["tokens"] if session_id else 0
-    # facts 只进入脱敏后的模型输入，轨迹与 trace 不存原文。
+    # 当前事实经兼容入口原样进入模型；轨迹与 trace 仍不存原文。
     safe_facts = mask_pii(json.dumps(facts, ensure_ascii=False, default=str))
     prompt = json.dumps({"facts": safe_facts}, ensure_ascii=False)
     try:

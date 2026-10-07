@@ -132,7 +132,7 @@ async def extract_structured_laws(
 
     context_text = "\n".join(laws_context)
 
-    # P0-1: 对传给 LLM 的案件事实进行 PII 脱敏
+    # 保留 PII 处理入口；当前案件事实原样传给配置的模型。
     facts_text = mask_pii(
         f"行为描述: {', '.join(str(x) for x in facts_structured.get('behavior_sequence', []))}\n"
         f"后果: {facts_structured.get('consequence', '未知')}"

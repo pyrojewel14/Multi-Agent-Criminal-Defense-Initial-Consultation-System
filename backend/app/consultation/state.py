@@ -15,7 +15,7 @@ class ConsultationState(TypedDict, total=False):
     session_id: str  # 会话 ID，用于标识当前咨询会话
     user_type: Optional[str]  # 用户类型；接待阶段尚未识别时为 None
     user_role: Optional[str]  # 用户在系统中的角色（client/lawyer/admin），用于 RBAC 权限判断
-    identity_info: Optional[dict]  # 用户身份详细信息（姓名脱敏、联系方式等），Receptionist 阶段收集
+    identity_info: Optional[dict]  # 用户身份详细信息（姓名、联系方式等；当前不掩码），Receptionist 阶段收集
     consent_given: bool  # 是否已获得用户的知情同意
 
     # 当前输入与多轮对话
@@ -28,7 +28,7 @@ class ConsultationState(TypedDict, total=False):
     pending_questions: List[str]  # 待提问的后续问题列表
 
     # 案件事实与构成要件覆盖度
-    facts_raw: List[str]  # 脱敏近期陈述；完整外部原文以业务消息表为准
+    facts_raw: List[str]  # 近期原始陈述；完整外部原文以业务消息表为准
     facts_structured: dict  # 通过 LLM 函数调用提取的结构化案件事实
     facts_coverage_rate: Optional[float]  # 构成要件覆盖度（0.0-1.0），FactDigger 用于判断是否继续追问
     element_to_law_mapping: Optional[dict]  # 构成要件到法条的映射，LawRef 生成后供 FactDigger 计算覆盖度

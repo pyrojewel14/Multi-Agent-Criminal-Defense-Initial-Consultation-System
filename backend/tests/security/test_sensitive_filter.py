@@ -1,186 +1,70 @@
-"""sensitive_filter 模块纯函数单元测试。"""
+"""输入透传入口与独立高风险检测契约，所有个人信息均为合成。"""
 
-from app.security.sensitive_filter import (
-    _is_chinese_surname,
-    _mask_name,
-    detect_high_risk,
-    mask_pii,
-    sanitize_input,
-)
+from unittest.mock import Mock
 
-# ──────────────────────────── _is_chinese_surname ────────────────────────────
+import pytest
+
+from app.security import mask_pii as exported_mask_pii
+from app.security import sanitize_input as exported_sanitize_input
+from app.security.sensitive_filter import _mask_name, detect_high_risk, mask_pii, sanitize_input
 
 
-class TestIsChineseSurname:
-    """_is_chinese_surname 测试。"""
-
-    def test_common_single_char_surnames(self):
-        for name in ("王", "李", "张", "刘", "陈", "赵", "周", "吴"):
-            assert _is_chinese_surname(name) is True
-
-    def test_compound_surnames(self):
-        for name in ("欧阳", "司马", "上官", "诸葛", "令狐"):
-            assert _is_chinese_surname(name) is True
-
-    def test_non_surname_chars(self):
-        for char in ("大", "小", "中", "风", "雨", "山", "水"):
-            assert _is_chinese_surname(char) is False
-
-    def test_empty_string(self):
-        assert _is_chinese_surname("") is False
-
-    def test_non_chinese_char(self):
-        assert _is_chinese_surname("A") is False
-        assert _is_chinese_surname("1") is False
-
-
-# ──────────────────────────── _mask_name ─────────────────────────────────────
-
-
-class TestMaskName:
-    """_mask_name 测试。"""
-
-    def test_single_surname_with_one_char_name(self):
-        result = _mask_name("我叫王明")
-        assert "[NAME-MASKED]" in result
-        assert "王明" not in result
-
-    def test_single_surname_with_two_char_name(self):
-        result = _mask_name("李晓明来了")
-        assert "[NAME-MASKED]" in result
-        assert "李晓明" not in result
-
-    def test_compound_surname_masking(self):
-        result = _mask_name("欧阳锋是高手")
-        assert "[NAME-MASKED]" in result
-        assert "欧阳锋" not in result
-
-    def test_multiple_names_in_text(self):
-        result = _mask_name("王明和李红一起")
-        assert result.count("[NAME-MASKED]") == 2
-
-    def test_no_name_in_text(self):
-        text = "今天天气很好"
-        assert _mask_name(text) == text
-
-    def test_empty_string(self):
-        assert _mask_name("") == ""
+@pytest.mark.parametrize("entry", [_mask_name, mask_pii, sanitize_input])
+@pytest.mark.parametrize("text", [
+    "",
+    "  空格与换行\n原样保留。  ",
+    "我叫张三，电话13800138000，身份证110101199003071234，车牌京A12345。",
+    "身份证110101900307123和44010619990101234X，联系方式13900138000。",
+    "我住在青禾市明月区长宁路18号2栋301室，昨晚没有出门。",
+    ' {"name": "李晓明", "address": "长宁路18号", "phone": "13800138000"} ',
+    "昨晚我喝了酒，在城市道路上驾驶小汽车……",
+    "没有提供任何案件发生经过",
+    "我没有拿走任何物品",
+    "行程记录显示我经过商店，但没有进入",
+    "马路上没有发生碰撞。",
+    "马路旁没有停放车辆。",
+    "马路边正在施工，没有人员受伤。",
+    "马路与街道都能通行。",
+    "任何人都可以提供记录；如何处理这些材料？",
+    "张三住在青禾市明月区长宁路18号。",
+    "张三正在提供行程记录。",
+    "我被张三打了，没有还手。",
+    "我和李晓明一起到店里买东西。",
+    "欧阳明月正在核对记录。",
+    "王明和李红一起提供行程记录。",
+    "我叫马路，行程记录没有丢失。",
+    "张三借了物品，没有出售。",
+    "李晓明已经交还物品，没有拿走其他东西。",
+    "是我干的，帮我隐瞒。",
+])
+def test_compatibility_entries_preserve_original_text_and_are_idempotent(entry, text):
+    assert entry(text) == text
+    assert entry(entry(text)) == text
 
 
-# ──────────────────────────── mask_pii ───────────────────────────────────────
+def test_public_security_exports_keep_existing_entries():
+    assert exported_mask_pii is mask_pii
+    assert exported_sanitize_input is sanitize_input
 
 
-class TestMaskPii:
-    """mask_pii 测试。"""
+def test_sanitize_input_keeps_length_logging_without_raw_content(monkeypatch):
+    from app.security import sensitive_filter
 
-    # --- 身份证号 ---
-
-    def test_id_18_digits(self):
-        text = "我的身份证号是110101199003071234"
-        result = mask_pii(text)
-        assert "[ID-MASKED]" in result
-        assert "110101199003071234" not in result
-
-    def test_id_15_digits(self):
-        text = "身份证号110101900307123"
-        result = mask_pii(text)
-        assert "[ID-MASKED]" in result
-        assert "110101900307123" not in result
-
-    def test_id_18_with_x(self):
-        text = "身份证号44010619990101234X"
-        result = mask_pii(text)
-        assert "[ID-MASKED]" in result
-        assert "44010619990101234X" not in result
-
-    # --- 手机号 ---
-
-    def test_phone_11_digits(self):
-        text = "我的手机号是13812345678"
-        result = mask_pii(text)
-        assert "[PHONE-MASKED]" in result
-        assert "13812345678" not in result
-
-    def test_phone_various_prefixes(self):
-        for prefix in ("13", "15", "17", "18", "19"):
-            phone = f"{prefix}012345678"
-            result = mask_pii(f"电话{phone}")
-            assert "[PHONE-MASKED]" in result
-
-    # --- 中文姓名 ---
-
-    def test_chinese_name_masked(self):
-        text = "我叫张三"
-        result = mask_pii(text)
-        assert "[NAME-MASKED]" in result
-        assert "张三" not in result
-
-    # --- 地址 ---
-
-    def test_address_with_lu(self):
-        text = "我住在北京市朝阳区建国路100号"
-        result = mask_pii(text)
-        assert "[ADDR-MASKED]" in result
-
-    def test_address_with_jie(self):
-        text = "上海市浦东新区南京路88号"
-        result = mask_pii(text)
-        assert "[ADDR-MASKED]" in result
-
-    def test_address_with_hao(self):
-        text = "广州市天河区天河路12号"
-        result = mask_pii(text)
-        assert "[ADDR-MASKED]" in result
-
-    def test_short_text_no_address_mask(self):
-        """文本长度 <=10 时即使包含地址关键词也不做地址掩码。"""
-        text = "北京路"
-        result = mask_pii(text)
-        assert "[ADDR-MASKED]" not in result
-
-    # --- 车牌号 ---
-
-    def test_vehicle_plate(self):
-        text = "车牌号京A12345"
-        result = mask_pii(text)
-        assert "[VEHICLE-MASKED]" in result
-        assert "京A12345" not in result
-
-    def test_vehicle_plate_various_provinces(self):
-        for plate in ("沪B67890", "粤C11111", "川D22222"):
-            result = mask_pii(f"车牌{plate}")
-            assert "[VEHICLE-MASKED]" in result
-
-    # --- 边界情况 ---
-
-    def test_empty_string(self):
-        assert mask_pii("") == ""
-
-    def test_no_pii(self):
-        text = "今天天气很好"
-        assert mask_pii(text) == text
-
-    def test_multiple_pii_types(self):
-        text = "我叫王明，手机号13812345678，身份证110101199003071234"
-        result = mask_pii(text)
-        assert "[NAME-MASKED]" in result
-        assert "[PHONE-MASKED]" in result
-        assert "[ID-MASKED]" in result
-
-    def test_pii_at_start(self):
-        result = mask_pii("13812345678是我的手机号")
-        assert "[PHONE-MASKED]" in result
-
-    def test_pii_at_middle(self):
-        result = mask_pii("联系13812345678即可")
-        assert "[PHONE-MASKED]" in result
-
-    def test_pii_at_end(self):
-        result = mask_pii("我的手机号是13812345678")
-        assert "[PHONE-MASKED]" in result
+    logger = Mock()
+    monkeypatch.setattr(sensitive_filter, "_logger", logger)
+    text = "我叫张三，电话13800138000，住在青禾市明月区长宁路18号。"
+    assert sanitize_input(text) == text
+    logger.info.assert_called_once()
+    rendered = repr(logger.info.call_args)
+    for raw in ("张三", "13800138000", "青禾市", "长宁路18号"):
+        assert raw not in rendered
+    assert logger.info.call_args.args[1:] == (len(text), len(text))
 
 
-# ──────────────────────────── detect_high_risk ───────────────────────────────
+def test_risk_detection_remains_independent_of_passthrough():
+    text = "是我干的，帮我隐瞒。"
+    assert sanitize_input(text) == text
+    assert detect_high_risk(text) == (True, "SELF_INCrimination")
 
 
 class TestDetectHighRisk:
@@ -281,30 +165,3 @@ class TestDetectHighRisk:
         is_risk, risk_type = detect_high_risk("")
         assert is_risk is False
         assert risk_type == ""
-
-
-# ──────────────────────────── sanitize_input ─────────────────────────────────
-
-
-class TestSanitizeInput:
-    """sanitize_input 测试。"""
-
-    def test_masks_pii(self):
-        text = "我叫王明，手机号13812345678"
-        result = sanitize_input(text)
-        assert "[NAME-MASKED]" in result
-        assert "[PHONE-MASKED]" in result
-
-    def test_empty_string(self):
-        assert sanitize_input("") == ""
-
-    def test_no_pii_returns_same(self):
-        text = "我想咨询法律问题"
-        assert sanitize_input(text) == text
-
-    def test_returns_masked_text(self):
-        """sanitize_input 返回的是 PII 掩码后的文本。"""
-        text = "身份证号110101199003071234"
-        result = sanitize_input(text)
-        assert "[ID-MASKED]" in result
-        assert "110101199003071234" not in result

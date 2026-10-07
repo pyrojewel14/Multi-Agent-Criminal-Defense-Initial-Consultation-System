@@ -71,7 +71,7 @@ DEFAULT_EXTRACT_CASE_FACTS_PROMPT = """从咨询者描述中提取刑事案件�
 
 请提取以下字段：
 - incident_time: 事件发生时间
-- incident_location: 事件发生地点（已脱敏）
+- incident_location: 事件发生地点（按本轮原始陈述提取）
 - parties: 当事人列表（包含 role, name, relationship）
 - behavior_sequence: 行为时间序列（包含 time, actor, action, method, target）
 - consequence: 后果描述
@@ -83,7 +83,7 @@ DEFAULT_EXTRACT_CASE_FACTS_PROMPT = """从咨询者描述中提取刑事案件�
 
 仅提取本轮用户明确陈述的信息，不推断事实真实性。
 未核实的陈述仍应提取；已陈述的相对时间和地点不得因为缺乏证明而设为 null。
-脱敏标记不是地点或事件，不得把其他句子中的标记移入案件字段。
+历史数据中的脱敏标记不是地点或事件，不得把其他句子中的标记移入案件字段。
 明确更正时填写本轮新值；明确否认前科或自首时为 false，未提及时为 null。
 必须返回全部字段。未提及的字符串或布尔字段为 null，列表字段为空数组；列表元素必须是对象。
 只返回填写后的 JSON 对象，不输出空值示例或法律判断。"""
@@ -420,7 +420,7 @@ async def _generate_follow_up_questions(missing_elements: List[str], facts_struc
 
     system_prompt = _load_follow_up_prompt()
 
-    # P0-1: 对结构化事实中的 PII 进行脱敏
+    # 保留 PII 处理入口；当前事实原样传给配置的模型。
     facts_text = mask_pii(json.dumps(facts_structured, ensure_ascii=False))
 
     user_message_parts = [
@@ -467,7 +467,7 @@ async def _generate_fact_summary(facts_structured: Dict[str, Any], facts_raw: Li
     """
     system_prompt = _load_summary_prompt()
 
-    # P0-1: 对结构化事实中的 PII 进行脱敏
+    # 保留 PII 处理入口；当前事实原样传给配置的模型。
     facts_text = mask_pii(json.dumps(facts_structured, ensure_ascii=False))
 
     user_message_parts = [

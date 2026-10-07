@@ -58,7 +58,7 @@ def merge_case_memory(memory, candidate, source_id, *, correction=False):
         value = candidate.get(name)
         if value is None or value == "" or value == [] or value == {}:
             continue
-        # 纯脱敏占位符没有可合并的字段值；不猜测原值，也不制造来源冲突。
+        # 兼容历史脱敏数据：纯占位符没有可合并的值，不猜测原值或制造来源冲突。
         if isinstance(value, str) and value.strip() in REDACTED_VALUES:
             continue
         entry = fields.get(name)

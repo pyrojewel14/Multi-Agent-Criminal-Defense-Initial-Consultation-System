@@ -20,7 +20,7 @@ def extract_case_facts(
 
     Args:
         incident_time: 事件发生时间，格式：YYYY-MM-DD 或 相对时间
-        incident_location: 事件发生地点（已脱敏）
+        incident_location: 事件发生地点（当前不掩码）
         parties: 当事人列表
         behavior_sequence: 行为时间序列
         consequence: 后果描述

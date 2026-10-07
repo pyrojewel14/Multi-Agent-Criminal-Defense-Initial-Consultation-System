@@ -52,7 +52,7 @@ FactIntake 的提取也经过 ContextBuilder/Gateway，但该任务不注入背�
 | `memory.recent` | LangGraph checkpoint | 有界近期外部对话，以完整命令组保留；不是完整原文档案 |
 | `memory.summary` | LangGraph checkpoint | 滚动摘要、through_sequence、version、status；摘要文本和覆盖游标一同提交 |
 
-checkpoint 是唯一执行权威，包含真实 state 与 pending node。Redis、原文日志和进程内活动缓存不能替代它。`facts_raw` 是有界的脱敏近期陈述，`conversation_history` 是兼容投影；不能据此声称每个 checkpoint 累计完整 raw transcript。
+checkpoint 是唯一执行权威，包含真实 state 与 pending node。Redis、原文日志和进程内活动缓存不能替代它。`facts_raw` 是有界的近期原始陈述，`conversation_history` 是兼容投影；不能据此声称每个 checkpoint 累计完整 raw transcript。
 
 原文审计不以知情同意为前提；派生近期上下文和摘要刷新要求 `consent_given is True`。每个案件沿现有 owner、consultation ID 与 workflow ID 隔离，没有同用户跨案件共享记忆或 semantic retrieval memory。
 
@@ -72,7 +72,7 @@ HTTP/WS 共用 `service.process_message`。传输入口未传数据库会话时�
 
 1. 路由进入 `service.process_message`，取得同 session 进程内锁并重读 checkpoint；`process_external` 以稳定 input/reply/command ID 核验重放与载荷指纹。
 2. `append_record` 保存本轮完整输入并提交业务库，再将 checkpoint 回执写为 `prepared`、`running`，`resume_workflow` 带入 `current_input/current_message_id`。
-3. `fact_intake_node` 检查高风险并脱敏；`_extract_structured_facts` → Gateway `_bounded_messages` → ContextBuilder 的 `fact_intake` 任务 → 供应商 LLM。只提取本轮，FactArtifact 校验后 `merge_case_memory` 更新 case，并投影 `facts_structured`。
+3. `fact_intake_node` 检查高风险，输入经兼容入口原样透传；`_extract_structured_facts` → Gateway `_bounded_messages` → ContextBuilder 的 `fact_intake` 任务 → 供应商 LLM。只提取本轮，FactArtifact 校验后 `merge_case_memory` 更新 case，并投影 `facts_structured`。
 4. 图继续 LawRef、覆盖检查或相应后续节点。它们以本节点任务请求调用 ContextBuilder/Gateway/LLM；使用进入该调用时已保存或当前 state 中的背景，尚未生成本轮结束摘要。
 5. 图到等待/人工节点，保存执行状态及 `applied` 回执；实际回复提交业务库。`refresh_optional_memory` → `memory_rows` → `advance_summary` 按需调用独立摘要 LLM。
 6. `persist_state` 保存 summary、recent 与原 case，摘要文本和游标一同成为 checkpoint 权威；清回执并返回。下一轮进入其他任务时，ContextBuilder 才可能将新摘要、case、recent 加入模型背景。
@@ -81,13 +81,13 @@ HTTP/WS 共用 `service.process_message`。传输入口未传数据库会话时�
 
 ## 事实摄取与字段合并
 
-`fact_intake_node` 对本轮输入先检测高风险、脱敏，再仅从本轮候选输入提取并校验 FactArtifact；ContextBuilder 的 fact_intake 任务不加入旧摘要、案件字段或近期记忆。没有新陈述且已有 case memory 时直接返回，不以旧输入重新提取。兼容旧状态时可使用最后一条旧陈述，旧字段以 `legacy_unverified` 导入。
+`fact_intake_node` 对本轮输入先检测高风险，再从原样透传的本轮候选输入提取并校验 FactArtifact；ContextBuilder 的 fact_intake 任务不加入旧摘要、案件字段或近期记忆。没有新陈述且已有 case memory 时直接返回，不以旧输入重新提取。兼容旧状态时可使用最后一条旧陈述，旧字段以 `legacy_unverified` 导入。
 
 `merge_case_memory` 的字段语义：
 
 | FactArtifact / CaseMemory 字段 | 类型 | 保存内容 |
 | --- | --- | --- |
-| `incident_time`、`incident_location` | `str` 或 null | 事件时间、脱敏地点陈述 |
+| `incident_time`、`incident_location` | `str` 或 null | 事件时间、用户陈述的地点（当前不掩码） |
 | `parties` | 对象列表 | 当事人陈述，提取 prompt 指引 role/name/relationship |
 | `behavior_sequence` | 对象列表 | 行为事件，prompt 指引 time/actor/action/method/target |
 | `consequence`、`arrest_status` | `str` 或 null | 后果、当前羁押状态陈述 |
@@ -104,7 +104,7 @@ HTTP/WS 共用 `service.process_message`。传输入口未传数据库会话时�
 
 提取失败保留上一轮有效字段；核心 typed LLM 异常仍按既有错误/重试契约处理。本轮成功消费才清除一次性输入，避免异常重试重复追加。
 
-新增值默认 `user_claim_unverified`，旧导入值为 `legacy_unverified`。无更正门禁的标量冲突保持旧主值并新增候选版本；明确更正切换主值且保留旧版本。列表争议应读 item 状态，不能只看父字段 status。空值与空列表不删除事实，显式撤回或复杂时间变化尚无通用表达。纯脱敏占位符仅在标量值上被忽略；列表对象仍可能保存占位符。既有脱敏还可能误伤正常词语，例如历史试跑的“行程记录”，这些规则不构成错误记忆已被消除的证明。
+新增值默认 `user_claim_unverified`，旧导入值为 `legacy_unverified`。无更正门禁的标量冲突保持旧主值并新增候选版本；明确更正切换主值且保留旧版本。列表争议应读 item 状态，不能只看父字段 status。空值与空列表不删除事实，显式撤回或复杂时间变化尚无通用表达。历史数据中的纯脱敏占位符仅在标量值上被忽略；列表对象仍可能保存占位符。历史试跑曾误伤“行程记录”；当前 PII 入口已改为原样透传，配置的模型会收到未掩码事实，见 [输入透传边界](../knowledge/lawref_response_protocol.md#案情脱敏边界)。停用掩码不表示旧记忆已修复或模型内容已正确。
 
 ## 按任务装配上下文
 
@@ -112,14 +112,14 @@ ContextBuilder 当前仅对 `fact_intake` 作特殊背景排除；其他任务�
 
 | 任务 | 必要输入 | 可选背景与局部历史 |
 | --- | --- | --- |
-| `fact_intake` | 本轮脱敏陈述、提取 prompt、FactArtifact schema 或事实工具 schema | 不加入旧 case、summary、recent |
+| `fact_intake` | 本轮原始陈述、提取 prompt、FactArtifact schema 或事实工具 schema | 不加入旧 case、summary、recent |
 | `fact_digger` 覆盖后追问/事实摘要 | 结构化事实与缺失要件，或结构化事实与有界 facts_raw | 统一背景；给用户看的达标事实摘要与滚动 memory summary 是不同产物 |
-| `law_ref` | 脱敏事实、研究任务、工具或响应 schema | 统一背景及本次研究的 AI/Tool observation；native 最终阶段使用自己的纠偏历史 |
+| `law_ref` | 未掩码事实、研究任务、工具或响应 schema | 统一背景及本次研究的 AI/Tool observation；native 最终阶段使用自己的纠偏历史 |
 | `risk_assessor` | 结构化事实、法条候选、风险任务 | 统一背景，不从 raw 档案全量加载 |
 | `service_planner` | facts/laws/risk 和报告任务 | 统一背景；节点不再另外拼旧 history 最后五项 |
 | 可选 `summary` | 旧摘要、新增外部消息段、摘要指令 | `node_context("summary", None)`，不再注入 case/recent；独立预算和超时 |
 
-装配顺序是 system → 可装入的摘要 → 可装入的 case → 按完整命令组选择的近期背景 → 当前任务 → 可装入的完整工具历史。先预留 history 的最新完整消息组；该组是 AI tool call 时必须连同全部 observation，是普通纠偏消息时则预留该消息。可选摘要、case 各作为整条背景尝试，随后从新到旧选择 recent/history 组。预算不足可能舍弃整份 case，不是对每个字段进行价值评分。案情背景标明未核实或不可信，且调用前再次脱敏；这不能保证模型免于提示注入或事实错误。
+装配顺序是 system → 可装入的摘要 → 可装入的 case → 按完整命令组选择的近期背景 → 当前任务 → 可装入的完整工具历史。先预留 history 的最新完整消息组；该组是 AI tool call 时必须连同全部 observation，是普通纠偏消息时则预留该消息。可选摘要、case 各作为整条背景尝试，随后从新到旧选择 recent/history 组。预算不足可能舍弃整份 case，不是对每个字段进行价值评分。案情背景标明未核实或不可信，调用前仍经过 PII 兼容入口，但当前原样透传；背景标注不能保证模型免于提示注入或事实错误，也不提供 PII 掩码保护。
 
 RAG 检索结果在 LawRef 工具 observation 中随 AI tool call 成组，依据 tool_call_id 校验完整性。只删除完整旧组，保留必要最新组；孤立 ToolMessage、缺失/重复关联 ID 或最新组超预算会明确拒绝。LawRef 另外将已读取条文和要件放入当前任务证据，避免旧工具组淘汰后失去已读依据；这部分也必须适配必要输入预算。完整 observation 是当前局部研究输入，不是跨案记忆检索；`law_research` 持久化的是审计概要。部分知识库 HyDE/文档摘要直接使用 chain，不能把 Gateway 的边界宣称为项目所有模型调用都已受同一预算治理。
 
@@ -151,7 +151,7 @@ Gateway 的文本、结构化与工具调用经 ContextBuilder 装配输入，�
 
 `through_sequence` 是已摘要段末尾的原文序号，成功后下一次从该序号之后继续；内部事件被过滤，不能把游标范围内的每个序号都称为已摘要的外部文本。摘要版本只随成功候选递增，保存失败时权威 checkpoint 仍是旧版本。近期组过大时可整组退出 recent，但 raw 保留；若该组也无法进入摘要预算，就出现派生上下文暂未覆盖的内容，应查 raw 并人工核验，不能宣称压缩后所有信息都可被模型回忆。
 
-当前摘要使用一次 attempt、有限总超时，Ollama 单次 `reasoning=False`；输出生成限额按摘要输出预算换算，返回文本仍按保守估算复核。该开关不改变共享模型或其他供应商。摘要是不可信背景，可能遗漏或漂移；调用前会标明未核实并脱敏。
+当前摘要使用一次 attempt、有限总超时，Ollama 单次 `reasoning=False`；输出生成限额按摘要输出预算换算，返回文本仍按保守估算复核。该开关不改变共享模型或其他供应商。摘要是不可信背景，可能遗漏或漂移；调用前标明未核实，PII 兼容入口当前不做掩码。
 
 ## 就绪状态与有限日志
 
@@ -178,7 +178,7 @@ Gateway 的文本、结构化与工具调用经 ContextBuilder 装配输入，�
 
 ## 验证证据与 token 对照
 
-阶段3主线程于 2026-10-04 独立验收功能范围，公开评测程序与原运行、主线程复跑/重评分 JSON 随提交 `15bbade` 保存，验收状态说明由 `528aa2d` 更正；本页文档补全没有重新运行模型或后端回归。以下保留 [原 safe-merge 运行 JSON](../../evaluation/evidence/memory_live_2026-10-04.json) 的数字：固定短案件 1 轮、recent=8；固定长案件 6 轮、recent=2。每个场景每种上下文只有 1 次同题回忆调用，共 4 次对照；另有 17 次服务内调用，共 21 次。模型为 Qwen3.5 9B / Q4_K_M，两个输入使用相同问题和模型设置，完整历史与 active 都脱敏。
+阶段3主线程于 2026-10-04 独立验收功能范围，公开评测程序与原运行、主线程复跑/重评分 JSON 随提交 `15bbade` 保存，验收状态说明由 `528aa2d` 更正；本节数字沿用历史 JSON，不是停用 PII 掩码后的重新评测。以下保留 [原 safe-merge 运行 JSON](../../evaluation/evidence/memory_live_2026-10-04.json) 的数字：固定短案件 1 轮、recent=8；固定长案件 6 轮、recent=2。每个场景每种上下文只有 1 次同题回忆调用，共 4 次对照；另有 17 次服务内调用，共 21 次。模型为 Qwen3.5 9B / Q4_K_M，两个输入使用相同问题和模型设置，完整历史与 active 都脱敏。
 
 | 场景 / 输入 | 保守输入估算 | 供应商实际输入 tokens | 回忆耗时秒 |
 | --- | ---: | ---: | ---: |
@@ -205,7 +205,7 @@ memory 层没有新增向量库：当前需求是同一案件、固定字段、�
 | UTF-8 保守预算 | 无 tokenizer 依赖，调用前明确拒绝必要超限 | 会过度估计而早拒绝；模型窗口声明仍需部署核对，背景可能整份舍弃 |
 | 单 worker SQLite 与进程锁 | 当前停启恢复和串行契约可验证 | 不提供多 worker 锁、跨两库事务、crash exactly-once 或通用自动修复 |
 
-后续工作是待验证的方向：扩大补充/否认/撤回/复杂实体样本并人工标注，分别评估提取与摘要的信息损失；改善既有脱敏误伤和列表占位符处理；研究模型专用 tokenizer 与按字段选择背景；测量 case/alternatives、原文和 checkpoint 的增长与保留策略；用故障注入覆盖两库崩溃窗口、备份恢复和并发场景。跨案语义检索只有在用途、权限与质量评估明确后再考虑。这些均不是本轮已交付能力；两库一致性及多 worker 等缺口仍按既有暂缓事项处理。
+后续工作是待验证的方向：扩大补充/否认/撤回/复杂实体样本并人工标注，分别评估提取与摘要的信息损失；评估未来 PII 保护需求与历史列表占位符处理；研究模型专用 tokenizer 与按字段选择背景；测量 case/alternatives、原文和 checkpoint 的增长与保留策略；用故障注入覆盖两库崩溃窗口、备份恢复和并发场景。跨案语义检索只有在用途、权限与质量评估明确后再考虑。这些均不是本轮已交付能力；两库一致性及多 worker 等缺口仍按既有暂缓事项处理。
 
 ## 源码入口与历史分析
 

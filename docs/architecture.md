@@ -25,7 +25,7 @@ JWT 是签名访问令牌，RBAC 是按角色控制权限，LangGraph 是保存�
 ## 一次咨询经过哪些层
 
 1. 路由校验 token、角色与会话归属，调用统一 service 命令。
-2. `fact_intake` 消费本轮输入，检测高风险、脱敏并刷新结构化事实。
+2. `fact_intake` 消费本轮输入，检测高风险、保留原始输入并刷新结构化事实。
 3. `law_ref` 检索并读取法条；程序核验候选来源与最终答案。
 4. `fact_digger` 计算覆盖，决定追问、继续分析或交给人工。
 5. 风险与服务节点生成草案，律师明确审核后才可完成普通流程。
@@ -98,6 +98,8 @@ LLM Gateway 对单次 attempt 和整个调用分别设 deadline，最多两次 a
 ## 观测与预算
 
 HTTP/WebSocket 请求生成或校验 UUID correlation id（请求关联标识）。`contextvars` 沿调用链传递上下文，事件用 `trace_id`、`span_id`、`parent_span_id` 表示父子关系。
+
+外部消息通过 Memory coordinator 写入原文与回执后，在推进工作流时建立请求根 span；内部消息仍由 application service 建立根 span。审计准备失败或幂等重放未执行图时，不能以缺少工作流子事件判断上下文传播失败。[挂载 HTTP 回归](../backend/tests/infrastructure/observability/test_call_tree_integration.py)使用独立 SQLite、真实 LangGraph、LawRef 工具循环和 snapshot 路径的 RAG 服务，检查父子关联、并发请求隔离及 metadata 不含原文；模型网络和索引访问使用替身，不证明真实供应商、默认 full 索引检索或生产观测服务。
 
 | 配置/字段 | 用途 |
 | --- | --- |

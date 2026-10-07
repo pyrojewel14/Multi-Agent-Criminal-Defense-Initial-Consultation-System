@@ -57,7 +57,7 @@
       },
       "incident_location": {
         "type": "string",
-        "description": "事件发生地点（已脱敏）"
+        "description": "事件发生地点（用户陈述）"
       },
       "parties": {
         "type": "array",
@@ -72,7 +72,7 @@
             },
             "name": {
               "type": "string",
-              "description": "姓名（已脱敏）"
+              "description": "姓名（用户陈述，当前不掩码）"
             },
             "relationship": {
               "type": "string",
@@ -164,8 +164,8 @@
 **时间**：2024年3月15日下午
 **地点**：XX市XX区XX商场
 **当事人**：
-- 嫌疑人：[已脱敏]，与被害人是朋友关系
-- 被害人：[已脱敏]
+- 嫌疑人：咨询者甲，与被害人是朋友关系
+- 被害人：当事人乙
 
 **事件经过**：
 1. 15时许，嫌疑人以借用为由拿走了被害人的手机
