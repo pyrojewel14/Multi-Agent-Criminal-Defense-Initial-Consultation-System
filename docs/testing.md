@@ -77,7 +77,7 @@ backend/.venv/bin/python -m pytest -q \
   tests/knowledge/test_full_law_reranker_device.py
 ```
 
-Memory 组核对原文/回执、增量字段、游标与预算；名称中的 `live_contract` 仍需核对具体替身和外部依赖范围。full 组核对召回、重排协议与设备失败边界。[阶段 3 定向验证交付](memory/phase3-verification.md)待对应主线程独立验收，真实模型质量与耗时另按 [评测](evaluation.md) 执行；源码职责见 [Memory](memory/README.md) 和 [全量检索](knowledge/full_law_retrieval.md)。
+Memory 组核对原文/回执、增量字段、游标与预算；名称中的 `live_contract` 仍需核对具体替身和外部依赖范围。full 组核对召回、重排协议与设备失败边界。[阶段 3 定向验证](memory/phase3-verification.md)已于 2026-10-04 由主线程独立验收固定合成样例的真实事实/摘要及单 worker 正常停启，法律检索/覆盖度/预检使用替身；该历史验收不代表当前全量测试通过，也不证明完整咨询质量、任意 kill 或多 worker 恢复。历史验收状态的文档更正没有重跑测试或模型；新的质量与耗时评测按 [评测说明](evaluation.md) 执行，源码职责见 [Memory](memory/README.md) 和 [全量检索](knowledge/full_law_retrieval.md)。
 
 ## LLM deadline 与结构化产物契约
 
