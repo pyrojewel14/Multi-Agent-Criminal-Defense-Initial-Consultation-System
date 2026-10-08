@@ -4,9 +4,8 @@ Tests cover:
 1. check_consent conditional edge
 2. check_facts_sufficient conditional edge
 3. lawyer_decision conditional edge
-4. _calculate_coverage_rate helper
-5. get_fact_value 共享映射
-6. ConsultationOrchestrator session management and run_node
+4. get_fact_value 共享映射
+5. ConsultationOrchestrator session management and run_node
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,7 +15,6 @@ import pytest
 from app.consultation.fact_data import get_fact_value
 from app.consultation.workflow import (
     ConsultationOrchestrator,
-    _calculate_coverage_rate,
     check_consent,
     check_facts_sufficient,
     lawyer_decision,
@@ -136,151 +134,6 @@ class TestLawyerDecision:
     def test_none_decision_returns_wait(self):
         state = make_consultation_state(lawyer_decision=None, facts_raw=["陈述"])
         assert lawyer_decision(state) == "wait"
-
-
-# ---------------------------------------------------------------------------
-# _calculate_coverage_rate
-# ---------------------------------------------------------------------------
-
-
-class TestCalculateCoverageRate:
-    def test_no_applied_laws_returns_zero(self):
-        state = make_consultation_state(applied_laws=[], facts_raw=["陈述"])
-        assert _calculate_coverage_rate(state) == 0.0
-
-    def test_llm_extracted_law_returns_zero(self):
-        law = {
-            "article_number": "第999条",
-            "required_elements": [{"key": "time", "name": "时间"}],
-            "elements": [{"key": "time", "name": "时间"}],
-            "data_source": "llm_extracted",
-        }
-        state = make_consultation_state(
-            applied_laws=[law],
-            facts_structured={"incident_time": "2026年3月"},
-            facts_raw=["陈述"],
-        )
-
-        assert _calculate_coverage_rate(state) == 0.0
-
-    def test_authoritative_missing_element_stays_in_denominator(self):
-        law = {
-            "article_number": "第234条",
-            "required_elements": [
-                {"key": "time", "name": "时间"},
-                {"key": "location", "name": "地点"},
-            ],
-            "elements": [{"key": "time", "name": "时间"}],
-            "data_source": "rag_verified",
-        }
-        state = make_consultation_state(
-            applied_laws=[law],
-            facts_structured={"incident_time": "2026年3月"},
-            facts_raw=["陈述"],
-        )
-
-        assert _calculate_coverage_rate(state) == 0.5
-
-    def test_full_coverage(self):
-        law = make_applied_law(
-            elements=[
-                {"key": "time", "name": "时间"},
-                {"key": "location", "name": "地点"},
-            ]
-        )
-        state = make_consultation_state(
-            applied_laws=[law],
-            facts_structured={
-                "incident_time": "2026年3月",
-                "incident_location": "北京市",
-            },
-            facts_raw=["陈述"],
-        )
-        assert _calculate_coverage_rate(state) == 1.0
-
-    def test_partial_coverage(self):
-        law = make_applied_law(
-            elements=[
-                {"key": "time", "name": "时间"},
-                {"key": "location", "name": "地点"},
-            ]
-        )
-        state = make_consultation_state(
-            applied_laws=[law],
-            facts_structured={
-                "incident_time": "2026年3月",
-            },
-            facts_raw=["陈述"],
-        )
-        assert _calculate_coverage_rate(state) == 0.5
-
-    def test_empty_fact_value_not_counted(self):
-        law = make_applied_law(
-            elements=[
-                {"key": "time", "name": "时间"},
-                {"key": "location", "name": "地点"},
-            ]
-        )
-        state = make_consultation_state(
-            applied_laws=[law],
-            facts_structured={
-                "incident_time": "2026年3月",
-                "incident_location": "",
-            },
-            facts_raw=["陈述"],
-        )
-        assert _calculate_coverage_rate(state) == 0.5
-
-    def test_empty_list_not_counted(self):
-        law = make_applied_law(
-            elements=[
-                {"key": "parties", "name": "当事人"},
-            ]
-        )
-        state = make_consultation_state(
-            applied_laws=[law],
-            facts_structured={
-                "parties": [],
-            },
-            facts_raw=["陈述"],
-        )
-        # _calculate_coverage_rate 故意将空列表视为弱覆盖（与 _analyze_coverage 保持一致），
-        # 因此 parties=[] 仍记为已覆盖，覆盖度 = 1/1 = 1.0
-        assert _calculate_coverage_rate(state) == 1.0
-
-    def test_string_elements(self):
-        law = make_applied_law(
-            elements=["time", "location"],
-        )
-        state = make_consultation_state(
-            applied_laws=[law],
-            facts_structured={
-                "incident_time": "2026年3月",
-            },
-            facts_raw=["陈述"],
-        )
-        assert _calculate_coverage_rate(state) == 0.5
-
-    def test_multiple_laws(self):
-        law1 = make_applied_law(elements=[{"key": "time", "name": "时间"}])
-        law2 = make_applied_law(elements=[{"key": "behavior", "name": "行为"}])
-        state = make_consultation_state(
-            applied_laws=[law1, law2],
-            facts_structured={
-                "incident_time": "2026年3月",
-                "behavior_sequence": ["推搡"],
-            },
-            facts_raw=["陈述"],
-        )
-        assert _calculate_coverage_rate(state) == 1.0
-
-    def test_no_elements_in_law_returns_zero(self):
-        law = make_applied_law(elements=[])
-        state = make_consultation_state(
-            applied_laws=[law],
-            facts_raw=["陈述"],
-        )
-        assert _calculate_coverage_rate(state) == 0.0
 
 
 # ---------------------------------------------------------------------------

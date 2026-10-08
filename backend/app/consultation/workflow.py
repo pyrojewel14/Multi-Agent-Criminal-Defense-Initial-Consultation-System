@@ -9,7 +9,6 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StateSnapshot
-from pydantic import ValidationError
 
 # Agent 节点
 from app.consultation.agents.fact_digger import fact_coverage_node, fact_intake_node
@@ -18,9 +17,7 @@ from app.consultation.agents.law_ref import law_ref_node
 from app.consultation.agents.receptionist import receptionist_node
 from app.consultation.agents.risk_assessor import risk_assessor_node
 from app.consultation.agents.service_planner import service_planner_node
-from app.consultation.fact_data import get_fact_value
 from app.consultation.memory.context import node_context
-from app.consultation.schemas.law import CoverageCandidateSchema, LawDataSource
 from app.consultation.state import ConsultationState, validate_consultation_state
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
 from app.infrastructure.logging import get_logger
@@ -368,62 +365,6 @@ async def _risk_assessor_workflow_node(state: ConsultationState) -> Consultation
     if state.get("lawyer_decision") == "revise_risk":
         state["lawyer_decision"] = None
     return await risk_assessor_node(state)
-
-
-def _calculate_coverage_rate(state: ConsultationState) -> float:
-    """
-    已废弃
-    计算当前事实覆盖度。
-
-    仅使用来源可靠且带有权威 required_elements 的候选，
-    与 fact_digger._analyze_coverage 的来源和分母契约保持一致。
-
-    Args:
-        state: 当前咨询状态
-
-    Returns:
-        覆盖度百分比 (0.0 - 1.0)
-    """
-    facts_structured = state.get("facts_structured", {})
-    applied_laws = state.get("applied_laws", [])
-
-    if not applied_laws:
-        return 0.0
-
-    verified_laws = []
-    for law in applied_laws:
-        try:
-            candidate = CoverageCandidateSchema.model_validate(law)
-        except ValidationError:
-            continue
-        if candidate.data_source in {LawDataSource.RAG_VERIFIED, LawDataSource.JSON_KEYWORD}:
-            verified_laws.append(candidate)
-
-    if not verified_laws:
-        return 0.0
-
-    total_elements = 0
-    covered_elements = 0
-
-    for law in verified_laws:
-        elements = law.required_elements
-        total_elements += len(elements)
-
-        for element in elements:
-            if isinstance(element, dict):
-                element_key = element.get("key", element.get("name", ""))
-            else:
-                element_key = str(element)
-            fact_value = get_fact_value(facts_structured, element_key)
-
-            # 与 _analyze_coverage 一致：空列表和 False 算作已覆盖（弱要素）
-            if fact_value is not None and fact_value != "":
-                covered_elements += 1
-
-    if total_elements == 0:
-        return 0.0
-
-    return covered_elements / total_elements
 
 
 class ConsultationOrchestrator:
