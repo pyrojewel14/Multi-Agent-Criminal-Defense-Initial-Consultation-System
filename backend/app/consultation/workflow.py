@@ -598,6 +598,7 @@ class ConsultationOrchestrator:
         if snapshot.values is None or not snapshot.values:
             raise ValueError(f"会话不存在: {session_id}")
 
+        # 会话状态检查：消息审计未完成、存在一致性错误、已关闭或已完成的会话均不能继续执行
         workflow_status = snapshot.values.get("workflow_status")
         if (snapshot.values.get("message_audit") or {}).get("status") == "applied":
             raise ValueError("消息审计未完成，必须只修复审计，不能再次推进工作流")
