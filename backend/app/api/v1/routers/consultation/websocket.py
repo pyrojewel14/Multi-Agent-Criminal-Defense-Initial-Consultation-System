@@ -8,7 +8,6 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.consultation import service as consultation_service
 from app.consultation.constants import HIGH_RISK_ALERT_MESSAGE
-from app.consultation.workflow import orchestrator as orchestrator
 from app.errors.exceptions import AppException
 from app.infrastructure.logging import get_logger
 from app.security.jwt import decode_token
