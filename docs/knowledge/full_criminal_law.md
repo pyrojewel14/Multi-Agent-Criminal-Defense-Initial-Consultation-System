@@ -51,6 +51,34 @@
 
 替代分支合成一个“任一适用分支”条件，避免要求所有替代项同时满足；其事实支持由已读取条文的LawRef判断，不套用旧关键词规则。
 
+### 机器资格审计与优先复核批次
+
+`evaluation/review_annotations.py --audit-only` 只读调用全量语料与 demo 加载契约，输出 505 条逐项资格、正文和标注 hash、语料及 demo 版本、来源定位、固定案例文件 hash 和优先批次。当前可机器核验的状态为：6 条 `project_regression`、32 条 `demo_ready`、467 条 `pending`；38 条可参与演示覆盖，**专业复核覆盖资格为 0**。输出中的 `professional_reviewer=null`、`legal_review_completed=false` 和逐条 `legal_review_status=pending` 不会因程序检查通过而升级。
+
+从仓库根目录执行，输出须选择不存在的新路径：
+
+```bash
+backend/.venv/bin/python -m evaluation.review_annotations --audit-only \
+  --corpus backend/data/law_knowledge/criminal_law_full.json \
+  --demo backend/data/law_knowledge/criminal_law_demo_annotations.json \
+  --cases evaluation/full_cases.jsonl \
+  --cases evaluation/lawref_cloud_cases.jsonl \
+  --output evaluation/results/annotation-audit-new.json
+```
+
+此批次由已有固定案例关联出 8 条，不按条文数量扩标：
+
+| 条文 | 现有场景与复核重点 |
+| --- | --- |
+| 第133条之一、第264条 | 危险驾驶与盗窃；自然语言事实、否认和事实不足、共同条件与择一分支 |
+| 第169条、第277条 | 已校对标题与多罪名条文；核对罪名范围和分支关系 |
+| 第293条 | 六条固定回归中的择一条件；复核既有要件而非自动扩大分母 |
+| 第1条、第149条、第199条 | 总则、跨条适用和已删去条文；保持非独立罪名或失效边界 |
+
+案例关联只是排定复核工作，不证明这些输入的法律适用或事实匹配已经正确。六条固定回归资产仍保持原始字节。后续应指定法律专业复核负责人，再逐项审查来源版本、罪名、完整要件、分支、跨条引用和法定刑；本工具不提供专业放行入口，也不核验远端来源当前字节或自动选择行为时法。
+
+demo 加载要求非空复核人、政府 HTTPS 来源及非空定位、有效且不重复的要件名、与提议一致的标题和罪名；带凭据的来源或声称已专业确认的记录失败关闭。历史 demo 记录未单列法律审查状态时仍按 `pending` 处理。复核旁表另拒绝未知或重复条号、过期正文 hash、无效页码、未知文本检查状态及伪造的精确匹配 hash；文本证据始终不能放行法律标注。
+
 ## LawRef 与覆盖计算
 
 应用默认 `full`，`snapshot` 显式加载六条固定快照。`LAW_FULL_DEMO_ANNOTATIONS=off` 可恢复全量正文中仅六条参与覆盖的历史模式；demo 资产随 backend 打包，`LAW_DEMO_ANNOTATIONS_PATH` 可指定另一份标注，`LAW_FULL_CORPUS_PATH` 可选择明确版本语料。

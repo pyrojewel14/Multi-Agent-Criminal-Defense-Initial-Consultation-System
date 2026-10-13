@@ -7,6 +7,7 @@ import copy
 import hashlib
 import json
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 from urllib.parse import urlparse
@@ -14,6 +15,7 @@ from urllib.parse import urlparse
 ARTICLE = re.compile(r"^\s*(第[一二三四五六七八九十百千零]+条(?:之[一二三四五六七八九十]+)?)\s+(.+)$")
 HEADING = re.compile(r"^第[一二三四五六七八九十]+[编章节]\s")
 FIELDS = {"title", "charges", "elements", "penalty"}
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def fingerprint(raw: bytes) -> str:
@@ -93,7 +95,22 @@ def build_review(corpus: dict, notes: list[dict], text_records: list[dict], corp
             if parsed.scheme != "https" or not host.endswith(".gov.cn") or parsed.username or parsed.password or not source.get("locator"):
                 raise ValueError("复核来源不是政府 HTTPS 地址或缺少定位: " + number)
         checked[number] = note
-    text_index = {r["article_number"]: r for r in text_records}
+    text_index = {}
+    for record in text_records:
+        number = record["article_number"]
+        if number not in index or number in text_index:
+            raise ValueError("文本检查条号未知或重复: " + number)
+        if record["content_sha256"] != fingerprint(index[number]["content"].encode()):
+            raise ValueError("文本检查绑定的正文已变化: " + number)
+        if record["status"] not in {"exact_match", "mismatch", "missing_anchor", "duplicate_anchor"}:
+            raise ValueError("文本检查状态未知: " + number)
+        if record["status"] in {"exact_match", "mismatch"} and (
+            not record["pdf_pages"] or any(type(p) is not int or p < 1 for p in record["pdf_pages"])
+        ):
+            raise ValueError("文本检查缺少有效页码: " + number)
+        if record["status"] == "exact_match" and record["normalized_pdf_sha256"] != fingerprint(compact(index[number]["content"]).encode()):
+            raise ValueError("文本精确匹配指纹不一致: " + number)
+        text_index[number] = copy.deepcopy(record)
     records = []
     for article in source_articles:
         number = article["article_number"]
@@ -112,6 +129,86 @@ def build_review(corpus: dict, notes: list[dict], text_records: list[dict], corp
             "summary": {"records": len(records), "agent_reviewed": len(checked), "pending_agent_review": len(records) - len(checked),
                         "human_accepted": 0, "lawyer_confirmed": 0, "new_coverage_eligible": 0},
             "records": records}
+
+
+def audit_annotations(corpus_path: Path, demo_path: Path, case_paths: list[Path]) -> dict:
+    """只读核对运行资产与固定案例，演示资格不升级为专业复核资格。"""
+    # 独立脚本与模块入口共用后端契约，不依赖服务启动或模型配置。
+    if str(ROOT / "backend") not in sys.path:
+        sys.path.insert(0, str(ROOT / "backend"))
+    from app.knowledge.demo_law_annotations import apply_demo_annotations
+    from app.knowledge.full_law_corpus import validate_full_corpus
+    from app.knowledge.law_knowledge import LAW_KNOWLEDGE_PATH, _normalize_article_number, is_lawref_eligible
+
+    raw = corpus_path.read_bytes()
+    corpus = json.loads(raw)
+    validate_full_corpus(corpus)
+    corpus["metadata"]["corpus_sha256"] = fingerprint(raw)
+    demo_raw = demo_path.read_bytes()
+    demo_asset = json.loads(demo_raw)
+    runtime = apply_demo_annotations(corpus, demo_path)
+    if demo_path.read_bytes() != demo_raw:
+        raise ValueError("审计期间演示资产已变化")
+    demo_index = {_normalize_article_number(r["article_number"]): r for r in demo_asset["records"]}
+    records = []
+    for article in articles(runtime):
+        number = _normalize_article_number(article["article_number"])
+        demo_record = demo_index.get(number)
+        qualification = "demo_ready" if demo_record else (
+            "project_regression" if article["annotation_layer"] == "project-maintained-v1" else "pending")
+        records.append({
+            "article_id": number, "article_number": article["article_number"], "status": article["status"],
+            "qualification": qualification, "content_sha256": article["text_provenance"]["content_sha256"],
+            "annotation_sha256": fingerprint(json.dumps(demo_record or article["annotations"], ensure_ascii=False, sort_keys=True).encode()),
+            "annotation_version": demo_asset["annotation_id"] if demo_record else article["annotation_source"],
+            "annotation_reviews": {name: {key: annotation[key] for key in (
+                "review_status", "legal_review_status", "source", "reviewed_by")}
+                for name, annotation in article["annotations"].items()},
+            "text_provenance": copy.deepcopy(article["text_provenance"]),
+            "sources": copy.deepcopy(demo_record["sources"] if demo_record else [{
+                "url": article["text_provenance"]["url"], "locator": article["article_number"]}]),
+            "legal_review_status": "pending", "professional_coverage_eligible": False,
+            "demo_coverage_eligible": is_lawref_eligible(article),
+        })
+    index = {r["article_id"]: r for r in records}
+    priorities: dict[str, dict] = {}
+    case_assets = []
+    for path in case_paths:
+        case_raw = path.read_bytes()
+        cases = [json.loads(line) for line in case_raw.decode("utf-8").splitlines() if line.strip()]
+        try:
+            label = path.resolve().relative_to(ROOT).as_posix()
+        except ValueError:
+            label = path.name
+        case_assets.append({"path": label, "sha256": fingerprint(case_raw), "cases": len(cases)})
+        seen = set()
+        for case in cases:
+            number = _normalize_article_number(case["article_id"])
+            if number not in index or not isinstance(case["id"], str) or not case["id"].strip() or case["id"] in seen:
+                raise ValueError("固定案例条号未知或编号无效: " + label)
+            seen.add(case["id"])
+            priority = priorities.setdefault(number, {
+                "article_id": number, "case_ids": [], "case_sources": [], "qualification": index[number]["qualification"],
+                "review_action": "复核现有标注" if index[number]["demo_coverage_eligible"] else "核对标注缺口或非独立罪名边界；不得自动放行",
+                "legal_review_status": "pending", "professional_coverage_eligible": False,
+            })
+            if case["id"] not in priority["case_ids"]:
+                priority["case_ids"].append(case["id"])
+            if label not in priority["case_sources"]:
+                priority["case_sources"].append(label)
+    counts = Counter(r["qualification"] for r in records)
+    return {
+        "schema_version": "annotation-qualification-audit-v1", "corpus_sha256": fingerprint(raw),
+        "dataset_version": corpus["metadata"]["dataset_version"], "demo_asset_sha256": fingerprint(demo_raw),
+        "demo_annotation_version": demo_asset["annotation_id"], "snapshot_sha256": fingerprint(LAW_KNOWLEDGE_PATH.read_bytes()),
+        "official_text": copy.deepcopy(corpus["metadata"]["official_text"]),
+        "legal_review_completed": False, "professional_reviewer": None,
+        "limitations": "只核对本地资产契约；未核实远端来源当前字节或现行法，不认定个案适用、事实支持或法律结论。专业复核负责人待指定。",
+        "summary": {"records": len(records), "active_texts": sum(r["status"] == "active" for r in records),
+                    "project_regression": counts["project_regression"], "demo_ready": counts["demo_ready"], "pending": counts["pending"],
+                    "demo_coverage_eligible": sum(r["demo_coverage_eligible"] for r in records), "professional_coverage_eligible": 0},
+        "case_assets": case_assets, "priority_batch": list(priorities.values()), "records": records,
+    }
 
 
 def render_report(review: dict) -> str:
@@ -148,11 +245,29 @@ def render_report(review: dict) -> str:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", type=Path, required=True)
-    parser.add_argument("--notes", type=Path, required=True)
-    parser.add_argument("--pdf", type=Path, required=True)
+    parser.add_argument("--notes", type=Path)
+    parser.add_argument("--pdf", type=Path)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--report", type=Path)
+    parser.add_argument("--audit-only", action="store_true", help="只读审计当前标注资格，不生成或放行标注")
+    parser.add_argument("--demo", type=Path)
+    parser.add_argument("--cases", type=Path, action="append", default=[])
     args = parser.parse_args()
+    if args.audit_only:
+        if not args.demo or not args.cases or any((args.notes, args.pdf, args.report)):
+            parser.error("资格审计需要 --demo 和 --cases，不接受 --notes/--pdf/--report")
+        if args.output.exists():
+            parser.error("输出已存在，请使用新路径: " + str(args.output))
+        result = audit_annotations(args.corpus, args.demo, args.cases)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        # 排他创建，防止两个并发审计覆盖同一证据文件。
+        with args.output.open("x", encoding="utf-8") as output:
+            json.dump(result, output, ensure_ascii=False, indent=2)
+            output.write("\n")
+        print(json.dumps(result["summary"], ensure_ascii=False))
+        return
+    if not all((args.notes, args.pdf, args.report)) or args.demo or args.cases:
+        parser.error("复核旁表需要 --notes/--pdf/--report；资格审计使用 --audit-only")
     from pypdf import PdfReader
 
     for path in (args.output, args.report):

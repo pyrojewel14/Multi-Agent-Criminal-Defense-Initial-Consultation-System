@@ -6,11 +6,17 @@ import copy
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from app.knowledge.full_law_corpus import FIELDS, sha256
 from app.knowledge.law_knowledge import LawKnowledgeDataError, _normalize_article_number, _require_government_https_url
 
 DEMO_LAYER = "demo-reviewed-v1"
+
+
+def _nonblank(value: Any) -> bool:
+    """只接受去除空白后仍有内容的文本字段。"""
+    return isinstance(value, str) and bool(value.strip())
 
 
 def apply_demo_annotations(corpus: dict[str, Any], path: Path) -> dict[str, Any]:
@@ -33,25 +39,33 @@ def apply_demo_annotations(corpus: dict[str, Any], path: Path) -> dict[str, Any]
             if number in seen or article["status"] != "active" or article["annotation_layer"] != "pending":
                 raise ValueError("条文重复、失效或与旧快照标注冲突")
             seen.add(number)
-            if (record["review_status"] != "demo_ready" or not record["reviewed_by"]
+            if (record["review_status"] != "demo_ready" or not _nonblank(record["reviewed_by"])
+                    or record.get("legal_review_status", "pending") != "pending"
                     or record["content_sha256"] != sha256(article["content"].encode())
                     or record["original_annotations_sha256"] != sha256(json.dumps(article["annotations"], ensure_ascii=False, sort_keys=True).encode())):
                 raise ValueError("演示标注未校对或正文绑定失效")
             if record["proposal"]["elements"]["kind"] != "branch_proposal":
                 raise ValueError("一般规定不能作为独立罪名")
+            if record["title"] != record["proposal"]["title"] or record["charge_tags"] != record["proposal"]["charges"]:
+                raise ValueError("演示标题或罪名与校对提议不一致")
             if not record["sources"]:
                 raise ValueError("缺少校对来源")
             for source in record["sources"]:
                 _require_government_https_url(source, "url", "demo.sources")
+                parsed = urlparse(source["url"])
+                if parsed.username or parsed.password or not _nonblank(source.get("locator")):
+                    raise ValueError("校对来源含凭据或缺少条文定位")
             elements = record["elements"]
             if (not isinstance(elements, list) or not elements
-                    or any(not isinstance(e, dict) or not e.get("key") or not e.get("name") for e in elements)
+                    or any(not isinstance(e, dict) or not _nonblank(e.get("key")) or not _nonblank(e.get("name")) for e in elements)
                     or len({e["key"] for e in elements}) != len(elements)
+                    or len({e["name"].strip() for e in elements}) != len(elements)
                     or any(e["key"] == "no_independent_elements" for e in elements)):
                 raise ValueError("演示要件为空或含占位")
             if (not isinstance(record["title"], str) or not record["title"].strip()
                     or not isinstance(record["base_sentence"], str) or not record["base_sentence"].strip()
-                    or not isinstance(record["charge_tags"], list) or not record["charge_tags"]):
+                    or not isinstance(record["charge_tags"], list) or not record["charge_tags"]
+                    or any(not _nonblank(charge) for charge in record["charge_tags"])):
                 raise ValueError("演示标注字段缺失")
             article["original_annotations"] = article["annotations"]
             article["annotations"] = copy.deepcopy(article["annotations"])
