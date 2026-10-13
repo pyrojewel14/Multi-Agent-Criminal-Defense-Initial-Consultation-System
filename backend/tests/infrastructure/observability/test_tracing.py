@@ -1,4 +1,9 @@
+import asyncio
 import json
+import os
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -9,6 +14,7 @@ from app.infrastructure.observability.tracing import (
     TokenCostEstimator,
     TraceEvent,
     build_safe_metadata,
+    current_trace_context,
     trace_span,
 )
 
@@ -143,3 +149,152 @@ def test_budget_registry_is_bounded_without_resetting_existing_sessions():
 
     assert error.value.dimension == "sessions"
     assert budget.snapshot("session-1") == {"calls": 1, "tokens": 0}
+
+
+@pytest.mark.parametrize("summary", [
+    {"sha256": "sha256:" + "a" * 64, "length": 1, "field_names": [], "raw": "13800138000"},
+    {"sha256": "sha256:13800138000", "length": 1, "field_names": []},
+    {"sha256": "sha256:" + "a" * 64, "length": True, "field_names": []},
+    {"sha256": "sha256:" + "a" * 64, "length": -1, "field_names": []},
+    {"sha256": "sha256:" + "a" * 64, "length": 1, "field_names": [{"raw": "13800138000"}]},
+])
+def test_metadata_summary_shape_cannot_bypass_value_protection(summary):
+    event = TraceEvent(event_type="llm", name="generate", trace_id="trace", span_id="span",
+                       request_id="request", session_id="session",
+                       metadata={"field_names": ["prompt"], "prompt": summary})
+
+    exported = event.to_dict()["metadata"]
+    assert "13800138000" not in json.dumps(exported)
+    assert exported["prompt"]["field_names"] == sorted(summary)
+
+
+def test_safe_metadata_is_detached_from_caller_owned_container():
+    metadata = build_safe_metadata({"prompt": "synthetic"})
+    event = TraceEvent(event_type="llm", name="generate", trace_id="trace", span_id="span",
+                       request_id="request", session_id="session", metadata=metadata)
+    metadata["prompt"]["length"] = 999
+
+    assert event.to_dict()["metadata"]["prompt"]["length"] == 9
+
+
+def test_reserved_metadata_key_cannot_overwrite_summary_field_names():
+    event = TraceEvent(event_type="llm", name="generate", trace_id="trace", span_id="span",
+                       request_id="request", session_id="session",
+                       metadata={"field_names": "13800138000", "_field_names": "synthetic"})
+    first = event.to_dict()["metadata"]
+    assert first["field_names"] == ["__field_names", "_field_names"]
+    assert first["__field_names"]["length"] == 11
+    assert "13800138000" not in json.dumps(first)
+    store = BoundedTraceStore()
+    store.append(event)
+    assert store.export_tree("request")[0]["metadata"] == first
+
+
+def test_trace_event_export_summarizes_metadata_assigned_after_creation():
+    event = TraceEvent(event_type="llm", name="generate", trace_id="trace", span_id="span",
+                       request_id="request", session_id="session")
+    event.metadata = {"prompt": "13800138000"}
+
+    exported = event.to_dict()
+    assert "13800138000" not in json.dumps(exported)
+    assert exported["metadata"]["prompt"]["length"] == 11
+
+
+def test_store_snapshots_completed_span_and_protects_reads_from_mutation():
+    store = BoundedTraceStore()
+    with trace_span(store, event_type="llm", name="generate", request_id="request") as event:
+        event.metadata = {"prompt": "13800138000"}
+    event.name = "changed-after-append"
+    event.metadata = {"prompt": "changed-after-append"}
+    snapshot = store.events()[0]
+    assert "13800138000" not in json.dumps(snapshot.to_dict())
+    assert snapshot.metadata["prompt"]["length"] == 11
+    snapshot.name = "changed-after-read"
+    snapshot.metadata["prompt"]["length"] = 999
+
+    exported = store.export_tree("request")
+    assert exported[0]["name"] == "generate"
+    assert exported[0]["metadata"]["prompt"]["length"] == 11
+
+
+def test_failed_child_records_error_and_restores_parent_context():
+    store = BoundedTraceStore()
+    with trace_span(store, event_type="http", name="root", request_id="request") as root:
+        with pytest.raises(ValueError, match="synthetic failure"):
+            with trace_span(store, event_type="llm", name="child"):
+                raise ValueError("synthetic failure")
+        assert current_trace_context()["span_id"] == root.span_id
+    assert current_trace_context() is None
+    child = next(event for event in store.events() if event.name == "child")
+    assert child.outcome == "error"
+    assert child.parent_span_id == root.span_id
+    assert child.duration_ms >= 0
+
+
+@pytest.mark.asyncio
+async def test_cancelled_span_records_error_and_clears_context():
+    store = BoundedTraceStore()
+    with pytest.raises(asyncio.CancelledError):
+        with trace_span(store, event_type="llm", name="cancelled", request_id="request"):
+            raise asyncio.CancelledError()
+    assert current_trace_context() is None
+    assert store.export_tree("request")[0]["outcome"] == "error"
+
+
+def test_eviction_drops_completed_children_without_reconstructing_tree():
+    store = BoundedTraceStore(max_events=1)
+    with trace_span(store, event_type="http", name="root", request_id="request"):
+        with trace_span(store, event_type="node", name="child"):
+            pass
+    # 根 span 最后完成，因此容量为一时只有根事件存活。
+    assert [event["name"] for event in store.export_tree("request")] == ["root"]
+    with trace_span(store, event_type="http", name="other", request_id="other-request"):
+        pass
+    assert store.export_tree("request") == []
+
+
+def test_parallel_threads_keep_context_isolated_and_store_bounded():
+    store = BoundedTraceStore(max_events=25)
+
+    def record(index):
+        with trace_span(store, event_type="node", name="parallel", request_id=f"request-{index}"):
+            assert current_trace_context()["request_id"] == f"request-{index}"
+        assert current_trace_context() is None
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(record, range(100)))
+    events = store.events()
+    assert len(events) == 25
+    assert len({event.span_id for event in events}) == 25
+    assert len({event.request_id for event in events}) == 25
+    assert all(event.outcome == "success" for event in events)
+
+
+def test_append_failure_propagates_but_context_is_restored():
+    class FailingStore(BoundedTraceStore):
+        def append(self, event):
+            raise RuntimeError("synthetic store failure")
+
+    with pytest.raises(RuntimeError, match="synthetic store failure"):
+        with trace_span(FailingStore(), event_type="node", name="failure"):
+            pass
+    assert current_trace_context() is None
+
+
+def test_global_store_is_bounded_and_empty_in_a_new_process():
+    setup = """
+from app.infrastructure.observability.tracing import trace_store, trace_span
+"""
+    write = """
+for index in range(3):
+    with trace_span(trace_store, event_type='node', name=str(index)):
+        pass
+print([event.name for event in trace_store.events()])
+"""
+    environment = {**os.environ, "TRACE_MAX_EVENTS": "2"}
+    first = subprocess.run([sys.executable, "-c", setup + write], env=environment,
+                           capture_output=True, text=True, check=True, timeout=15)
+    second = subprocess.run([sys.executable, "-c", setup + "print(len(trace_store.events()))"], env=environment,
+                            capture_output=True, text=True, check=True, timeout=15)
+    assert first.stdout.strip() == "['1', '2']"
+    assert second.stdout.strip() == "0"

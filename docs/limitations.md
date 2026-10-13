@@ -44,7 +44,7 @@
 ## 观测与预算
 
 - 调用树、token、延迟、成本估算和 session budget 都是单进程内能力；多 worker 不共享，服务重启后清空，不能当作生产 APM、计费账本或全局配额。预算 registry 达到 `SESSION_BUDGET_MAX_SESSIONS` 后会拒绝新的 session，不会淘汰旧条目并重置其预算。
-- 事件存储受 `TRACE_MAX_EVENTS` 限制，达到上限会淘汰最早事件；它不是持久审计源。
+- 事件存储受 `TRACE_MAX_EVENTS` 限制，默认最多 5000 个完成事件，按完成顺序淘汰；这是数量上限，不是字节或留存时长保证，调用树可能因淘汰而不完整。没有持久化或跨进程聚合；写入异常仍向调用方传播，不承诺 fail-open。
 - token 依赖供应商 usage；缺失时明确记录 `unknown`。此时 token budget 无法增加，但 call budget 仍会阻止无限模型/RAG 调用。
 - `cost_usd` 只使用显式配置的静态模型单价估算；未配置价格、模型名不匹配或 usage 缺失时为 `unknown`，不代表真实账单。
 

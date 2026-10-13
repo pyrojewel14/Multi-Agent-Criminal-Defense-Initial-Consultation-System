@@ -3,13 +3,15 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 import uuid
 from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import asdict, dataclass, field
+from copy import deepcopy
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Iterator, Literal
 
@@ -30,15 +32,22 @@ def _hash_value(value: object) -> str:
 
 
 def build_safe_metadata(values: dict[str, object]) -> dict[str, object]:
-    """仅保留字段名、规范化值的 hash 和长度，不保存原始值。"""
-    safe: dict[str, object] = {"field_names": sorted(str(key) for key in values)}
+    """仅保留字段名、规范化值的 hash 和长度，保留键冲突时加下划线。"""
+    safe: dict[str, object] = {}
     for key, value in values.items():
+        name = str(key)
+        if name == "field_names":
+            # 避免原始同名字段覆盖摘要索引，也避开调用方已有的下划线字段。
+            name = "_field_names"
+            while name in values:
+                name = f"_{name}"
         canonical = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
-        safe[str(key)] = {
+        safe[name] = {
             "sha256": _hash_value(value),
             "length": len(value) if isinstance(value, (str, list, tuple, dict)) else len(canonical),
             "field_names": sorted(str(item) for item in value) if isinstance(value, dict) else [],
         }
+    safe["field_names"] = sorted(safe)
     return safe
 
 
@@ -46,17 +55,24 @@ def _is_safe_metadata(value: dict[str, object]) -> bool:
     field_names = value.get("field_names")
     if not isinstance(field_names, list) or not all(isinstance(item, str) for item in field_names):
         return False
+    if len(field_names) != len(set(field_names)):
+        return False
     if set(value) != {"field_names", *field_names}:
         return False
     for name in field_names:
         summary = value.get(name)
         if not isinstance(summary, dict):
             return False
-        if not isinstance(summary.get("sha256"), str) or not str(summary["sha256"]).startswith("sha256:"):
+        if set(summary) != {"sha256", "length", "field_names"}:
             return False
-        if not isinstance(summary.get("length"), int):
+        digest = summary.get("sha256")
+        if not isinstance(digest, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
             return False
-        if not isinstance(summary.get("field_names"), list):
+        length = summary.get("length")
+        if type(length) is not int or length < 0:
+            return False
+        names = summary.get("field_names")
+        if not isinstance(names, list) or not all(isinstance(item, str) for item in names):
             return False
     return True
 
@@ -91,17 +107,21 @@ class TraceEvent:
         """在事件边界强制摘要化 metadata，避免调用方误传原始值。"""
         if not _is_safe_metadata(self.metadata):
             self.metadata = build_safe_metadata(self.metadata)
+        else:
+            self.metadata = deepcopy(self.metadata)
 
     def to_dict(self) -> dict[str, object]:
-        """返回可序列化事件，不暴露内部排序字段。"""
-        result = asdict(self)
+        """返回独立的可序列化快照，重新保护创建后修改的 metadata。"""
+        result = asdict(replace(self))
         result.pop("_started_ns", None)
         return result
 
-# TODO P4 【基础设施】轻量级内存 tracing，用于开发调试，不是生产级 observability。
-# TODO P4 Trace了一堆，没人消费，只用做测试了
+
 class BoundedTraceStore:
-    """线程安全的有界进程内事件存储。"""
+    """供评测与调用链测试读取的有界进程内快照，不是持久审计源。
+
+    按完成顺序淘汰旧事件，可能只保留请求的部分调用树；各进程独立持有。
+    """
 
     def __init__(self, max_events: int = 5000):
         if max_events <= 0:
@@ -110,15 +130,18 @@ class BoundedTraceStore:
         self._lock = threading.Lock()
 
     def append(self, event: TraceEvent) -> None:
+        """完成时再次保护 metadata，并隔离调用方持有的可变事件。"""
+        snapshot = replace(event)
         with self._lock:
-            self._events.append(event)
+            self._events.append(snapshot)
 
     def events(self) -> list[TraceEvent]:
+        """返回独立事件快照，读取方的修改不会污染后续导出。"""
         with self._lock:
-            return list(self._events)
+            return [replace(event) for event in self._events]
 
     def export_tree(self, request_id: str) -> list[dict[str, object]]:
-        """按 span 开始顺序导出请求调用树。"""
+        """按 span 开始顺序导出请求现存事件，不保证树完整。"""
         events = [event for event in self.events() if event.request_id == request_id]
         events.sort(key=lambda event: event._started_ns)
         return [event.to_dict() for event in events]

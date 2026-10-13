@@ -101,6 +101,8 @@ HTTP/WebSocket 请求生成或校验 UUID correlation id（请求关联标识）
 
 外部消息通过 Memory coordinator 写入原文与回执后，在推进工作流时建立请求根 span；内部消息仍由 application service 建立根 span。审计准备失败或幂等重放未执行图时，不能以缺少工作流子事件判断上下文传播失败。[挂载 HTTP 回归](../backend/tests/infrastructure/observability/test_call_tree_integration.py)使用独立 SQLite、真实 LangGraph、LawRef 工具循环和 snapshot 路径的 RAG 服务，检查父子关联、并发请求隔离及 metadata 不含原文；模型网络和索引访问使用替身，不证明真实供应商、默认 full 索引检索或生产观测服务。
 
+`evaluation/run_live_eval.py` 读取事件以统计模型尝试、RAG 返回顺序指纹与路由；工程测试读取事件和调用树以验证契约。`export_tree()` 当前由测试消费，没有接入业务查询端点或监控平台。事件创建、完成入库、读取和序列化时使用独立快照，并重新校验 metadata 摘要，避免调用方后续修改污染存储。
+
 | 配置/字段 | 用途 |
 | --- | --- |
 | `TRACE_MAX_EVENTS` | 限制进程内事件总量，超过后淘汰最早事件 |
@@ -109,7 +111,7 @@ HTTP/WebSocket 请求生成或校验 UUID correlation id（请求关联标识）
 | `SESSION_BUDGET_EXCEEDED` | 类型化预算错误；不覆盖已有 `repair_required` / `degraded` 状态 |
 | `MODEL_PRICING_USD_PER_MILLION` | 显式静态模型单价，仅用于成本估算 |
 
-事件含请求/会话/节点、模型与提示词版本、attempt、耗时、结果、缓存命中、token 和成本等字段；不适用的字段留空。usage 缺失时 token 为 `unknown`；价格或 usage 不完整时成本为 `unknown`，不能填零。观测 metadata 只保留允许的字段名、长度与规范化值 hash，不保存工具参数值或案件事实。
+事件含请求/会话/节点、模型与提示词版本、attempt、耗时、结果、缓存命中、token 和成本等字段；不适用的字段留空。usage 缺失时 token 为 `unknown`；价格或 usage 不完整时成本为 `unknown`，不能填零。观测 metadata 值只保留字段名、长度与规范化值 hash，不保存工具参数值或案件事实；字段名和显式请求/会话标识仍会保留，这不是匿名化系统。
 
 LawRef 的 `law_research` 摘要随 workflow state 保存；trace/budget registry 仍在进程内。局部工具预算与轨迹字段见 [工作流](workflow.md#法条来源与覆盖契约)。这些能力不是生产 APM（应用性能监控）、计费账本或全局配额。
 

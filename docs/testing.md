@@ -85,6 +85,8 @@ Memory 组核对原文/回执、增量字段、游标与预算；名称中的 `l
 
 `tests/infrastructure/observability/test_call_tree_integration.py` 通过真实挂载 HTTP、独立 SQLite、真实图和 LawRef 工具循环检查调用树、请求隔离与 metadata 不含原文，RAG 使用 snapshot 路径及外部依赖替身。替换 trace store 时须包含外部消息的 Memory coordinator，不应只替换 service 的旧入口，也不能依赖本地业务库已有表结构。上述确定性测试不替代真实模型或默认 full 检索验收。
 
+`tests/infrastructure/observability/test_tracing.py` 还检查 metadata 摘要伪装、保留键冲突、入库和读取对象隔离、异常/取消上下文恢复、线程并发、容量淘汰和新进程为空；评测事件读取契约由 `evaluation/test_live_eval.py` 覆盖。
+
 ## LLM deadline 与结构化产物契约
 
 ```bash
