@@ -243,10 +243,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
                 if result.error:
                     _logger.error("【websocket_endpoint】消息处理失败: session_id=%s", session_id)
+                    # 只按明确标志返回固定提示，不透传服务中的内部错误文本。
+                    error_content = ("消息执行状态待人工核验，请联系处理人员，勿重复发送"
+                                     if result.requires_manual_recovery else "消息处理失败，请稍后重试")
                     await websocket.send_json(
                         {
                             "type": "error",
-                            "content": "消息处理失败，请稍后重试",
+                            "content": error_content,
                         }
                     )
                     continue

@@ -68,16 +68,25 @@ backend/.venv/bin/python -m pytest -q \
 
 ## Memory 与 full 检索契约
 
-从 `backend/` 选择对应组运行，命令仅列执行入口，本轮文档整理未执行：
+从 `backend/` 按改动选择对应组运行；这些入口不代表全仓测试或真实模型质量验收：
 
 ```bash
 .venv/bin/python -m pytest -q tests/consultation/test_memory.py \
   tests/consultation/test_memory_persistence.py tests/consultation/test_memory_live_contract.py
+.venv/bin/python -m pytest -q tests/consultation/test_memory_crash_recovery.py
+.venv/bin/python -m pytest -q tests/consultation/test_memory_recovery_transport.py
+.venv/bin/python -m pytest -q tests/consultation/test_memory_multiworker.py
 .venv/bin/python -m pytest -q tests/knowledge/test_full_law_retrieval.py \
   tests/knowledge/test_full_law_reranker_device.py
 ```
 
 Memory 组核对原文/回执、增量字段、游标与预算；名称中的 `live_contract` 仍需核对具体替身和外部依赖范围。full 组核对召回、重排协议与设备失败边界。[阶段 3 定向验证](memory/phase3-verification.md)已于 2026-10-04 由主线程独立验收固定合成样例的真实事实/摘要及单 worker 正常停启，法律检索/覆盖度/预检使用替身；该历史验收不代表当前全量测试通过，也不证明完整咨询质量、任意 kill 或多 worker 恢复。历史验收状态的文档更正没有重跑测试或模型；新的质量与耗时评测按 [评测说明](evaluation.md) 执行，源码职责见 [Memory](memory/README.md) 和 [全量检索](knowledge/full_law_retrieval.md)。
+
+`test_memory_crash_recovery.py` 使用真实图、两套隔离 SQLite 和确定性模型/法律替身，覆盖 12 个不运行退出清理的强退窗口，检查恢复后同键两次重放的原文、case 来源、摘要游标、pending 与回复；另检验普通提交故障仍可同键重试。未知执行必须保守停止，不能因测试通过而宣称全部窗口自动恢复或 exactly-once。
+
+历史同键错误诊断核对旧原文不可覆盖，当前服务提示仍要求人工核验。`test_memory_recovery_transport.py` 经挂载 HTTP 与 WS 连接核对两类未知状态及历史记录分支，保证固定客户端指引、图不推进、普通错误仍通用；这些传输测试使用隔离业务库与内存图，不运行正式 lifespan，也不替代前述真实 SQLite 强退矩阵。
+
+`test_memory_multiworker.py` 验证正式 main lifespan 拒绝共享任一数据库的第二实例、已提交轮次强退后的接续、路径别名、部分加锁失败、初始化异常及内存库边界。四个绕过正式 lifespan 的底层竞态探针默认跳过；诊断时可显式设置 `MEMORY_RUN_UNSAFE_MULTIWORKER_PROBE=1`，其中安全断言已知会失败，不能将该诊断作为正常通过门禁。
 
 ## 输入透传与挂载调用树
 
@@ -112,6 +121,10 @@ cd backend
 ```
 
 ## API 与部署定向组
+
+正式咨询的隔离验收可在 `backend/` 执行 `.venv/bin/python -m pytest -q tests/integration/test_consultation_acceptance.py`。需要 `redis-server` 可执行文件和回环监听权限；测试只启动临时独立服务与数据库。它覆盖完整/不足信息、高风险、无效风险/服务产物、依赖降级、真实 HTTP/WS、律师退回与批准、最终报告及正常重启，另检查权限隔离、不同会话并发与同键重放。模型网关和向量召回为确定性替身，法律工具与工作流使用正式实现；合成 JWT 直接签发，不验证注册/登录或前端。
+
+2026-10-13 主线程独立复跑相关正式接口、工作流和 API 组 192 项通过；启动防护更新后，接口验收与 startup/readiness 再跑 5 项通过。该固定范围不能代替真实模型、容器构建运行或生产验收。
 
 根目录的 `make test` 运行一个较小的后端配置/JWT/数据库/OpenAPI 分组和全部前端 Vitest：
 

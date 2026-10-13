@@ -19,6 +19,10 @@ from app.models import Consultation, ConsultationMessage
 _logger = get_logger("Memory.Coordinator")
 
 
+class _UnknownMessageExecutionError(ValueError):
+    """执行回执不足以安全重放，必须人工核验 checkpoint。"""
+
+
 async def refresh_memory(service, db, session_id, state):
     """摘要候选保存成功才成为权威；失败不影响已完成的消息命令。"""
     # 原文审计不依赖同意；确认同意后，存档原文才可进入有界派生记忆。
@@ -119,7 +123,7 @@ async def process_external(service, session_id, content, state, *, db, idempoten
                     await service.persist_state(session_id, projection_updates={"message_audit": None})
                 return _result(service, await service.get_session_state(session_id), metadata, reply.id, reply.content)
             if not pending:
-                raise ValueError("原文已记录但执行结果未知，需人工核验 checkpoint")
+                raise _UnknownMessageExecutionError("原文已记录但执行结果未知，需人工核验 checkpoint")
         else:
             if state.get("repair_required"):
                 raise ValueError("必须先修复生命周期命令")
@@ -133,7 +137,7 @@ async def process_external(service, session_id, content, state, *, db, idempoten
         if pending["fingerprint"] != fingerprint:
             raise service.IdempotencyConflictError("幂等键已用于不同请求")
         if pending["status"] == "running":
-            raise ValueError("消息运行中断且结果未知，需人工核验 checkpoint")
+            raise _UnknownMessageExecutionError("消息运行中断且结果未知，需人工核验 checkpoint")
         if pending["status"] != "applied":
             pending = dict(pending, status="running")
             await service.persist_state(session_id, projection_updates={"message_audit": pending})
@@ -181,6 +185,9 @@ async def process_external(service, session_id, content, state, *, db, idempoten
         await db.rollback()
         if replayed_error:
             raise
+        recovery_error = ("消息执行状态未知，需人工核验 checkpoint 后修复；请勿自动重放"
+                          if isinstance(exc, _UnknownMessageExecutionError)
+                          else "消息审计或执行未完成，请使用相同幂等键重试")
         snapshot = await service.orchestrator.get_snapshot(session_id)
         latest = dict(snapshot.values) if snapshot else state
         marker = latest.get("message_audit")
@@ -210,12 +217,14 @@ async def process_external(service, session_id, content, state, *, db, idempoten
                     '{"event":"message_failed"}', "system", command_id=command_id, record_kind="internal",
                     metadata={"event": "message_failed", "error_type": type(exc).__name__, "applied": applied})
                 await append_record(db, state["consultation_id"], stable_id(session_id, key, "error_response"),
-                    "消息处理失败，请稍后重试", "system", command_id=command_id,
+                    recovery_error if isinstance(exc, _UnknownMessageExecutionError) else "消息处理失败，请稍后重试",
+                    "system", command_id=command_id,
                     metadata={"event": "error_response", "status_code": 500, "request_id": request_id})
                 await db.commit()
         except Exception:
             await db.rollback()
         _logger.error("外部消息待修复: error_type=%s, applied=%s", type(exc).__name__, applied)
         return service.ProcessMessageResult(response_content="", next_agent=agent, alert_triggered=False,
-            result_state=None, error="消息审计或执行未完成，请使用相同幂等键重试", command_applied=applied,
-            agent_name=agent, request_id=request_id)
+            result_state=None, error=recovery_error, command_applied=applied,
+            agent_name=agent, request_id=request_id,
+            requires_manual_recovery=isinstance(exc, _UnknownMessageExecutionError))

@@ -186,7 +186,10 @@ async def send_message(
 
     if result.error:
         _logger.error("【send_message】消息处理失败: session_id=%s", session_id)
-        raise HTTPException(status_code=500, detail="消息处理失败，请稍后重试")
+        # 未知执行不能引导自动重放，其他失败仍使用通用提示保护内部详情。
+        detail = ("消息执行状态待人工核验，请联系处理人员，勿重复发送"
+                  if result.requires_manual_recovery else "消息处理失败，请稍后重试")
+        raise HTTPException(status_code=500, detail=detail)
 
     if result.result_state is None:
         _logger.error("【send_message】result_state 为空: session_id=%s", session_id)

@@ -46,6 +46,8 @@ class ProcessMessageResult:
     command_applied: bool = False
     agent_name: Optional[str] = None
     request_id: Optional[str] = None
+    # 传输层仅据此选择固定提示，不向客户端透传内部错误详情。
+    requires_manual_recovery: bool = False
 
 
 class IdempotencyConflictError(RuntimeError):

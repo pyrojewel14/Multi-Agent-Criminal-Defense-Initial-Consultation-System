@@ -140,6 +140,8 @@ curl -s -X POST "http://127.0.0.1:8000/api/v1/sessions/${SESSION_ID}/message" \
 
 消息成功时返回 `message_id`、`agent_name`、`response_content`、`is_complete`、`pending_questions` 和 `alert_triggered`。值取决于实际流程；模型超时等情况按下方错误表处理。
 
+原文已提交但缺少可判定回执，或遗留 `running` 回执时，当前执行结果未知。HTTP 500 与 WS `type=error` 使用固定提示“消息执行状态待人工核验，请联系处理人员，勿重复发送”，不透传内部错误；其他内部消息错误仍返回通用稍后重试提示。未知状态不能靠循环同键重放修复，处理边界见 [Memory](memory/README.md#恢复与失败边界)。历史审计错误原文保持原内容，可能与当前客户端提示不同。
+
 查询状态：
 
 ```bash
