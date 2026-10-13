@@ -74,6 +74,7 @@ logs/
 data/chromadb/
 *.sqlite3
 *.db
+*.worker.lock
 
 # ==================== Environment & Config ====================
 .env

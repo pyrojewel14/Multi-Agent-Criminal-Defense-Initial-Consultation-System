@@ -20,9 +20,11 @@ from app.api.v1.routers.users import user_router
 from app.consultation.memory.context import MemorySettings
 from app.consultation.workflow import orchestrator
 from app.errors.register import register_exception_handlers
+from app.infrastructure.database import db as database_module
 from app.infrastructure.database.db import close_db, database_readiness, init_db
 from app.infrastructure.database.readiness import SQLiteReadiness
 from app.infrastructure.database.redis import close_redis, init_redis
+from app.infrastructure.database.worker_ownership import sqlite_worker_ownership
 from app.infrastructure.llm.factory import chat_model_factory, embed_model_factory
 from app.infrastructure.logging import get_logger
 from app.knowledge.law_knowledge import preflight_law_knowledge
@@ -41,30 +43,31 @@ checkpoint_readiness = SQLiteReadiness()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _logger.info("Starting up application...")
-    preflight_law_knowledge()
     checkpoint_path = Path(os.getenv("LANGGRAPH_CHECKPOINT_DB_PATH", "./data/langgraph_checkpoints.db"))
-    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    async with aiosqlite.connect(checkpoint_path) as connection:
-        # checkpoint 包含咨询原文；只反序列化 LangGraph 内置安全类型。
-        checkpointer = AsyncSqliteSaver(connection, serde=JsonPlusSerializer(allowed_msgpack_modules=None))
-        await checkpointer.setup()
-        orchestrator.configure_checkpointer(checkpointer, persistent=True)
-        checkpoint_readiness.start(connection, checkpointer.lock)
-        try:
-            await init_db()
-            await init_redis()
-            _logger.info("Database and Redis initialized")
-            yield
-        finally:
-            checkpoint_readiness.close()
-            orchestrator.mark_checkpointer_closed()
-            _logger.info("Shutting down application...")
-            reorder_service.close()
-            chat_model_factory.close()
-            embed_model_factory.close()
-            await close_redis()
-            await close_db()
-            _logger.info("Cleanup completed")
+    # 业务库使用模块已绑定的实际路径，不能被导入后变化的环境变量误导。
+    with sqlite_worker_ownership(database_module.DATABASE_PATH, checkpoint_path):
+        preflight_law_knowledge()
+        async with aiosqlite.connect(checkpoint_path) as connection:
+            # checkpoint 包含咨询原文；只反序列化 LangGraph 内置安全类型。
+            checkpointer = AsyncSqliteSaver(connection, serde=JsonPlusSerializer(allowed_msgpack_modules=None))
+            await checkpointer.setup()
+            orchestrator.configure_checkpointer(checkpointer, persistent=str(checkpoint_path) != ":memory:")
+            checkpoint_readiness.start(connection, checkpointer.lock)
+            try:
+                await init_db()
+                await init_redis()
+                _logger.info("Database and Redis initialized")
+                yield
+            finally:
+                checkpoint_readiness.close()
+                orchestrator.mark_checkpointer_closed()
+                _logger.info("Shutting down application...")
+                reorder_service.close()
+                chat_model_factory.close()
+                embed_model_factory.close()
+                await close_redis()
+                await close_db()
+                _logger.info("Cleanup completed")
 
 
 app = FastAPI(

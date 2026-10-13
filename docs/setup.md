@@ -114,6 +114,10 @@ LAW_FULL_EMBEDDING_DIGEST=<构建输出中的实际 embedding_model_digest>
 
 ## 5. 启动服务
 
+当前后端对同一业务 SQLite 或 checkpoint SQLite 只允许一个 worker。正式 lifespan 在法条预检、建表和 checkpoint setup 前，分别取得两条规范化路径的 OS 文件锁；任一存储已被占用或不支持锁时拒绝启动。相对路径和符号链接会归一化，任意一个库共享也会拒绝；精确的 `:memory:` 为各进程独立内存库，不声明持久化恢复。
+
+`*.worker.lock` 是运行期所有权文件，退出后可以保留。实例运行中不得删除、替换或移动它，避免不同 inode 上的锁失去互斥。此防护要求可靠支持 `flock` 的本机共享文件系统和相同锁 inode，不保证网络文件系统、硬链接、不同挂载视图、绕过正式 lifespan 或加锁后额外 fork 的行为；它没有使底层算法支持多 worker。
+
 分别在三个终端的仓库根目录运行：
 
 ```bash
