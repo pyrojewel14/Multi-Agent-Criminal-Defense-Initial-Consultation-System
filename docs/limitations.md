@@ -52,7 +52,6 @@
 
 - FastAPI lifespan 使用独立的 LangGraph checkpoint SQLite 文件，单实例后端进程重启后可恢复原图执行位置；直接构造 orchestrator 的纯单元测试默认仍使用进程内 `MemorySaver`。checkpoint 包含完整咨询工作流状态，属于敏感本地数据，Git 已忽略运行数据库。
 - 同 session 串行锁与内部兼容/生命周期结果 registry 是进程内能力；HTTP/WS 原文、回复和 `message_audit` 回执另行持久保存，不能概括为重启后全部丢失。它们不构成跨进程锁或 exactly-once 保证。
-- 正式 lifespan 通过两条独立文件锁拒绝共享业务库或 checkpoint 的第二个 worker；底层双 worker 已复现原文唯一约束冲突及摘要/case 回退，不能绕过防护后声称安全。机制要求可靠支持 `flock` 的本机文件系统、相同锁 inode 和正式 lifespan；网络文件系统、硬链接、不同挂载视图、自建入口或加锁后额外 fork 不在保证内。已提交轮次后的 SIGKILL 接续只证明该固定场景和 OS 锁释放，不能外推执行中任意时刻恢复。
 - 外部输入先提交业务 SQLite，图执行后记录 checkpoint `applied` 回执。该回执已确定执行成功时，相同键只补审计；崩溃留下 `running` 或缺少明确回执时保守停下并提示人工核验。[阶段 3 正常停启验证](memory/phase3-verification.md)的历史范围限合成小样例与单 worker 正常停启；新增受控强退回归覆盖 12 个固定边界，其中 3 个未知状态窗口仍需人工核验。没有跨两库事务、通用自动修复或任意 kill/断电/磁盘损坏保证，范围见 [Memory 说明](memory/README.md#恢复与失败边界)。
 
 - Redis 不是执行状态源；SQLite 是生命周期/消息审计源。approve/reject/close 先推进 checkpoint，再提交 SQLite；审计提交失败时不会伪造回滚，而是在真实执行位置标记 `repair_required` 并阻断普通 resume，等待相同操作重试修复。
