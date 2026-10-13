@@ -161,6 +161,14 @@ make eval
 
 预期：测试报告列出通过/失败数；类型检查和构建退出码为 0；离线评估生成 `evaluation/results/` 下的结果。`make eval` 固定使用六条 `snapshot`，不会评测默认全量检索。分组说明见 [测试](testing.md)，指标解释见 [评估](evaluation.md)。
 
+正式咨询接口的隔离确定性验收入口：
+
+```bash
+(cd backend && .venv/bin/python -m pytest -q tests/integration/test_consultation_acceptance.py)
+```
+
+它需要 `redis-server` 可执行文件与本机回环监听权限，启动独立临时 Redis、业务库和 checkpoint 库，结束后清理运行数据；不连接共享服务。真实 HTTP/WS、工作流、律师审核、持久化及正常重启走正式入口，模型网关与向量召回使用确定性替身。该测试不能替代真实模型咨询质量、前端操作或容器部署验收。
+
 ## 启动时检查哪些数据
 
 应用在数据库与 Redis 初始化前，离线校验所选法条语料及启用的 demo 标注。可单独运行：
