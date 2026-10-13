@@ -10,14 +10,37 @@
 
 当前主流程默认 `legacy` 工具循环，`native_candidate` 是显式候选协议。程序继续校验来源、读取资格、要件名称、重复调用与有限预算；检索专用配置见 [full 检索](full_law_retrieval.md)，上下文预算见 [Memory](../memory/README.md)。本页负责协议诊断与失败记录。
 
-下面的模型结果来自 2026-10-01，保留当时输入、配置、失败和指标；本轮没有重跑模型，不能用这些数据判断当前 Memory/混合检索后的完整咨询质量。
+下面的模型评分来自 2026-10-01，保留当时输入、配置、失败和指标；2026-10-13 仅完成新入口与服务连通诊断，没有形成新的真实模型评分，不能用这些历史数据判断当前 Memory/混合检索后的完整咨询质量。
 
-- 本地 Qwen 与新提示词、默认 legacy 流程：最近两轮均 0/6，问题已记录并暂缓。
+- 本地 Qwen 与新提示词、默认 legacy 流程：历史两轮均 0/6；当前 4b/9b 对照受服务可达性阻碍，尚未执行。
 - 云模型与修订提示词：固定六例两轮 6/6，正式入口否认案例 1/1；主线程已核对这些局部证据。
 - 以上结果不验证完整咨询闭环；当时的 PII 误遮盖与本地最终生成是两个独立问题，当前入口行为见下节。
 - 更大本地模型是待验证方向，参数规模不是已证实的唯一原因。
 
 优先看 [本地新提示词复测](#本地小模型与新提示词复测2026-10-01) 和 [修复后云对照及正式入口](#修复后两轮与正式复现入口)。下文保留试验先后、失败历史与当时配置，不把旧结果当作当前复跑结果。
+
+## 本地有限对照入口
+
+[本地 runner](../../evaluation/run_local_lawref.py)固定使用[原六例](../../evaluation/lawref_cloud_cases.jsonl)的字节与 SHA-256、当前 legacy 系统提示和原 `run_full_eval.py` 评分器。gold 仅在响应后评分；当前已读条文提示中的事实对象与初始事实字符串均按同一公开案例核对。该入口限 `qwen3.5:4b`、`qwen3.5:9b`，不下载模型、不写 `.env`，默认每个候选只跑一轮；第二轮需要先协调共享推理资源。
+
+先读 `/api/version`、`/api/tags`、`/api/ps`，确认本地权重和 tools 能力后再执行；所有调用显式 `trust_env=False`。服务不可达、模型未安装或云代理 manifest 单独记录，未发生推理时不产生 0/6 分数。实际请求保留 `think=false`、temperature=0、seed=0、8192 上下文与 1024 输出 token；四步、单例 240 秒、工具 90 秒、网关总计 30 秒／单次 15 秒／最多两次保持固定。每模型每轮最多 48 次 chat 请求、整轮 1500 秒，最多两轮；该上限不含 embedding 与只读元数据请求。
+
+对照使用向量 top5、关闭 reranker 与 HyDE，以免额外生成或模型下载干扰预算；这不是当前混合检索默认配置的完整质量评测。调用前核对 embedding digest，复制既有公共索引和 manifest，使用输出目录内的独立 SQLite 路径。原始 content、thinking、tool_calls、实际 HTTP 状态和完成 usage 逐请求保存；驻留快照的 `size_vram` 仅表示采样时的模型驻留量，不是整机或进程内存峰值。新窗口、思考与输出配置使本轮与历史 0.8b/云/native_candidate 数字不能合并；不同候选只在本入口同配置下比较。
+
+从项目根运行，服务地址使用明确可达的既有 Ollama 地址，输出必须使用空的新目录：
+
+```bash
+backend/.venv/bin/python evaluation/run_local_lawref.py \
+  --base-url "$OLLAMA_BASE_URL" --models qwen3.5:9b --rounds 1 \
+  --index-directory backend/data/law_indexes/full-law \
+  --output-dir evaluation/results/local-lawref-9b-new
+```
+
+可将模型改为 `qwen3.5:4b` 并使用另一新输出目录；退出码 2 表示依赖阻碍或候选未全部执行，1 表示真实六例评分存在失败，0 才表示选定候选各轮六例均通过。`preflight.json` 保留连通与能力诊断，`comparison.json` 保留各轮分母，逐轮 summary/raw 互相独立。输出可能含服务元数据与本地路径，公开前需按[维护规范](../maintenance.md)检查；保留失败与部分流，不覆盖历史文件。
+
+整轮中断仍保留候选、轮次、summary/raw 文件和中断状态，`llm_executed` 按实际收到的响应记录；`candidate_llm_executed` 单独表示收到过指定候选的响应。返回模型身份或请求仪器校验失配单独记录，不能将其他模型的响应计为候选 0/6。中断或失配轮的 `passed`、`total` 为 null，退出码仍为 2；已完成且有效的其他轮证据保留。未收到响应时身份核验结果为 null；中断导致评分器未交回完整工具轨迹时，`rag_executed` 为 null，原始片段不充当完整评分。
+
+2026-10-13 [受控连通证据](../../evaluation/evidence/lawref_local_preflight_2026-10-13.json)表明：配置的远程服务名称无法解析，本机回环端口拒绝连接；沙箱外直连复核结果一致。这不是代理 502 或模型推理失败；4b/9b 安装情况、版本、权重 digest、实际输出与耗时均未取得。后续需要可达服务地址与推理资源窗口。新入口的确定性协议回归见 [test_local_lawref.py](../../evaluation/test_local_lawref.py)，不代表真实模型质量或法律复核通过。
 
 ## 案情脱敏边界
 

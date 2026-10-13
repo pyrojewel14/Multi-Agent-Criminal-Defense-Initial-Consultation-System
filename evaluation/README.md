@@ -7,6 +7,7 @@
 | 六条快照离线 baseline | `cases.jsonl` / `run_eval.py` | 30 条输入驱动的确定性流程回归 |
 | 快照真实链试跑 | `live_cases.jsonl` / `run_live_eval.py` | preflight、身份引导消融与三条合成样例的 LangGraph 执行 |
 | 全量正文分层评测 | `full_cases.jsonl` / `run_full_eval.py` | 离线工具、实际 RAG 或实际 LawRef；分别记录 |
+| 本地候选有限对照 | `lawref_cloud_cases.jsonl` / `run_local_lawref.py` | 固定六例、legacy 协议、4b/9b 的独立连通诊断与模型评分 |
 | 全量检索消融 | `full_retrieval_cases.jsonl` / `run_full_retrieval_ablation.py` | 向量、混合、重排与 HyDE 的候选相关性、耗时及降级 |
 
 ## 六条快照 baseline 与真实链
@@ -46,6 +47,8 @@ backend/.venv/bin/python evaluation/run_full_retrieval_ablation.py --output eval
 该脚本读取已有配置，不构建索引或下载模型；输出文件必须尚不存在。可用 `--modes vector hybrid hybrid_rerank` 选择组别，`--limit <n>` 缩小探针范围，`--case-timeout <seconds>` 设置逐例时限。保留的 [2026-10-02 四组结果](evidence/full_retrieval_ablation_final_2026-10-02.json) 与 [独立核验](evidence/full_retrieval_verification_2026-10-02.json) 是当日证据，不能替代新配置的复跑。
 
 ## 结果与历史材料
+
+本地候选对照的准备、预算、命令和退出码见 [本地有限对照入口](../docs/knowledge/lawref_response_protocol.md#本地有限对照入口)。它只使用既有模型和独立索引副本，保留中断及身份失配证据；未执行推理时不生成六例失败分数。2026-10-13 的服务连通诊断尚未获得真实候选输出，离线协议回归不能替代模型质量评测。
 
 | 路径 | 用途 |
 | --- | --- |

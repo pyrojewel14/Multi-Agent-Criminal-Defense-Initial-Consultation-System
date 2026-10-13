@@ -1,0 +1,70 @@
+{
+  "evidence_kind": "local-lawref-service-preflight-only",
+  "date": "2026-10-13",
+  "source_baseline": "8dc0401b14e91c758ab83ddf28ebd5962bbb7dc9",
+  "workspace_changes": "dedicated local runner and protocol documentation; concurrent unrelated work excluded",
+  "execution": "direct requests outside filesystem/network sandbox; trust_env=False; no proxy",
+  "probes": [
+    {
+      "service": "configured_remote",
+      "endpoint": "/api/version",
+      "error_type": "ConnectError",
+      "error_kind": "name_resolution_failed",
+      "http_status": null
+    },
+    {
+      "service": "configured_remote",
+      "endpoint": "/api/tags",
+      "error_type": "ConnectError",
+      "error_kind": "name_resolution_failed",
+      "http_status": null
+    },
+    {
+      "service": "configured_remote",
+      "endpoint": "/api/ps",
+      "error_type": "ConnectError",
+      "error_kind": "name_resolution_failed",
+      "http_status": null
+    },
+    {
+      "service": "loopback",
+      "endpoint": "/api/version",
+      "error_type": "ConnectError",
+      "error_kind": "connection_refused",
+      "http_status": null
+    },
+    {
+      "service": "loopback",
+      "endpoint": "/api/tags",
+      "error_type": "ConnectError",
+      "error_kind": "connection_refused",
+      "http_status": null
+    },
+    {
+      "service": "loopback",
+      "endpoint": "/api/ps",
+      "error_type": "ConnectError",
+      "error_kind": "connection_refused",
+      "http_status": null
+    }
+  ],
+  "requested_models": [
+    "qwen3.5:4b",
+    "qwen3.5:9b"
+  ],
+  "model_installation_verified": false,
+  "model_version_verified": false,
+  "model_digests_verified": false,
+  "llm_executed": false,
+  "rag_executed": false,
+  "runs": [],
+  "runner_exit_code": 2,
+  "runner_status": "blocked_service_or_models",
+  "cases_sha256": "sha256:b5958b42d62ede849bafc245d3e31a4e00ac6c653806471908b3f10bcb7c1985",
+  "raw_private_sha256": "sha256:0b2bac4bcadf64257e589293cac2b488fb42a55a9323517ac415cafab9aa242a",
+  "cli_preflight_private_sha256": "sha256:4d12189511132e7d25b5ade24c228ec3bdd14213d6016178119b726a009a9599",
+  "public_redaction": "service hostnames and private absolute paths omitted; error categories retained; no model response existed",
+  "legal_review_completed": false,
+  "production_deployment_verified": false,
+  "boundary": "No new six-case model score. Historical 0/6, cloud 6/6 and native_candidate 4/6 evidence unchanged. Requires a reachable existing service and installed candidate models before inference."
+}
