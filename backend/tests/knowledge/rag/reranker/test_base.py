@@ -21,8 +21,8 @@ class TestRerankerConfig:
         assert cfg.cache_dir == "./data/models"
         assert cfg.max_length == 512
         assert cfg.device == "auto"
-        assert cfg.positive_token == "true"
-        assert cfg.negative_token == "false"
+        assert cfg.positive_token == "yes"
+        assert cfg.negative_token == "no"
         assert cfg.instruction is None
         assert "{query}" in cfg.input_template
 

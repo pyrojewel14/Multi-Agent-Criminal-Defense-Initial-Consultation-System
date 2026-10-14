@@ -13,7 +13,7 @@ _logger = get_logger("RAG.Reranker")
 
 @dataclass
 class RerankerConfig:
-    """重排序模型配置。
+    """重排序模型配置，默认使用 Qwen3 的 yes/no 评分协议。
 
     Attributes:
         model_name: 模型名称（ModelScope ID）。
@@ -35,11 +35,15 @@ class RerankerConfig:
     cache_dir: str = "./data/models"
     max_length: int = 512
     device: str = "auto"
-    positive_token: str = "true"
-    negative_token: str = "false"
+    positive_token: str = "yes"
+    negative_token: str = "no"
     instruction: Optional[str] = None
-    prefix_template: str = "<|im_start|>user\n"
-    suffix_template: str = "<|im_end|>\n<|im_start|>assistant\n"
+    prefix_template: str = (
+        "<|im_start|>system\nJudge whether the Document meets the requirements based on the Query "
+        'and the Instruct provided. Note that the answer can only be "yes" or "no".'
+        "<|im_end|>\n<|im_start|>user\n"
+    )
+    suffix_template: str = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
     input_template: str = "<Instruct>: {instruction}\n<Query>: {query}\n<Document>: {document}"
     max_concurrency: int = 1
 
@@ -116,7 +120,7 @@ class BaseReranker(ABC):
         """加载模型和分词器，子类实现。"""
 
     @abstractmethod
-    async def _format_pairs(self, query: str, documents: List[str]) -> List[str]:
+    async def _format_pairs(self, query: str, documents: List[str]) -> List[Any]:
         """格式化查询-文档对，子类实现。
 
         Args:
@@ -124,15 +128,15 @@ class BaseReranker(ABC):
             documents: 文档列表。
 
         Returns:
-            格式化后的配对列表。
+            模型输入列表，元素表示形式由子类定义。
         """
 
     @abstractmethod
-    async def _compute_scores(self, pairs: List[str]) -> List[float]:
+    async def _compute_scores(self, pairs: List[Any]) -> List[float]:
         """计算相关性分数，子类实现。
 
         Args:
-            pairs: 格式化后的配对列表。
+            pairs: 子类格式化后的模型输入列表。
 
         Returns:
             分数列表。

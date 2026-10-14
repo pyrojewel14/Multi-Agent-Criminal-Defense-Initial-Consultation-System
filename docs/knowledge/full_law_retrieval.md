@@ -24,7 +24,7 @@ BM25 缓存仅存已核验的公共正文，进程内至多两份。缓存键包
 
 ## 本地评分协议
 
-full 专用适配器读取已有 `RERANKER_MODEL_PATH`，使用 `local_files_only=True`，不会自动下载。只支持本次配置的 Qwen3-Reranker-0.6B；legacy 上传库的评分器没有改变。
+full 专用适配器读取已有 `RERANKER_MODEL_PATH`，使用 `local_files_only=True`，不会自动下载。只支持本次配置的 Qwen3-Reranker-0.6B；通用评分器的默认协议见 [RAG 说明](../rag.md)，其加载、设备和失败处理仍由独立实现负责。
 
 采用 [Qwen 官方 Transformers 示例](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B#using-transformers) 的完整 system/user/assistant/think 模板，以 `yes` 和 `no` 最后位置 logits 的二元 softmax 给出 0..1 分数。完整特殊 token IDs 直接进入模型，不经 `decode(skip_special_tokens=True)` 往返。本地实测 token IDs 为 yes=9693、no=2152；证据记录权重、配置、tokenizer 与模板 hash。
 

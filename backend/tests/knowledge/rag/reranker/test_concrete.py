@@ -1,18 +1,54 @@
-"""Unit tests for the concrete reranker implementations.
+"""Reranker contracts with real tokenization/tensor math and model I/O doubles."""
 
-Both ``CausalLMReranker`` and ``CrossEncoderReranker`` load Hugging Face models,
-so we mock the heavy dependencies (``transformers``, ``torch``,
-``sentence_transformers``) to exercise the path-handling, tokenization and
-score-computation logic.
-"""
-
+import os
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+import torch
+from tokenizers import Tokenizer
+from tokenizers.models import WordLevel
+from tokenizers.pre_tokenizers import WhitespaceSplit
+from transformers import AutoTokenizer, PreTrainedTokenizerFast
 
 from app.knowledge.rag.reranker.base import RerankerConfig
 from app.knowledge.rag.reranker.causal_lm import CausalLMReranker
 from app.knowledge.rag.reranker.cross_encoder import CrossEncoderReranker
+
+QWEN_PREFIX = (
+    "<|im_start|>system\nJudge whether the Document meets the requirements based on the Query "
+    'and the Instruct provided. Note that the answer can only be "yes" or "no".'
+    "<|im_end|>\n<|im_start|>user\n"
+)
+QWEN_SUFFIX = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+
+
+@pytest.fixture
+def protocol_tokenizer():
+    vocabulary = [
+        "[UNK]", "[PAD]", "<|im_start|>", "<|im_end|>", "<think>", "</think>",
+        "yes", "no", "true", "false", "Beijing", "Gravity", "query", "document",
+        "system", "user", "assistant",
+    ]
+    tokenizer = Tokenizer(WordLevel({word: index for index, word in enumerate(vocabulary)}, unk_token="[UNK]"))
+    tokenizer.pre_tokenizer = WhitespaceSplit()
+    return PreTrainedTokenizerFast(
+        tokenizer_object=tokenizer,
+        unk_token="[UNK]",
+        pad_token="[PAD]",
+        additional_special_tokens=["<|im_start|>", "<|im_end|>", "<think>", "</think>"],
+        padding_side="left",
+    )
+
+
+@pytest.fixture
+def protocol_reranker(protocol_tokenizer):
+    reranker = CausalLMReranker(RerankerConfig(max_length=128, device="cpu"))
+    reranker._model = object()
+    reranker._tokenizer = protocol_tokenizer
+    yield reranker
+    reranker.close()
 
 # ---------------------------------------------------------------------------
 # CausalLMReranker._resolve_model_path
@@ -107,19 +143,56 @@ class TestCausalLMLoadModel:
 
 class TestCausalLMFormatPairs:
     @pytest.mark.asyncio
-    async def test_returns_decoded_pairs(self, tmp_path):
-        (tmp_path / "config.json").write_text("{}", encoding="utf-8")
-        cfg = RerankerConfig(local_path=str(tmp_path), max_length=128)
-        rr = CausalLMReranker(cfg)
-        rr._model = MagicMock()
-        rr._tokenizer = MagicMock()
-        rr._tokenizer.encode = MagicMock(side_effect=[[1, 2], [3, 4]])
-        rr._tokenizer.return_value = {"input_ids": [5, 6]}
-        rr._tokenizer.decode = MagicMock(side_effect=["decoded1", "decoded2"])
+    async def test_preserves_official_template_and_token_ids(self, protocol_reranker, protocol_tokenizer):
+        pairs = await protocol_reranker._format_pairs("query", ["Beijing", "document " * 300])
+        prefix = protocol_tokenizer.encode(QWEN_PREFIX, add_special_tokens=False)
+        suffix = protocol_tokenizer.encode(QWEN_SUFFIX, add_special_tokens=False)
+        assert len(pairs) == 2
+        for pair in pairs:
+            assert isinstance(pair, list)
+            assert pair[:len(prefix)] == prefix
+            assert pair[-len(suffix):] == suffix
+        assert len(pairs[0]) < 128
+        assert len(pairs[1]) == 128
 
-        result = await rr._format_pairs("query", ["doc1", "doc2"])
-        assert result == ["decoded1", "decoded2"]
-        assert rr._tokenizer.decode.call_count == 2
+    @pytest.mark.asyncio
+    async def test_keeps_custom_templates(self, protocol_reranker, protocol_tokenizer):
+        protocol_reranker.config.prefix_template = "<|im_start|>user\n"
+        protocol_reranker.config.suffix_template = "<|im_end|>\n<|im_start|>assistant\n"
+        pairs = await protocol_reranker._format_pairs("query", ["Beijing"])
+        assert pairs == [protocol_tokenizer.encode(
+            "<|im_start|>user\n<Instruct>: Given a web search query, retrieve relevant passages that answer the query\n"
+            "<Query>: query\n<Document>: Beijing<|im_end|>\n<|im_start|>assistant\n",
+            add_special_tokens=False,
+        )]
+
+    @pytest.mark.asyncio
+    async def test_rejects_budget_too_short_for_template(self, protocol_reranker):
+        protocol_reranker.config.max_length = 1
+        with pytest.raises(ValueError, match="max_length"):
+            await protocol_reranker._format_pairs("query", ["document"])
+
+    @pytest.mark.asyncio
+    async def test_actual_local_qwen_tokenizer_preserves_template(self):
+        path = Path(os.getenv("RERANKER_MODEL_PATH", "data/models/Qwen/Qwen3-Reranker-0.6B"))
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parents[4] / path
+        if not (path / "tokenizer.json").is_file():
+            pytest.skip("configured local tokenizer not present; no download allowed")
+        tokenizer = AutoTokenizer.from_pretrained(str(path), padding_side="left", local_files_only=True)
+        reranker = CausalLMReranker(RerankerConfig(max_length=512))
+        reranker._model, reranker._tokenizer = object(), tokenizer
+        try:
+            query = "指控我偷了钱，但我否认，没有拿钱"
+            pair = (await reranker._format_pairs(query, ["完整正文" * 300]))[0]
+            assert isinstance(pair, list)
+            assert len(pair) == 512
+            text = tokenizer.decode(pair, skip_special_tokens=False)
+            assert text.startswith(QWEN_PREFIX)
+            assert text.endswith(QWEN_SUFFIX)
+            assert query in text
+        finally:
+            reranker.close()
 
 
 # ---------------------------------------------------------------------------
@@ -129,78 +202,44 @@ class TestCausalLMFormatPairs:
 
 class TestCausalLMComputeScores:
     @pytest.mark.asyncio
-    async def test_returns_probability_of_positive_token(self, tmp_path):
-        (tmp_path / "config.json").write_text("{}", encoding="utf-8")
-        cfg = RerankerConfig(local_path=str(tmp_path))
-        rr = CausalLMReranker(cfg)
-        rr._model = MagicMock()
-        rr._model.device = "cpu"
-        rr._tokenizer = MagicMock()
-        # First call (in _load_model): positive/negative ids
-        rr._positive_id = 7
-        rr._negative_id = 8
+    async def test_rerank_uses_yes_no_last_logits_and_preserves_padded_inputs(self, protocol_tokenizer):
+        captured = {}
 
-        # Mock tokenizer(... ) to return inputs dict
-        rr._tokenizer.return_value = {
-            "input_ids": MagicMock(to=MagicMock(return_value="t_input_ids")),
-        }
-        rr._tokenizer.__call__ = MagicMock(
-            return_value={
-                "input_ids": MagicMock(to=MagicMock(return_value="t_input_ids")),
-            }
-        )
+        def model_forward(**inputs):
+            captured.update(inputs)
+            ids = inputs["input_ids"]
+            logits = torch.zeros((*ids.shape, len(protocol_tokenizer)))
+            relevant = (ids == protocol_tokenizer.convert_tokens_to_ids("Beijing")).any(dim=1)
+            # Earlier positions and true/false deliberately favour the opposite answer.
+            logits[:, :, 6] = 8.0
+            logits[:, -1, 6] = torch.where(relevant, 3.0, -3.0)
+            logits[:, -1, 7] = torch.where(relevant, 1.0, -1.0)
+            logits[:, -1, 8] = torch.where(relevant, -9.0, 9.0)
+            return SimpleNamespace(logits=logits)
 
-        # Mock torch tensor-like object that supports [-1, :]
-        class _MockTensor:
-            def __getitem__(self, item):
-                # Return a tensor that supports [:, [ids]]
-                if isinstance(item, tuple):
-                    # last dim slice
-                    return _MockTensor()
-
-            def to(self, device):
-                return self
-
-            def __setitem__(self, key, value):
-                pass
-
-        # Build a more complete mock for the inputs dict and model output.
-        # Easier: build a fully-orchestrated mock for the torch tensor chain.
-        mock_t = MagicMock()
-        mock_t.to.return_value = mock_t
-        mock_t.__getitem__.return_value = mock_t
-
-        rr._tokenizer = MagicMock()
-        rr._tokenizer.return_value = {"input_ids": mock_t}
-
-        # Model output: outputs.logits[:, -1, :] is mock_tensor, indexing by id
-        # returns a tensor-like, torch.stack + softmax + exp.
-        mock_logits = MagicMock()
-        mock_logits.__getitem__.return_value = mock_logits
-        rr._model.return_value = MagicMock(logits=mock_logits)
-
-        # Mock torch.no_grad, torch.stack, F.log_softmax, exp, tolist
-        with patch("app.knowledge.rag.reranker.causal_lm.torch") as torch_mod:
-            # Provide a fake Tensor class so that isinstance() inside the
-            # reranker code can succeed when inputs are mocked.
-            class _FakeTensor:
-                pass
-
-            torch_mod.Tensor = _FakeTensor
-            mock_t.__class__ = _FakeTensor
-
-            torch_mod.no_grad.return_value.__enter__ = MagicMock()
-            torch_mod.no_grad.return_value.__exit__ = MagicMock()
-            torch_mod.stack = MagicMock(return_value="stacked")
-            # log_softmax -> [:, 1] -> .exp() -> .tolist()
-            slice_mock = MagicMock()
-            slice_mock.exp.return_value.tolist.return_value = [0.1, 0.2]
-            torch_mod.nn.functional.log_softmax = MagicMock(
-                return_value=MagicMock(__getitem__=MagicMock(return_value=slice_mock))
-            )
-            result = await rr._compute_scores(["p1", "p2"])
-
-        assert result == [0.1, 0.2]
+        model = MagicMock(side_effect=model_forward)
+        model.device = "cpu"
+        model.eval.return_value = model
+        reranker = CausalLMReranker(RerankerConfig(device="cpu"))
+        try:
+            with (
+                patch("app.knowledge.rag.reranker.causal_lm.AutoTokenizer.from_pretrained", return_value=protocol_tokenizer),
+                patch("app.knowledge.rag.reranker.causal_lm.AutoModelForCausalLM.from_pretrained", return_value=model),
+            ):
+                result = await reranker.rerank("query", ["Gravity", "Beijing document document"])
+            assert result["success"] is True
+            assert [doc["document"] for doc in result["documents"]] == ["Beijing document document", "Gravity"]
+            assert [doc["similarity"] for doc in result["documents"]] == pytest.approx([0.880797, 0.119203])
+            assert captured["attention_mask"][0, :2].tolist() == [0, 0]
+            assert captured["attention_mask"][0, 2:].all()
+            prefix = protocol_tokenizer.encode(QWEN_PREFIX, add_special_tokens=False)
+            suffix = protocol_tokenizer.encode(QWEN_SUFFIX, add_special_tokens=False)
+            for ids, mask in zip(captured["input_ids"], captured["attention_mask"]):
+                unpadded = ids[mask.bool()].tolist()
+                assert unpadded[:len(prefix)] == prefix
+                assert unpadded[-len(suffix):] == suffix
+        finally:
+            reranker.close()
 
 
 # ---------------------------------------------------------------------------

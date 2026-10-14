@@ -47,6 +47,8 @@ full 使用独立公共 collection，与用户上传 collection 隔离。索引�
 
 这条路径需要自行准备用户/公共文档库；六条 JSON 本身不是预建的 Chroma 索引。HyDE 失败时回退原查询，BM25 无语料时保留向量检索，reranker 失败时保留召回顺序。
 
+通用 `CausalLMReranker` 默认按 [Qwen 官方评分协议](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B#using-transformers) 使用完整 system/user/assistant 与空 think 模板，对最后位置的 `yes/no` logits 做二元归一化。前后缀预留 token 预算，查询与文档组成的正文按剩余长度截断；token IDs 直接填充后送入模型，避免解码往返丢失特殊 token。该路径与 full 专用重排器分别管理加载、设备和失败处理；协议一致不代表真实排序质量已得到验证。
+
 两条路径的 `search_laws_by_rag()` 都先检查 `user_id`。旧 checkpoint 缺少用户身份时跳过 RAG，关键词检索仍可运行；不能用 `session_id` 代替身份。`full` 的公共索引与 `snapshot` 的用户权限过滤应分别理解。
 
 ## 候选来源与覆盖资格

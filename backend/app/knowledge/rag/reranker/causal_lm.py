@@ -15,7 +15,7 @@ DEFAULT_INSTRUCTION = "Given a web search query, retrieve relevant passages that
 class CausalLMReranker(BaseReranker):
     """基于因果语言模型的重排序器。
 
-    使用因果语言模型计算正样本和负样本 token 的 logit 差异来评估相关性。
+    默认对最后位置的 yes/no logits 归一化，以 yes 的概率评估相关性。
     """
 
     async def _load_model(self):
@@ -97,19 +97,19 @@ class CausalLMReranker(BaseReranker):
         _logger.debug("【_resolve_model_path】使用默认路径: %s", path)
         return path
 
-    async def _format_pairs(self, query: str, documents: list[str]) -> list[str]:
-        """格式化查询-文档对为模型输入格式。
+    async def _format_pairs(self, query: str, documents: list[str]) -> list[list[int]]:
+        """将查询-文档对编码为保留特殊 token 的模型输入。
 
         Args:
             query: 查询语句。
             documents: 文档列表。
 
         Returns:
-            格式化后的输入字符串列表。
+            拼接前后缀后的 token ID 列表。
         """
         return await self._run_blocking(self._format_pairs_sync, query, documents)
 
-    def _format_pairs_sync(self, query: str, documents: list[str]) -> list[str]:
+    def _format_pairs_sync(self, query: str, documents: list[str]) -> list[list[int]]:
         """在线程池工作线程中格式化模型输入。"""
         _, tokenizer = self._load_model_sync()
         instruction = self.config.instruction or DEFAULT_INSTRUCTION
@@ -121,44 +121,46 @@ class CausalLMReranker(BaseReranker):
         suffix_tokens = tokenizer.encode(suffix, add_special_tokens=False)
 
         max_len = self.config.max_length - len(prefix_tokens) - len(suffix_tokens)
+        if max_len <= 0:
+            raise ValueError("max_length 必须大于输入前后缀的 token 总数")
 
         formatted_pairs = []
         for doc in documents:
             output = self.config.input_template.format(instruction=instruction, query=query, document=doc)
             inputs = tokenizer(
                 output,
+                add_special_tokens=False,
                 padding=False,
                 truncation="longest_first",
                 return_attention_mask=False,
                 max_length=max_len,
             )
             input_ids = prefix_tokens + inputs["input_ids"] + suffix_tokens
-            formatted_pairs.append(tokenizer.decode(input_ids, skip_special_tokens=True))
+            # 直接传递 token IDs，避免解码时丢失聊天边界或再次分词改变评分位置。
+            formatted_pairs.append(input_ids)
 
         _logger.debug("【_format_pairs】格式化完成，生成 %d 个配对", len(formatted_pairs))
         return formatted_pairs
 
-    async def _compute_scores(self, pairs: list[str]) -> list[float]:
+    async def _compute_scores(self, pairs: list[list[int]]) -> list[float]:
         """使用因果语言模型计算相关性分数。
 
         Args:
-            pairs: 格式化后的输入字符串列表。
+            pairs: 包含完整前后缀的 token ID 列表。
 
         Returns:
             相关性分数列表。
         """
         return await self._run_blocking(self._compute_scores_sync, pairs)
 
-    def _compute_scores_sync(self, pairs: list[str]) -> list[float]:
+    def _compute_scores_sync(self, pairs: list[list[int]]) -> list[float]:
         """在线程池工作线程中执行模型推理。"""
         model, tokenizer = self._load_model_sync()
 
-        inputs = tokenizer(
-            pairs,
+        inputs = tokenizer.pad(
+            {"input_ids": pairs},
             padding=True,
             return_tensors="pt",
-            truncation=True,
-            max_length=self.config.max_length,
         )
 
         for key in inputs:
