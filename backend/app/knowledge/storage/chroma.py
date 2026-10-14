@@ -175,3 +175,9 @@ class ChromaStore:
     def delete_rows(self, *, where: Mapping[str, Any]) -> None:
         """仅删除显式指定的 metadata 范围，禁止空条件全库删除。"""
         self._collection.delete(where=_where(where))
+
+    def clear_all_rows(self) -> None:
+        """仅供管理员显式清空绑定集合，不重建集合或调用 Embedding。"""
+        ids = self._collection.get(include=[])["ids"]
+        if ids:
+            self._collection.delete(ids=ids)

@@ -98,3 +98,24 @@ def test_open_and_create_disable_default_embedding_function():
     client.get_collection.assert_called_once_with(name="documents", embedding_function=None)
     ChromaStore.create(source)
     client.create_collection.assert_called_once_with(name="documents", embedding_function=None, metadata=None)
+
+
+def test_admin_clear_only_affects_bound_collection_and_handles_empty():
+    import uuid
+    import chromadb
+    from app.knowledge.storage.chroma import ChromaSource, ChromaStore, StoredRow
+
+    client = chromadb.EphemeralClient()
+    suffix = uuid.uuid4().hex
+    uploaded = ChromaStore.create(ChromaSource("uploaded", client, f"uploaded-{suffix}"))
+    law = ChromaStore.create(ChromaSource("law", client, f"law-{suffix}"))
+    try:
+        uploaded.upsert_rows([StoredRow("same-id", "uploaded", {"user_id": "alice"})], embeddings=[[1.0, 0.0]])
+        law.upsert_rows([StoredRow("same-id", "law", {"is_public": True})], embeddings=[[1.0, 0.0]])
+        uploaded.clear_all_rows()
+        uploaded.clear_all_rows()
+        assert uploaded.get_by_metadata(where={"user_id": "alice"}) == ()
+        assert law.get_by_metadata(where={"is_public": True})[0].content == "law"
+    finally:
+        client.delete_collection(f"uploaded-{suffix}")
+        client.delete_collection(f"law-{suffix}")
