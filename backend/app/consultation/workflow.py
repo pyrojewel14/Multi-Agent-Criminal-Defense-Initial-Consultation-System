@@ -61,20 +61,30 @@ def _observed_node(
     """为 LangGraph 节点建立统一子 span。"""
 
     async def observed(state: ConsultationState) -> ConsultationState:
-        with node_context(name, state), trace_span(
-            trace_store,
-            event_type="node",
-            name=name,
-            session_id=state.get("session_id", "unknown"),
-            node=name,
+        with (
+            node_context(name, state),
+            trace_span(
+                trace_store,
+                event_type="node",
+                name=name,
+                session_id=state.get("session_id", "unknown"),
+                node=name,
+            ),
         ):
             result = await node(state)
             from app.consultation.memory.context import MemorySettings
+
             limit = MemorySettings.from_env().recent_messages
             result["conversation_history"] = result.get("conversation_history", [])[-limit:]
             receipt = result.get("message_audit")
-            if receipt and receipt.get("status") == "running" and name in {"wait_for_user", "human_review", "human_alert"}:
-                result["message_audit"] = dict(receipt, status="applied", completed_at=datetime.now(timezone.utc).isoformat())
+            if (
+                receipt
+                and receipt.get("status") == "running"
+                and name in {"wait_for_user", "human_review", "human_alert"}
+            ):
+                result["message_audit"] = dict(
+                    receipt, status="applied", completed_at=datetime.now(timezone.utc).isoformat()
+                )
             return result
 
     return observed
