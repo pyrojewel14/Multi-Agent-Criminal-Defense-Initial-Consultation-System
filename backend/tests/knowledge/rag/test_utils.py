@@ -428,19 +428,15 @@ class TestGetBm25Retriever:
                 "metadatas": [{"user_id": "u1"}, {"user_id": "u1"}],
             }
         )
-        with patch("app.knowledge.rag.retrievers.hybrid_retriever.BM25Retriever") as bm25:
-            bm25.from_documents = MagicMock(return_value="bm25-instance")
-            result = await hr.get_bm25_retriever(user_id="u1", include_public=False)
-        assert result == "bm25-instance"
-        bm25.from_documents.assert_called_once()
+        result = await hr.get_bm25_retriever(user_id="u1", include_public=False)
+        assert [doc.page_content for doc in result.docs] == ["doc1", "doc2"]
+        assert all(doc.metadata["user_id"] == "u1" for doc in result.docs)
 
     @pytest.mark.asyncio
     async def test_user_with_include_public_uses_scoped_filter(self):
         hr, vs = _make_hybrid()
         vs.get = MagicMock(return_value={"documents": ["doc"], "metadatas": [{"user_id": "u1"}]})
-        with patch("app.knowledge.rag.retrievers.hybrid_retriever.BM25Retriever") as bm25:
-            bm25.from_documents = MagicMock(return_value="bm25-instance")
-            await hr.get_bm25_retriever(user_id="u1", include_public=True)
+        await hr.get_bm25_retriever(user_id="u1", include_public=True)
         args, kwargs = vs.get.call_args
         assert kwargs["where"] == {"$or": [{"user_id": "u1"}, {"is_public": True}]}
 
@@ -448,9 +444,7 @@ class TestGetBm25Retriever:
     async def test_only_public_uses_is_public_filter(self):
         hr, vs = _make_hybrid()
         vs.get = MagicMock(return_value={"documents": ["doc"], "metadatas": [{"is_public": True}]})
-        with patch("app.knowledge.rag.retrievers.hybrid_retriever.BM25Retriever") as bm25:
-            bm25.from_documents = MagicMock(return_value="bm25-instance")
-            await hr.get_bm25_retriever(user_id=None, include_public=True)
+        await hr.get_bm25_retriever(user_id=None, include_public=True)
         args, kwargs = vs.get.call_args
         assert kwargs["where"] == {"is_public": True}
 
@@ -463,12 +457,9 @@ class TestGetBm25Retriever:
                 "metadatas": [{"id": 1}, {"id": 2}, {"id": 3}],
             }
         )
-        with patch("app.knowledge.rag.retrievers.hybrid_retriever.BM25Retriever") as bm25:
-            bm25.from_documents = MagicMock(return_value="bm25")
-            await hr.get_bm25_retriever(user_id="u1")
-        # The bm25 retriever should have been built with only 2 unique docs
-        args, kwargs = bm25.from_documents.call_args
-        assert len(kwargs["documents"]) == 2
+        result = await hr.get_bm25_retriever(user_id="u1")
+        assert [doc.page_content for doc in result.docs] == ["same", "different"]
+        assert [doc.metadata["id"] for doc in result.docs] == [1, 3]
 
 
 class TestGetRetriever:
@@ -485,11 +476,7 @@ class TestGetRetriever:
         hr, vs = _make_hybrid()
         # Pretend we have at least one doc
         vs.get = MagicMock(return_value={"documents": ["d1"], "metadatas": [{"user_id": "u1"}]})
-        with (
-            patch("app.knowledge.rag.retrievers.hybrid_retriever.BM25Retriever") as bm25,
-            patch("app.knowledge.rag.retrievers.hybrid_retriever.EnsembleRetriever") as ens,
-        ):
-            bm25.from_documents = MagicMock(return_value="bm25")
+        with patch("app.knowledge.rag.retrievers.hybrid_retriever.EnsembleRetriever") as ens:
             ens.return_value = "ensemble"
             result = await hr.get_retriever(query="短的查询", user_id="u1", include_public=False)
         assert result == "ensemble"

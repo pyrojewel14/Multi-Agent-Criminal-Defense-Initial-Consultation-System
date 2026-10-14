@@ -1,4 +1,9 @@
 import asyncio
+import hashlib
+import json
+import threading
+from collections import OrderedDict
+from typing import Any
 
 from chromadb.api.types import Where
 from langchain_chroma import Chroma
@@ -8,29 +13,39 @@ from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
 from app.infrastructure.config.rag import chroma_config
+from app.knowledge.rag.tokenization import TOKENIZER_VERSION, chinese_tokens
 
 from .empty_retriever import EmptyRetriever
 
+_BM25_CACHE_SIZE = 8
+
 
 class HybridRetriever:
-    """混合检索器（BM25 + 向量检索）"""
+    """混合检索器，按授权快照复用有界的 BM25 统计索引。"""
 
     def __init__(self, vectors_store: Chroma):
         self.vectors_store = vectors_store
+        self._bm25_cache: OrderedDict[tuple[str | None, bool], tuple[str, Any]] = OrderedDict()
+        self._bm25_cache_lock = threading.Lock()
 
     async def get_bm25_retriever(self, user_id: str | None = None, include_public: bool = False):
-        """获取 BM25 检索器。
+        """读取当前授权快照，并在线程池中复用或重建 BM25 索引。
 
         Args:
-            user_id: 用户 ID，必须提供，否则返回 None。
+            user_id: 用户 ID；为空时仅在 include_public=True 时读取公共文档。
             include_public: 是否包含公共文档。
 
         Returns:
-            BM25Retriever 实例。
+            独立的 BM25Retriever 实例；未授权或当前范围无文档时返回 None。
         """
         if not user_id and not include_public:
             return None
 
+        return await asyncio.to_thread(self._get_bm25_retriever_sync, user_id, include_public)
+
+    def _get_bm25_retriever_sync(self, user_id: str | None, include_public: bool):
+        """每次核对授权快照指纹，最多保留八个范围的统计索引。"""
+        scope = (user_id or None, include_public)
         where_filter: Where
         if user_id and include_public:
             where_filter = {"$or": [{"user_id": user_id}, {"is_public": True}]}
@@ -39,11 +54,11 @@ class HybridRetriever:
         else:
             where_filter = {"is_public": True}
 
-        all_docs_result = await asyncio.to_thread(
-            self.vectors_store.get, include=["documents", "metadatas"], where=where_filter
-        )
+        all_docs_result = self.vectors_store.get(include=["documents", "metadatas"], where=where_filter)
 
         if not all_docs_result["documents"]:
+            with self._bm25_cache_lock:
+                self._bm25_cache.pop(scope, None)
             return None
 
         documents = []
@@ -55,12 +70,38 @@ class HybridRetriever:
             metadata = all_docs_result["metadatas"][i] if i < len(all_docs_result["metadatas"]) else {}
             documents.append(Document(page_content=doc_content, metadata=metadata))
 
-        if documents:
-            bm25_k = min(chroma_config["k"], 2)
-            bm25_retriever = BM25Retriever.from_documents(documents=documents, k=bm25_k)
-            return bm25_retriever
-        else:
-            return None
+        snapshot = json.dumps(
+            {
+                "tokenizer_version": TOKENIZER_VERSION,
+                "documents": [{"content": doc.page_content, "metadata": doc.metadata} for doc in documents],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        fingerprint = hashlib.sha256(snapshot.encode("utf-8")).hexdigest()
+        bm25_k = min(chroma_config["k"], 2)
+        with self._bm25_cache_lock:
+            cached = self._bm25_cache.get(scope)
+            if cached is not None and cached[0] == fingerprint:
+                vectorizer = cached[1]
+            else:
+                # 全部为标点等无 token 文本时，BM25 无法计算 IDF，交回向量检索。
+                if not any(chinese_tokens(doc.page_content) for doc in documents):
+                    self._bm25_cache.pop(scope, None)
+                    return None
+                vectorizer = BM25Retriever.from_documents(
+                    documents=documents, k=bm25_k, preprocess_func=chinese_tokens
+                ).vectorizer
+                self._bm25_cache[scope] = (fingerprint, vectorizer)
+            self._bm25_cache.move_to_end(scope)
+            while len(self._bm25_cache) > _BM25_CACHE_SIZE:
+                self._bm25_cache.popitem(last=False)
+
+        # 只共享只读统计，文档容器与 k 每次独立，避免调用方修改污染后续检索。
+        return BM25Retriever(
+            vectorizer=vectorizer, docs=documents, k=bm25_k, preprocess_func=chinese_tokens
+        )
 
     async def _get_all_documents(self) -> list[Document]:
         """获取向量库中的所有文档。

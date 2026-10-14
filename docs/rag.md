@@ -45,7 +45,11 @@ full 使用独立公共 collection，与用户上传 collection 隔离。索引�
   → LawRef 读取候选并核验最终答案
 ```
 
-这条路径需要自行准备用户/公共文档库；六条 JSON 本身不是预建的 Chroma 索引。HyDE 失败时回退原查询，BM25 无语料时保留向量检索，reranker 失败时保留召回顺序。
+这条路径需要自行准备用户/公共文档库；六条 JSON 本身不是预建的 Chroma 索引。HyDE 失败时回退原查询，BM25 无语料或语料没有可索引 token 时保留向量检索，reranker 失败时保留召回顺序。
+
+通用 BM25 的文档与查询共用中文单字及相邻双字切分，英文和数字按词处理；与 full 复用同一切分函数。
+
+每个 `HybridRetriever` 实例按用户和是否包含公共库分别缓存统计索引，最多保留 8 个范围，按最近使用顺序淘汰。每次获取检索器仍从 Chroma 读取当前授权范围内的文档快照，正文、metadata 或切分版本变化时重建，范围变空时删除对应缓存；读取失败时不返回旧缓存。缓存省去重复的文档分词和 BM25 统计构建，读库成本仍保留，索引只存于进程内。返回的文档容器和检索数量独立，避免调用方修改污染后续检索。
 
 通用 `CausalLMReranker` 默认按 [Qwen 官方评分协议](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B#using-transformers) 使用完整 system/user/assistant 与空 think 模板，对最后位置的 `yes/no` logits 做二元归一化。前后缀预留 token 预算，查询与文档组成的正文按剩余长度截断；token IDs 直接填充后送入模型，避免解码往返丢失特殊 token。该路径与 full 专用重排器分别管理加载、设备和失败处理；协议一致不代表真实排序质量已得到验证。
 

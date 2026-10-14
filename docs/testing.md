@@ -10,6 +10,7 @@
 | --- | --- |
 | 节点、恢复、路由 | 工作流契约组 |
 | 全量语料、标注、索引 | 全量数据与索引组 |
+| 通用 BM25 分词、缓存和授权范围 | `tests/knowledge/rag/test_bm25_cache.py`，再跑 `tests/knowledge/rag/` 与 full 检索契约组 |
 | 模型超时、结构化输出 | LLM 契约组 |
 | 原文审计、增量事实、摘要、上下文预算 | Memory 契约组 |
 | 配置、API、前端 | `make test`、前端类型检查/构建 |
@@ -80,6 +81,8 @@ backend/.venv/bin/python -m pytest -q \
 ```
 
 Memory 组核对原文/回执、增量字段、游标与预算；名称中的 `live_contract` 仍需核对具体替身和外部依赖范围。full 组核对召回、重排协议与设备失败边界。[阶段 3 定向验证](memory/phase3-verification.md)已于 2026-10-04 由主线程独立验收固定合成样例的真实事实/摘要及单 worker 正常停启，法律检索/覆盖度/预检使用替身；该历史验收不代表当前全量测试通过，也不证明完整咨询质量、任意 kill 或多 worker 恢复。历史验收状态的文档更正没有重跑测试或模型；新的质量与耗时评测按 [评测说明](evaluation.md) 执行，源码职责见 [Memory](memory/README.md) 和 [全量检索](knowledge/full_law_retrieval.md)。
+
+通用 BM25 可在 `backend/` 执行 `.venv/bin/python -m pytest -q tests/knowledge/rag/test_bm25_cache.py`。该组使用合成文档、隔离的真实 Chroma 与实际 BM25，检查无空格中文、数字和英文匹配、索引复用、增删改与权限变更失效、范围隔离、有界淘汰和并发构建；不调用模型，也不证明真实法律检索质量或大语料性能。
 
 `test_memory_crash_recovery.py` 使用真实图、两套隔离 SQLite 和确定性模型/法律替身，覆盖 12 个不运行退出清理的强退窗口，检查恢复后同键两次重放的原文、case 来源、摘要游标、pending 与回复；另检验普通提交故障仍可同键重试。未知执行必须保守停止，不能因测试通过而宣称全部窗口自动恢复或 exactly-once。
 
