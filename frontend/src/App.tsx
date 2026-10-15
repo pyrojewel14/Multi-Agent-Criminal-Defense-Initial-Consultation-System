@@ -5,6 +5,7 @@ import { AuthScreen } from './auth/AuthScreen'
 import { AppShell } from './components/AppShell'
 import { ClientWorkspace } from './pages/ClientWorkspace'
 import { LawyerWorkspace } from './pages/LawyerWorkspace'
+import { AdminWorkspace } from './pages/AdminWorkspace'
 
 export function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -24,5 +25,5 @@ export function App() {
 
   if (restoring) return <div className="app-loading"><span className="brand-spinner" />正在恢复工作台…</div>
   if (!user) return <AuthScreen onAuthenticated={value => { setUser(value); setExpired(false) }} expired={expired} />
-  return <AppShell user={user} onLogout={() => void logout()}>{user.role === 'client' ? <ClientWorkspace /> : <LawyerWorkspace user={user} />}</AppShell>
+  return <AppShell user={user} onLogout={() => void logout()}>{user.role === 'client' ? <ClientWorkspace /> : user.role === 'admin' ? <AdminWorkspace user={user} /> : <LawyerWorkspace user={user} />}</AppShell>
 }
