@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import os
+import pytest
 from pathlib import Path
 
 from evaluation.build_live_index import build_index
@@ -16,6 +17,17 @@ from evaluation.run_live_eval import (
     run_cases,
     summarize_events,
 )
+
+
+@pytest.fixture
+def evaluation_resources():
+    from app.knowledge.wiring import KnowledgeResources
+
+    resources = KnowledgeResources()
+    try:
+        yield resources
+    finally:
+        resources.close()
 
 
 def test_metadata_records_actual_llm_deadlines(monkeypatch):
@@ -76,6 +88,8 @@ def test_preflight_separates_mutable_chroma_snapshot_from_build_manifest(tmp_pat
     assert first["index_build_manifest_sha256"] == second["index_build_manifest_sha256"] == stable_hash
     assert first["index_build_documents_sha256"] == build_manifest["documents_sha256"]
     assert first["index_build_embeddings_sha256"] == build_manifest["embeddings_sha256"]
+    manifest_path.unlink()
+    assert "index_manifest_missing" in run_preflight()["issues"]
 
 
 def test_preflight_blocks_missing_index_and_records_model_digest(tmp_path, monkeypatch):
@@ -164,14 +178,60 @@ def test_preflight_rejects_reranker_config_without_weights(tmp_path):
     assert "reranker_weights_missing" in result["issues"]
 
 
-def test_runtime_paths_match_production_environment(monkeypatch):
-    for name in ("RERANKER_MODEL_PATH", "CHROMA_PERSIST_DIRECTORY"):
+def test_runtime_paths_bind_snapshot_without_using_upload_library(monkeypatch):
+    monkeypatch.setenv("CHROMA_PERSIST_DIRECTORY", "/unrelated-upload-library")
+    for name in ("RERANKER_MODEL_PATH", "LAW_SNAPSHOT_INDEX_DIRECTORY"):
         monkeypatch.delenv(name, raising=False)
     paths = configure_runtime()
     assert paths["reranker_path"].is_absolute()
     assert paths["index_dir"].is_absolute()
     assert os.environ["RERANKER_MODEL_PATH"] == str(paths["reranker_path"])
-    assert os.environ["CHROMA_PERSIST_DIRECTORY"] == str(paths["index_dir"])
+    assert os.environ["LAW_SNAPSHOT_INDEX_DIRECTORY"] == str(paths["index_dir"])
+    assert os.environ["CHROMA_PERSIST_DIRECTORY"] == "/unrelated-upload-library"
+    assert paths["index_dir"].name == "live_index"
+
+
+def test_snapshot_service_explicit_index_ignores_upload_library(tmp_path, monkeypatch, evaluation_resources):
+    from evaluation.run_live_eval import build_snapshot_search_service
+    from app.knowledge.retrieval.config import RetrievalConfig
+
+    index = tmp_path / "snapshot"
+    build_index(LAW_PATH := Path(__file__).resolve().parents[1] / "backend/data/law_knowledge/criminal_law_chapters.json",
+                index, "snapshot_collection", "test", "test-digest", lambda texts: [[1.0, float(i)] for i in range(len(texts))])
+    monkeypatch.setenv("CHROMA_PERSIST_DIRECTORY", str(tmp_path / "do-not-open-upload-library"))
+
+    async def embed(query):
+        return [1.0, 0.0]
+
+    service = build_snapshot_search_service(resources=evaluation_resources, index_dir=index, collection="snapshot_collection", law_path=LAW_PATH,
+                                          embedding_model="test", embedding_digest="test-digest", embed_query=embed,
+                                          config=RetrievalConfig(mode="hybrid", rerank=False))
+    result = asyncio.run(service.search("殴打", user_id="evaluation"))
+    assert result.search.retrieval_status["vector"] == "executed"
+    assert result.search.retrieval_status["bm25"] == "executed"
+    assert result.search.dependency_failed is False
+    assert result.search.candidates
+    assert all(candidate.source_id == service.repository.source_id for candidate in result.search.candidates)
+    assert not (tmp_path / "do-not-open-upload-library").exists()
+
+
+def test_snapshot_service_rejects_mismatched_manifest_without_fallback(tmp_path, evaluation_resources):
+    import pytest
+    from evaluation.run_live_eval import build_snapshot_search_service
+
+    law_path = Path(__file__).resolve().parents[1] / "backend/data/law_knowledge/criminal_law_chapters.json"
+    index = tmp_path / "snapshot"
+    build_index(law_path, index, "snapshot_collection", "test", "test-digest", lambda texts: [[1.0] for _ in texts])
+    with pytest.raises(ValueError, match="manifest"):
+        build_snapshot_search_service(resources=evaluation_resources, index_dir=index, collection="snapshot_collection", law_path=law_path,
+                                      embedding_model="wrong-model", embedding_digest="test-digest")
+    import chromadb
+    collection = chromadb.PersistentClient(path=str(index)).get_collection("snapshot_collection", embedding_function=None)
+    identifier = collection.get()["ids"][0]
+    collection.update(ids=[identifier], metadatas=[{"article_number": "第1条"}])
+    with pytest.raises(ValueError, match="metadata"):
+        build_snapshot_search_service(resources=evaluation_resources, index_dir=index, collection="snapshot_collection", law_path=law_path,
+                                      embedding_model="test", embedding_digest="test-digest")
 
 
 def test_summary_counts_attempts_and_routes_without_claiming_accuracy():

@@ -136,9 +136,11 @@ def audit_annotations(corpus_path: Path, demo_path: Path, case_paths: list[Path]
     # 独立脚本与模块入口共用后端契约，不依赖服务启动或模型配置。
     if str(ROOT / "backend") not in sys.path:
         sys.path.insert(0, str(ROOT / "backend"))
-    from app.knowledge.demo_law_annotations import apply_demo_annotations
-    from app.knowledge.full_law_corpus import validate_full_corpus
-    from app.knowledge.law_knowledge import LAW_KNOWLEDGE_PATH, _normalize_article_number, is_lawref_eligible
+    from app.knowledge.law.annotations import apply_demo_annotations
+    from app.knowledge.law.corpus import validate_full_corpus
+    from app.knowledge.law.corpus import LAW_KNOWLEDGE_PATH
+    from app.knowledge.law.identifiers import _normalize_article_number
+    from app.knowledge.law.verification import is_lawref_eligible
 
     raw = corpus_path.read_bytes()
     corpus = json.loads(raw)

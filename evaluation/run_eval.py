@@ -22,13 +22,15 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.consultation.agents.human_alert import human_alert_node  # noqa: E402
-from app.consultation.agents.law_ref import (  # noqa: E402
-    _normalize_article_number,
-    load_criminal_law_data,
-)
+from app.knowledge.law.corpus import load_criminal_law_data  # noqa: E402
+from app.knowledge.law.identifiers import _normalize_article_number  # noqa: E402
 from app.consultation.state import ConsultationState  # noqa: E402
 from app.consultation.workflow import check_facts_sufficient  # noqa: E402
-from app.knowledge.law_retrieval import search_laws_by_keyword  # noqa: E402
+from app.knowledge.law.keyword import facts_query, facts_terms  # noqa: E402
+from app.knowledge.law.repository import LawRepository  # noqa: E402
+from app.knowledge.law.service import LawSearchService  # noqa: E402
+from app.knowledge.retrieval.config import RetrievalConfig  # noqa: E402
+from app.knowledge.retrieval.pipeline import RetrievalPipeline  # noqa: E402
 from app.security.disclaimer import DISCLAIMER_PREFIX, disclaimer  # noqa: E402
 from app.security.sensitive_filter import detect_high_risk  # noqa: E402
 
@@ -324,7 +326,8 @@ async def predict_input(
         }
 
     facts = extract_facts_baseline(input_text, law_data)
-    matched_laws = await search_laws_by_keyword(facts, law_data)
+    service = LawSearchService(LawRepository(law_data), RetrievalPipeline(None, config=RetrievalConfig(rerank=False)))
+    matched_laws = (await service.search(facts_query(facts), user_id=None, keyword_terms=facts_terms(facts))).as_laws()
     retrieved_laws = [
         {
             "article_number": law.get("article_number", ""),
@@ -560,6 +563,8 @@ def build_summary(
     return {
         "metadata": {
             "mode": MODE,
+            "retrieval_semantics": "unified-pipeline-rrf-verified-keyword-v1",
+            "historical_strict_comparison_supported": False,
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "command": command,
             "top_k": TOP_K,
@@ -701,7 +706,7 @@ def write_report(summary: dict[str, Any], path: Path) -> None:
             "## Boundaries",
             "",
             "- Facts are predicted by a deterministic lexical baseline that receives only `input`; it is not the LLM-backed FactDigger extractor.",
-            "- Law candidates come from the real `search_laws_by_keyword()` implementation and the local JSON law knowledge base, using only baseline-predicted facts.",
+            "- Law candidates come from the real `LawSearchService` keyword channel and the local JSON law knowledge base, using only baseline-predicted facts; unified RRF replaces historical source-priority ordering.",
             "- High-risk predictions use the real `detect_high_risk()` function; positive cases render the real HumanAlert response.",
             "- Follow-up routing reuses `check_facts_sufficient()`, but its coverage value comes from six fixed baseline fields rather than LLM/legal-element coverage.",
             "- Disclaimer output uses the real `DisclaimerService`; refusal classification is a deterministic baseline because the project has no standalone refusal node.",
@@ -716,7 +721,7 @@ def write_report(summary: dict[str, Any], path: Path) -> None:
 async def run(cases_path: Path, output_dir: Path, command: str) -> dict[str, Any]:
     cases = load_cases(cases_path)
     validate_cases(cases)
-    # 固定历史六条语料，使应用默认切换不改变离线基线的比较契约。
+    # 固定六条语料与输入分母，排序策略变化另由输出元数据声明。
     law_data = load_criminal_law_data(profile="snapshot")
     results = [await evaluate_case(case, law_data) for case in cases]
     summary = build_summary(cases_path, results, command)

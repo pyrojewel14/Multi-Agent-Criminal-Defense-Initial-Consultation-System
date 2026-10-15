@@ -16,7 +16,7 @@ from app.consultation.memory import coordinator
 from app.infrastructure.database.db import get_db
 from app.infrastructure.llm import gateway
 from app.infrastructure.observability.tracing import BoundedTraceStore, SessionBudget, current_trace_context
-from app.knowledge.rag import rag_service
+from app.knowledge.law import service as law_search
 from app.models import ConsultationMessage
 from app.security.jwt import create_access_token
 from main import app
@@ -25,12 +25,12 @@ from tests.consultation.test_memory_persistence import start
 
 
 @pytest.fixture
-async def traced_http(memory_db, monkeypatch):
+async def traced_http(memory_db, monkeypatch, tmp_path):
     store = BoundedTraceStore(max_events=200)
     budget = SessionBudget(max_calls=20, max_tokens=10000)
-    for module in (service, workflow, coordinator, gateway, rag_service, legal_research):
+    for module in (service, workflow, coordinator, gateway, law_search, legal_research):
         monkeypatch.setattr(module, "trace_store", store)
-    for module in (gateway, rag_service, legal_research):
+    for module in (gateway, law_search, legal_research):
         monkeypatch.setattr(module, "session_budget", budget)
     monkeypatch.setenv("LAW_KNOWLEDGE_PROFILE", "snapshot")
     monkeypatch.setenv("LAW_AGENT_FINAL_PROTOCOL", "legacy")
@@ -61,22 +61,25 @@ async def traced_http(memory_db, monkeypatch):
     law_provider = SyntheticLawProvider()
     monkeypatch.setattr(gateway.chat_model_factory, "create_precise_model", lambda *_: law_provider)
 
-    async def hyde_provider(_messages):
+    import chromadb
+    from app.knowledge.storage.chroma import ChromaSource, ChromaStore, StoredRow
+    from app.knowledge.retrieval.vector import ChromaVectorRetriever
+    from app.knowledge.retrieval.bm25 import BM25Retriever
+    from app.knowledge.retrieval.config import RetrievalConfig
+    from app.knowledge.retrieval.pipeline import RetrievalPipeline
+    from app.knowledge.wiring import build_law_search_service
+
+    source = ChromaSource("trace-law-snapshot", chromadb.PersistentClient(path=str(tmp_path / "law")), "law")
+    law_store = ChromaStore.create(source)
+    law_store.upsert_rows([StoredRow("theft", "第二百六十四条 盗窃公私财物", {"article_number": "第二百六十四条", "is_public": True})], embeddings=[[1.0, 0.0]])
+
+    async def embed_query(query):
         await asyncio.sleep(0)
-        return AIMessage(content="合成法律检索")
-    monkeypatch.setattr(rag_service, "get_chat_model", lambda: RunnableLambda(hyde_provider))
+        return [1.0, 0.0]
 
-    class SyntheticVectorStore:
-        def get_dynamic_weights(self, query):
-            return (0.5, 0.5)
-
-        async def get_retriever(self, query, user_id, include_public):
-            async def retrieve(_):
-                await asyncio.sleep(0)
-                return []
-            return RunnableLambda(retrieve)
-
-    monkeypatch.setattr(rag_service, "get_vector_store", SyntheticVectorStore)
+    pipeline = RetrievalPipeline(ChromaVectorRetriever(law_store, embed_query, 2), bm25=BM25Retriever(law_store), config=RetrievalConfig(rerank=False))
+    monkeypatch.setattr(legal_research, "build_law_search_service", lambda *, law_data: build_law_search_service(
+        law_data=law_data, profile="snapshot", source_id=source.source_id, pipeline=pipeline))
 
     async def receptionist(state):
         return dict(state, consent_given=True, current_agent="FactDigger", final_output="欢迎")

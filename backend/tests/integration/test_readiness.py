@@ -41,7 +41,7 @@ async def test_ready_real_sqlite_startup_shutdown_and_no_model_call(tmp_path, mo
     monkeypatch.setattr(main, "preflight_law_knowledge", lambda: None)
     monkeypatch.setattr(main, "init_redis", AsyncMock())
     monkeypatch.setattr(main, "close_redis", AsyncMock())
-    monkeypatch.setattr(main.reorder_service, "readiness", lambda: {"available": True})
+    monkeypatch.setattr(main.knowledge_resources, "readiness", lambda: {"available": True})
     async def forbidden(*args, **kwargs):
         pytest.fail("readiness must never call models")
     monkeypatch.setattr(LLMGateway, "generate", forbidden)
@@ -76,7 +76,7 @@ async def test_ready_real_sqlite_startup_shutdown_and_no_model_call(tmp_path, mo
                 with pytest.raises(asyncio.CancelledError):
                     await cancelled
             assert (await client.get("/ready")).json()["status"] == "ready"
-            with patch.object(main.reorder_service, "readiness", return_value={"available": False}):
+            with patch.object(main.knowledge_resources, "readiness", return_value={"available": False}):
                 assert (await client.get("/ready")).json()["status"] == "degraded"
             # 当前驱动失效时不重连，也不以配置冒充可用。
             await db.database_readiness._connection.close()
@@ -114,7 +114,7 @@ async def test_readiness_distinguishes_api_liveness_from_reranker_error():
         "error": "RuntimeError: broken weights",
         "type": "cross_encoder",
     }
-    with patch("main.reorder_service", create=True) as reorder_service:
+    with patch("main.knowledge_resources", create=True) as reorder_service:
         reorder_service.readiness.return_value = reranker_state
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             health_response = await client.get("/health")
@@ -133,3 +133,30 @@ async def test_readiness_distinguishes_api_liveness_from_reranker_error():
     assert payload["memory"]["summary"]["enabled"] is True
     assert payload["memory"]["structured_case"]["enabled"] is True
     assert payload["memory"]["context"]["recent_messages"] > 0
+
+
+@pytest.mark.asyncio
+async def test_lifespan_awaits_real_document_client_shutdown(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+    import main
+    from app.knowledge.wiring import KnowledgeResources
+
+    resources = KnowledgeResources()
+    proxy = resources.document_embeddings(values={"EMBED_MODEL_TYPE": "OLLAMA", "OLLAMA_BASE_URL": "http://127.0.0.1:1"})
+    model = proxy._get_model()
+    monkeypatch.setattr(main, "knowledge_resources", resources)
+    monkeypatch.setattr(main, "preflight_law_knowledge", lambda: None)
+    monkeypatch.setenv("LANGGRAPH_CHECKPOINT_DB_PATH", str(tmp_path / "checkpoint.db"))
+    for name in ("init_db", "init_redis", "close_db", "close_redis"):
+        monkeypatch.setattr(main, name, AsyncMock())
+    monkeypatch.setattr(main.chat_model_factory, "close", lambda: None)
+    monkeypatch.setattr(main.embed_model_factory, "close", lambda: None)
+    try:
+        async with main.lifespan(main.app):
+            assert not model._client._client.is_closed
+            assert not model._async_client._client.is_closed
+        assert model._client._client.is_closed
+        assert model._async_client._client.is_closed
+    finally:
+        model._client.close()
+        await model._async_client.close()

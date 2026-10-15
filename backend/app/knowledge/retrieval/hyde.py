@@ -7,7 +7,10 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from app.infrastructure.observability.tracing import (
-    current_trace_context, session_budget, trace_span, trace_store,
+    current_trace_context,
+    session_budget,
+    trace_span,
+    trace_store,
 )
 
 

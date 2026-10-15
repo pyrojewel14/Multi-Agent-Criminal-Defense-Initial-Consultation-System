@@ -11,6 +11,7 @@ from typing import Any
 from app.infrastructure.observability.tracing import SessionBudgetExceeded, trace_span, trace_store
 
 from .config import RetrievalConfig
+from .errors import safe_error_type
 from .fusion import choose_stable_representative, document_key, rrf_fuse
 from .models import ChannelResult, RecallPool, RetrievalCandidate, RetrievalRequest, SearchResult, StageStatus
 from .protocols import QueryExpander, Reranker, Retriever
@@ -68,9 +69,9 @@ class RetrievalPipeline:
         except SessionBudgetExceeded:
             raise
         except TimeoutError as exc:
-            return ChannelResult(name, (), {}, StageStatus("timeout", type(exc).__name__, True))
+            return ChannelResult(name, (), {}, StageStatus("timeout", safe_error_type(exc), True))
         except Exception as exc:
-            return ChannelResult(name, (), {}, StageStatus("failed", type(exc).__name__, True))
+            return ChannelResult(name, (), {}, StageStatus("failed", safe_error_type(exc), True))
 
     async def _hyde(self, request: RetrievalRequest) -> tuple[ChannelResult, int]:
         """整个扩展链共享 deadline，失败只丢弃额外向量通道。"""
@@ -104,11 +105,11 @@ class RetrievalPipeline:
         try:
             return await asyncio.wait_for(expand_and_retrieve(), timeout=self.config.hyde_timeout), 1
         except SessionBudgetExceeded as exc:
-            stage = StageStatus("budget_exhausted", type(exc).__name__, True)
+            stage = StageStatus("budget_exhausted", safe_error_type(exc), True)
         except TimeoutError as exc:
-            stage = StageStatus("timeout", type(exc).__name__, True)
+            stage = StageStatus("timeout", safe_error_type(exc), True)
         except Exception as exc:
-            stage = StageStatus("failed", type(exc).__name__, True)
+            stage = StageStatus("failed", safe_error_type(exc), True)
         return ChannelResult("hyde", (), {}, stage), 1
 
     async def recall(
@@ -181,11 +182,11 @@ class RetrievalPipeline:
             except SessionBudgetExceeded:
                 raise
             except TimeoutError as exc:
-                stage = StageStatus("timeout", type(exc).__name__, True)
+                stage = StageStatus("timeout", safe_error_type(exc), True)
             except RerankerBusyError as exc:
-                stage = StageStatus("busy", type(exc).__name__, True)
+                stage = StageStatus("busy", safe_error_type(exc), True)
             except Exception as exc:
-                stage = StageStatus("failed", type(exc).__name__, True)
+                stage = StageStatus("failed", safe_error_type(exc), True)
         self._record(status, "rerank", stage)
         final = tuple(replace(candidate, rank=rank)
                       for rank, candidate in enumerate(candidates[:request.top_k], 1))

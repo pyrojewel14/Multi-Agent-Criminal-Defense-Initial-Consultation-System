@@ -144,7 +144,8 @@ class CloudCapture:
 
 async def evaluate(args) -> dict:
     """核实云能力后复用原正式评分；外部拒绝不回落，本机配置不永久修改。"""
-    from app.knowledge.law_knowledge import _build_article_index, load_criminal_law_data
+    from app.knowledge.law.repository import _build_article_index
+    from app.knowledge.law.corpus import load_criminal_law_data
     from evaluation.run_full_eval import run_evaluation
 
     if not args.model.endswith(("-cloud", ":cloud")):

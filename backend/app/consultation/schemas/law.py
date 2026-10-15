@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.knowledge.schemas import LawDataSource
+from app.knowledge.law.models import LawDataSource
 
 
 class CoverageSource(str, Enum):

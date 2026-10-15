@@ -106,7 +106,8 @@ def _hash_file(path: Path) -> str:
 
 def identity() -> dict[str, Any]:
     """记录语料、模型和评分协议的身份，排除个人路径和配置秘密。"""
-    from app.knowledge.full_law_reranker import INSTRUCTION, PREFIX, SUFFIX, QwenFullReranker
+    from app.knowledge.retrieval.config import RerankerConfig
+    from app.knowledge.retrieval.rerankers.qwen import INSTRUCTION, PREFIX, SUFFIX, QwenReranker
     import torch
     import transformers
 
@@ -119,15 +120,32 @@ def identity() -> dict[str, Any]:
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(str(path), padding_side="left", local_files_only=True)
+    config = RerankerConfig.from_env()
     return {
         "index_manifest": manifest,
         "retrieval_code_sha256": {
             str(path.relative_to(ROOT)): _hash_file(path)
             for path in (
-                BACKEND / "app/knowledge/full_law_index.py",
-                BACKEND / "app/knowledge/full_law_retrieval.py",
-                BACKEND / "app/knowledge/full_law_reranker.py",
-                BACKEND / "app/knowledge/law_retrieval.py",
+                BACKEND / "app/knowledge/law/index.py",
+                BACKEND / "app/knowledge/law/corpus.py",
+                BACKEND / "app/knowledge/law/repository.py",
+                BACKEND / "app/knowledge/law/identifiers.py",
+                BACKEND / "app/knowledge/law/models.py",
+                BACKEND / "app/knowledge/law/service.py",
+                BACKEND / "app/knowledge/law/verification.py",
+                BACKEND / "app/knowledge/law/keyword.py",
+                BACKEND / "app/knowledge/storage/chroma.py",
+                BACKEND / "app/knowledge/retrieval/vector.py",
+                BACKEND / "app/knowledge/retrieval/bm25.py",
+                BACKEND / "app/knowledge/retrieval/fusion.py",
+                BACKEND / "app/knowledge/retrieval/config.py",
+                BACKEND / "app/knowledge/retrieval/models.py",
+                BACKEND / "app/knowledge/retrieval/tokenization.py",
+                BACKEND / "app/knowledge/retrieval/pipeline.py",
+                BACKEND / "app/knowledge/retrieval/hyde.py",
+                BACKEND / "app/knowledge/retrieval/rerankers/qwen.py",
+                BACKEND / "app/knowledge/retrieval/rerankers/_execution.py",
+                BACKEND / "app/knowledge/wiring.py",
                 BACKEND / "app/consultation/agents/legal_research.py",
             )
         },
@@ -140,7 +158,7 @@ def identity() -> dict[str, Any]:
         "reranker_decision_tokens": {word: tokenizer.convert_tokens_to_ids(word) for word in ("yes", "no")},
         "reranker_max_length": int(os.getenv("RERANKER_MAX_LENGTH", "512")),
         "reranker_device_requested": os.getenv("LAW_FULL_RERANK_DEVICE", "auto"),
-        "reranker_device_selected": QwenFullReranker.resolve_device(os.getenv("LAW_FULL_RERANK_DEVICE", "auto")),
+        "reranker_device_selected": QwenReranker.resolve_device(config.device),
         "reranker_dtype": "float32",
         "reranker_batch_size": 2,
         "torch_version": torch.__version__,
@@ -151,19 +169,27 @@ def identity() -> dict[str, Any]:
         "rerank_timeout_seconds": float(os.getenv("LAW_FULL_RERANK_TIMEOUT_SECONDS", "30")),
         "hyde_timeout_seconds": float(os.getenv("LAW_FULL_HYDE_TIMEOUT_SECONDS", "10")),
         "hyde_call_budget": int(os.getenv("LAW_FULL_HYDE_CALL_BUDGET", "1")),
-        "baseline_contract": "vector top5 + JSON verification + keyword merge + legacy source priority + top5",
+        "baseline_contract": "vector RAG recall + common law keyword channel + verification + unified RRF + top5",
+        "vector_rag_channels": ["vector"],
+        "common_domain_channels": ["keyword"],
+        "historical_strict_comparison_supported": False,
+        "semantic_changes": ["统一 RRF，取消旧来源优先排序", "领域核验后只进行一次最终排序"],
     }
 
 
 async def run(cases: list[dict[str, Any]], modes: list[str], output: Path, case_timeout: float) -> dict[str, Any]:
     """有界顺序调用真实 Registry，每条写盘保留中断前证据。"""
     from app.consultation.agents.legal_research import LegalToolRegistry
-    from app.knowledge.law_knowledge import load_criminal_law_data
+    from app.knowledge.law.corpus import load_criminal_law_data
+    from app.knowledge.retrieval.config import RerankerConfig
+    from app.knowledge.wiring import KnowledgeResources, build_law_search_service
+
+    resources = KnowledgeResources()
 
     report: dict[str, Any] = {
-        "schema": "full-retrieval-ablation-v1",
+        "schema": "full-retrieval-ablation-v2",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "path": "LegalToolRegistry._search_laws -> search_laws_by_rag -> search_full_index",
+        "path": "LegalToolRegistry._search_laws -> LawSearchService.search -> RetrievalPipeline.recall/finalize",
         "scope": "candidate statutory retrieval only; not legal judgment or production acceptance",
         "case_file_sha256": _hash_file(CASES),
         "case_ids": [case["id"] for case in cases],
@@ -198,7 +224,8 @@ async def run(cases: list[dict[str, Any]], modes: list[str], output: Path, case_
             with settings({**MODES[mode], "LAW_KNOWLEDGE_PROFILE": "full"}):
                 for case in cases:
                     started = time.monotonic()
-                    registry = LegalToolRegistry({}, "retrieval-evaluation", law_data)
+                    service = build_law_search_service(law_data=law_data, profile="full", resources=resources)
+                    registry = LegalToolRegistry({}, "retrieval-evaluation", law_data, search_service=service)
                     row: dict[str, Any] = {"id": case["id"], "category": case["category"], "query": case["query"]}
                     try:
                         observation = await asyncio.wait_for(registry._search_laws(case["query"]), timeout=case_timeout)
@@ -236,17 +263,11 @@ async def run(cases: list[dict[str, Any]], modes: list[str], output: Path, case_
                         flush=True,
                     )
                 if MODES[mode]["LAW_FULL_RERANK_ENABLED"] == "true":
-                    from app.knowledge.full_law_retrieval import _scorer
-                    from app.knowledge.rag.reranker.base import RerankerConfig
-
                     config = RerankerConfig.from_env()
-                    model = _scorer(
-                        config.local_path,
-                        config.max_length,
-                        config.instruction or "",
-                        os.getenv("LAW_FULL_RERANK_DEVICE", "auto"),
-                    )._model
+                    scorer = resources.scorer(config)
+                    model = scorer._model
                     report["modes"][mode]["reranker_runtime"] = {
+                        **scorer.readiness(),
                         "loaded": model is not None,
                         "parameter_devices": sorted({str(p.device) for p in model.parameters()}) if model else [],
                         "dtype": str(model.dtype) if model else None,
@@ -256,6 +277,7 @@ async def run(cases: list[dict[str, Any]], modes: list[str], output: Path, case_
     except Exception as exc:  # noqa: BLE001 — 前置条件失败也必须落盘，避免丢失真实失败证据。
         report["preflight_error"] = type(exc).__name__
     finally:
+        resources.close()
         save()
     return report
 

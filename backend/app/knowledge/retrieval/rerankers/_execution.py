@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import RerankerConfig
+from ..errors import safe_error_type
 
 
 class RerankerBusyError(RuntimeError):
@@ -65,10 +66,10 @@ class LocalScorer:
 
     resolve_device = staticmethod(resolve_device)
 
-    def _set_load_status(self, status: str, error: str | None = None) -> None:
-        """原子更新加载状态，仅记录异常类别以避免泄露本地路径。"""
+    def _set_load_status(self, status: str, error: BaseException | str | None = None) -> None:
+        """原子更新加载状态，仅记录固定诊断类别，避免消息或未知类名泄露。"""
         with self._lock:
-            self._load_status, self._load_error = status, error
+            self._load_status, self._load_error = status, safe_error_type(error)
 
     def readiness(self) -> dict[str, Any]:
         """返回状态快照，不检查模型文件、不加载权重或分配推理设备。"""

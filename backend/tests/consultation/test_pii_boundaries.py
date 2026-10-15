@@ -9,7 +9,7 @@ from app.consultation.agents import fact_digger, law_ref, legal_research
 from app.consultation.memory.case import merge_case_memory
 from app.consultation.memory.context import node_context
 from app.infrastructure.llm.gateway import LLMGateway, chat_model_factory
-from app.knowledge.law_knowledge import load_criminal_law_data
+from app.knowledge.law.corpus import load_criminal_law_data
 
 FACTS = [
     "昨晚我喝了酒，在城市道路上驾驶小汽车……",

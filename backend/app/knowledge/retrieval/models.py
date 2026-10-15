@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any
 
+from .errors import safe_error_type
+
 
 def _freeze(value: Any) -> Any:
     """复制并冻结嵌套映射、序列和集合，避免调用方修改已提交的记录。"""
@@ -101,6 +103,7 @@ class StageStatus:
     def __post_init__(self) -> None:
         if self.state not in _STAGE_STATES:
             raise ValueError(f"unknown retrieval stage state: {self.state}")
+        object.__setattr__(self, "error_type", safe_error_type(self.error_type))
 
 
 @dataclass(frozen=True)

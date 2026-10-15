@@ -1,0 +1,715 @@
+{
+  "schema": "knowledge-unification-comparison-v1",
+  "date": "2026-10-15",
+  "scope": "固定公开合成案例的候选法条检索回归；不代表法律准确率、咨询闭环或生产验收。",
+  "before_revision": "82e3fc4",
+  "after_revision": "重构工作区；原始报告中的逐文件指纹固定实际运行版本。",
+  "execution": {
+    "before_command": "python evaluation/run_full_retrieval_ablation.py --output before.json",
+    "after_command": "python evaluation/run_full_retrieval_ablation.py --output after.json",
+    "isolation": "两份相同已有完整索引副本，复用已有权重；服务端实际模型digest一致；没有重建原索引、下载模型或改写.env。",
+    "per_side_rows": 120,
+    "per_mode_cases": 30,
+    "per_mode_scored_cases": 26,
+    "exit_codes": {
+      "before": 0,
+      "after": 0
+    }
+  },
+  "matching_identity_fields": [
+    "actual_model_digests",
+    "hyde_call_budget",
+    "hyde_model",
+    "hyde_timeout_seconds",
+    "index_manifest",
+    "mps_cpu_fallback",
+    "recall_k",
+    "rerank_timeout_seconds",
+    "reranker_batch_size",
+    "reranker_config_sha256",
+    "reranker_decision_tokens",
+    "reranker_device_requested",
+    "reranker_device_selected",
+    "reranker_dtype",
+    "reranker_files",
+    "reranker_instruction",
+    "reranker_max_length",
+    "reranker_model",
+    "reranker_template_sha256",
+    "reranker_tokenizer_sha256",
+    "torch_version",
+    "transformers_version"
+  ],
+  "exact_and_empty_boundaries_verified": true,
+  "post_inference_import_cleanup": {
+    "changed_files": [
+      "backend/app/knowledge/wiring.py",
+      "backend/app/knowledge/law/verification.py",
+      "backend/app/knowledge/law/models.py",
+      "backend/app/knowledge/law/index.py",
+      "backend/app/knowledge/law/keyword.py",
+      "backend/app/knowledge/law/repository.py",
+      "backend/app/knowledge/law/annotations.py",
+      "backend/app/knowledge/law/corpus.py",
+      "backend/app/knowledge/retrieval/hyde.py",
+      "backend/app/knowledge/documents/service.py",
+      "backend/app/knowledge/documents/fingerprints.py",
+      "backend/app/knowledge/documents/splitters/text.py",
+      "backend/app/consultation/agents/legal_research.py"
+    ],
+    "nonimport_ast_changes": [],
+    "note": "实测后仅整理导入及移除unused imports；逐文件去除Import/ImportFrom后的AST保持一致。随后执行完整隔离回归。原始证据字节不改写。 暂存检查另清理上述两处文件尾空行，没有逻辑变化。",
+    "final_code_sha256": {
+      "backend/app/knowledge/law/index.py": "sha256:3098d1f10ec9f63f754a615431222a6e42992afa79365c583b442c935ab2eb52",
+      "backend/app/knowledge/law/corpus.py": "sha256:2387f795144f0fc4b58093f0058407b88a1b093fca999a5eb691b0119d5279aa",
+      "backend/app/knowledge/law/repository.py": "sha256:19b9b221dda411adab22c4e5d5b9b3da4a0681941dcd71db27f31a2e81eb3fc6",
+      "backend/app/knowledge/law/identifiers.py": "sha256:e0774a84c7ed23ea718766454656d889be51920324487c266084ba9490b8f46c",
+      "backend/app/knowledge/law/models.py": "sha256:de8c4c7e080345229a214b91d2fcf8c12162d8288d181355bd13b0e480c516b8",
+      "backend/app/knowledge/law/service.py": "sha256:1c3271ffa09aef53a9bc996e3b742867ad0fdde018ef4c1a08bb7b2c53fe9e52",
+      "backend/app/knowledge/law/verification.py": "sha256:bb4808fcf06de80f09e4dd2825f8804f43b188c5d88d91866ed256ffad3533ba",
+      "backend/app/knowledge/law/keyword.py": "sha256:6f8ab2d88fea6c1053de0d2fce864bd52e77c11bf18aeaf9309623720e8b4935",
+      "backend/app/knowledge/storage/chroma.py": "sha256:66359627c49af4133c7866a6056ced41452f66776032b2797903d0f845dc8e00",
+      "backend/app/knowledge/retrieval/vector.py": "sha256:3300e25499f966c4775dd061887a6fe5b6448fb3560a60c426c14fbfb4f39d1b",
+      "backend/app/knowledge/retrieval/bm25.py": "sha256:e86fc347c3d5a09345996ec906958f79fde8db91c89de32dc881a874a514193e",
+      "backend/app/knowledge/retrieval/fusion.py": "sha256:94ae5163da353246e3873bc0d1456b605a035b585ab992de8dac3293ab90b863",
+      "backend/app/knowledge/retrieval/config.py": "sha256:5ea4d290c6efe3d56c3e8a9783883759885a3937916f71640e9a59a5fbfa770b",
+      "backend/app/knowledge/retrieval/models.py": "sha256:7b2a240fa8b0f54f2910dbc4adb9616056e518f9e08cce1210b926ebc086a839",
+      "backend/app/knowledge/retrieval/tokenization.py": "sha256:39561800a0cb30772c88eb89c0586a98953d8a17f94175dc3b491954ec6ff646",
+      "backend/app/knowledge/retrieval/pipeline.py": "sha256:f6a77280bbceb694aaa27bf35a9c6d350f8e722867029258f0a1349c32bd11e7",
+      "backend/app/knowledge/retrieval/hyde.py": "sha256:76765ef5fa059937ea3f7f5bda8528c34c8c88e0900dda389295ec587b07d18c",
+      "backend/app/knowledge/retrieval/rerankers/qwen.py": "sha256:1b6449e1db3421e66b015dc65fd8c8e40b90213be601a29277e799f04cbeea06",
+      "backend/app/knowledge/retrieval/rerankers/_execution.py": "sha256:c8a7ea345ed19734df0bb09237f010cc141a1787f6dc78fd810aae317f936661",
+      "backend/app/knowledge/wiring.py": "sha256:e735497fffddb64044a91026a5dc17cdfd67b4c758daae4f47df84d60b6b6e3a",
+      "backend/app/consultation/agents/legal_research.py": "sha256:97280ea0e62891313972d60f48d4ca651d551a538120b3997f61884880e19866"
+    },
+    "eof_whitespace_cleanup": [
+      "backend/app/knowledge/law/index.py",
+      "backend/tests/knowledge/test_document_legal_contracts.py"
+    ]
+  },
+  "modes": {
+    "vector": {
+      "before": {
+        "case_count": 30,
+        "scored_count": 26,
+        "recall_at_1": 0.5,
+        "recall_at_5": 0.8269230769230769,
+        "mrr": 0.6487179487179487,
+        "failed_count": 0,
+        "degraded_count": 0,
+        "latency_mean_ms": 476.26863333333336,
+        "latency_p95_ms": 816.739,
+        "stage_states": {
+          "vector": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "bm25": {
+            "disabled": 26,
+            "skipped_exact": 4
+          },
+          "rerank": {
+            "disabled": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "hyde": {
+            "disabled": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          }
+        }
+      },
+      "after": {
+        "case_count": 30,
+        "scored_count": 26,
+        "recall_at_1": 0.5192307692307693,
+        "recall_at_5": 0.8269230769230769,
+        "mrr": 0.6743589743589744,
+        "failed_count": 0,
+        "degraded_count": 0,
+        "latency_mean_ms": 525.6251666666667,
+        "latency_p95_ms": 726.955,
+        "stage_states": {
+          "vector": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "bm25": {
+            "disabled": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "rerank": {
+            "disabled": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "hyde": {
+            "disabled": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          }
+        }
+      },
+      "identical_top5_orders": 21,
+      "differences": [
+        {
+          "id": "violence_take",
+          "before": [
+            "第263条",
+            "第269条",
+            "第267条",
+            "第274条",
+            "第262条之一"
+          ],
+          "after": [
+            "第269条",
+            "第263条",
+            "第267条",
+            "第274条",
+            "第262条之一"
+          ],
+          "before_metrics": {
+            "recall_at_1": 1.0,
+            "recall_at_5": 1.0,
+            "mrr": 1.0
+          },
+          "after_metrics": {
+            "recall_at_1": 0.0,
+            "recall_at_5": 1.0,
+            "mrr": 0.5
+          },
+          "before_hyde": "disabled",
+          "after_hyde": "disabled"
+        },
+        {
+          "id": "theft_then_hit",
+          "before": [
+            "第234条",
+            "第269条",
+            "第267条",
+            "第16条",
+            "第64条"
+          ],
+          "after": [
+            "第269条",
+            "第267条",
+            "第234条",
+            "第16条",
+            "第64条"
+          ],
+          "before_metrics": {
+            "recall_at_1": 0.0,
+            "recall_at_5": 0.5,
+            "mrr": 0.5
+          },
+          "after_metrics": {
+            "recall_at_1": 0.5,
+            "recall_at_5": 0.5,
+            "mrr": 1.0
+          },
+          "before_hyde": "disabled",
+          "after_hyde": "disabled"
+        },
+        {
+          "id": "accidental_death",
+          "before": [
+            "第291条之二",
+            "第16条",
+            "第233条",
+            "第235条",
+            "第15条"
+          ],
+          "after": [
+            "第16条",
+            "第233条",
+            "第235条",
+            "第291条之二",
+            "第15条"
+          ],
+          "before_metrics": {
+            "recall_at_1": 0.0,
+            "recall_at_5": 1.0,
+            "mrr": 0.3333333333333333
+          },
+          "after_metrics": {
+            "recall_at_1": 0.0,
+            "recall_at_5": 1.0,
+            "mrr": 0.5
+          },
+          "before_hyde": "disabled",
+          "after_hyde": "disabled"
+        },
+        {
+          "id": "drunk_drive",
+          "before": [
+            "第133条之一",
+            "第133条之二",
+            "第133条",
+            "第16条",
+            "第18条"
+          ],
+          "after": [
+            "第133条之一",
+            "第133条",
+            "第16条",
+            "第133条之二",
+            "第18条"
+          ],
+          "before_metrics": {
+            "recall_at_1": 1.0,
+            "recall_at_5": 1.0,
+            "mrr": 1.0
+          },
+          "after_metrics": {
+            "recall_at_1": 1.0,
+            "recall_at_5": 1.0,
+            "mrr": 1.0
+          },
+          "before_hyde": "disabled",
+          "after_hyde": "disabled"
+        },
+        {
+          "id": "fatal_collision",
+          "before": [
+            "第133条之一",
+            "第133条",
+            "第233条",
+            "第16条",
+            "第235条"
+          ],
+          "after": [
+            "第133条",
+            "第233条",
+            "第16条",
+            "第133条之一",
+            "第235条"
+          ],
+          "before_metrics": {
+            "recall_at_1": 0.0,
+            "recall_at_5": 1.0,
+            "mrr": 0.5
+          },
+          "after_metrics": {
+            "recall_at_1": 1.0,
+            "recall_at_5": 1.0,
+            "mrr": 1.0
+          },
+          "before_hyde": "disabled",
+          "after_hyde": "disabled"
+        },
+        {
+          "id": "toxic_food",
+          "before": [
+            "第408条之一",
+            "第144条",
+            "第143条",
+            "第148条",
+            "第140条"
+          ],
+          "after": [
+            "第144条",
+            "第143条",
+            "第148条",
+            "第140条",
+            "第408条之一"
+          ],
+          "before_metrics": {
+            "recall_at_1": 0.0,
+            "recall_at_5": 1.0,
+            "mrr": 0.5
+          },
+          "after_metrics": {
+            "recall_at_1": 1.0,
+            "recall_at_5": 1.0,
+            "mrr": 1.0
+          },
+          "before_hyde": "disabled",
+          "after_hyde": "disabled"
+        },
+        {
+          "id": "attack_police",
+          "before": [
+            "第277条",
+            "第368条",
+            "第426条",
+            "第278条",
+            "第269条"
+          ],
+          "after": [
+            "第368条",
+            "第426条",
+            "第277条",
+            "第278条",
+            "第269条"
+          ],
+          "before_metrics": {
+            "recall_at_1": 1.0,
+            "recall_at_5": 1.0,
+            "mrr": 1.0
+          },
+          "after_metrics": {
+            "recall_at_1": 0.0,
+            "recall_at_5": 1.0,
+            "mrr": 0.3333333333333333
+          },
+          "before_hyde": "disabled",
+          "after_hyde": "disabled"
+        },
+        {
+          "id": "gambling_house",
+          "before": [
+            "第303条",
+            "第293条",
+            "第224条之一",
+            "第192条",
+            "第274条"
+          ],
+          "after": [
+            "第303条",
+            "第224条之一",
+            "第192条",
+            "第274条",
+            "第293条"
+          ],
+          "before_metrics": {
+            "recall_at_1": 1.0,
+            "recall_at_5": 1.0,
+            "mrr": 1.0
+          },
+          "after_metrics": {
+            "recall_at_1": 1.0,
+            "recall_at_5": 1.0,
+            "mrr": 1.0
+          },
+          "before_hyde": "disabled",
+          "after_hyde": "disabled"
+        },
+        {
+          "id": "stolen_goods",
+          "before": [
+            "第264条",
+            "第310条",
+            "第312条",
+            "第265条",
+            "第270条"
+          ],
+          "after": [
+            "第310条",
+            "第312条",
+            "第265条",
+            "第270条",
+            "第264条"
+          ],
+          "before_metrics": {
+            "recall_at_1": 0.0,
+            "recall_at_5": 1.0,
+            "mrr": 0.3333333333333333
+          },
+          "after_metrics": {
+            "recall_at_1": 0.0,
+            "recall_at_5": 1.0,
+            "mrr": 0.5
+          },
+          "before_hyde": "disabled",
+          "after_hyde": "disabled"
+        }
+      ]
+    },
+    "hybrid": {
+      "before": {
+        "case_count": 30,
+        "scored_count": 26,
+        "recall_at_1": 0.36538461538461536,
+        "recall_at_5": 0.7692307692307693,
+        "mrr": 0.5185897435897436,
+        "failed_count": 0,
+        "degraded_count": 0,
+        "latency_mean_ms": 549.2375666666667,
+        "latency_p95_ms": 1014.234,
+        "stage_states": {
+          "vector": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "bm25": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "disabled": 1
+          },
+          "rerank": {
+            "disabled": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "hyde": {
+            "disabled": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          }
+        }
+      },
+      "after": {
+        "case_count": 30,
+        "scored_count": 26,
+        "recall_at_1": 0.36538461538461536,
+        "recall_at_5": 0.7692307692307693,
+        "mrr": 0.5185897435897436,
+        "failed_count": 0,
+        "degraded_count": 0,
+        "latency_mean_ms": 495.404,
+        "latency_p95_ms": 717.665,
+        "stage_states": {
+          "vector": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "bm25": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "rerank": {
+            "disabled": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "hyde": {
+            "disabled": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          }
+        }
+      },
+      "identical_top5_orders": 30,
+      "differences": []
+    },
+    "hybrid_rerank": {
+      "before": {
+        "case_count": 30,
+        "scored_count": 26,
+        "recall_at_1": 0.75,
+        "recall_at_5": 0.9615384615384616,
+        "mrr": 0.8589743589743589,
+        "failed_count": 0,
+        "degraded_count": 0,
+        "latency_mean_ms": 6014.493866666667,
+        "latency_p95_ms": 8580.624,
+        "stage_states": {
+          "vector": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "bm25": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "disabled": 1
+          },
+          "rerank": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "hyde": {
+            "disabled": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          }
+        }
+      },
+      "after": {
+        "case_count": 30,
+        "scored_count": 26,
+        "recall_at_1": 0.75,
+        "recall_at_5": 0.9615384615384616,
+        "mrr": 0.8589743589743589,
+        "failed_count": 0,
+        "degraded_count": 0,
+        "latency_mean_ms": 6069.2189,
+        "latency_p95_ms": 8567.805,
+        "stage_states": {
+          "vector": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "bm25": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "rerank": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "hyde": {
+            "disabled": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          }
+        }
+      },
+      "identical_top5_orders": 30,
+      "differences": []
+    },
+    "hybrid_rerank_hyde": {
+      "before": {
+        "case_count": 30,
+        "scored_count": 26,
+        "recall_at_1": 0.7115384615384616,
+        "recall_at_5": 0.9615384615384616,
+        "mrr": 0.8333333333333334,
+        "failed_count": 0,
+        "degraded_count": 1,
+        "latency_mean_ms": 9040.127433333333,
+        "latency_p95_ms": 14444.58,
+        "stage_states": {
+          "vector": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "bm25": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "disabled": 1
+          },
+          "rerank": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "hyde": {
+            "timeout": 1,
+            "executed": 24,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          }
+        }
+      },
+      "after": {
+        "case_count": 30,
+        "scored_count": 26,
+        "recall_at_1": 0.75,
+        "recall_at_5": 1.0,
+        "mrr": 0.8717948717948718,
+        "failed_count": 0,
+        "degraded_count": 0,
+        "latency_mean_ms": 8792.754033333333,
+        "latency_p95_ms": 13679.47,
+        "stage_states": {
+          "vector": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "bm25": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "rerank": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          },
+          "hyde": {
+            "executed": 25,
+            "skipped_exact": 4,
+            "skipped_empty": 1
+          }
+        }
+      },
+      "identical_top5_orders": 29,
+      "differences": [
+        {
+          "id": "phone_taken",
+          "before": [
+            "第64条",
+            "第270条",
+            "第441条",
+            "第310条",
+            "第16条"
+          ],
+          "after": [
+            "第264条",
+            "第266条",
+            "第64条",
+            "第267条",
+            "第270条"
+          ],
+          "before_metrics": {
+            "recall_at_1": 0.0,
+            "recall_at_5": 0.0,
+            "mrr": 0.0
+          },
+          "after_metrics": {
+            "recall_at_1": 1.0,
+            "recall_at_5": 1.0,
+            "mrr": 1.0
+          },
+          "before_hyde": "timeout",
+          "after_hyde": "executed"
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "vector已取消旧来源优先，新增公共keyword通道参与统一RRF，不能作严格同算法对照。",
+    "HyDE仅phone_taken排名不同；旧组该例首个冷调用timeout，新组成功。该差异不能归因为重构质量提升。",
+    "每种模式仅一次顺序运行，耗时含冷启动及服务波动，不作性能提升声明。",
+    "固定回归样本未经过独立法律标注，专业法律复核仍未完成。"
+  ],
+  "engineering_validation": {
+    "backend": {
+      "passed": 1797,
+      "skipped": 1,
+      "failed": 1,
+      "seconds": 106.37,
+      "known_failure": "tests/infrastructure/llm/test_factory.py::TestEmbedModelFactory::test_create_embedding_model_ollama：既有远程端点trust_env断言与当前factory策略不一致。"
+    },
+    "evaluation": {
+      "passed": 143,
+      "failed": 3,
+      "seconds": 15.55,
+      "known_failures": [
+        "test_cloud_copy_sends_low_and_restores_factory_after_use",
+        "test_payload_accepts_existing_mask_transform_but_rejects_other_facts",
+        "test_model_refusal_does_not_claim_rag_executed"
+      ],
+      "note": "以上3项既有云端评测断言与当前mask_pii行为不一致；未改变脱敏策略。两组回归均使用隔离存储和临时Redis，退出码1，不宣称全套通过。",
+      "baseline_reproduction": {
+        "revision": "82e3fc4",
+        "selected_tests": 3,
+        "failed": 3,
+        "seconds": 2.16,
+        "same_failures_and_causes": true,
+        "isolation": "使用原版evaluation及backend代码，临时数据库/上传库；相同公开合成测试，未进行真实云请求。"
+      }
+    }
+  },
+  "unchanged_asset_sha256": {
+    "backend/data/law_knowledge/criminal_law_chapters.json": "2199fd9e883c09794d0db5271aa45b71efb0daab6eb6e5b860fc44cd9ee83c06",
+    "backend/data/law_knowledge/criminal_law_demo_annotations.json": "8edc44033d3fa7562f862d4930cc8cb853704111e7de114ca65f4257fdee9255",
+    "backend/data/law_knowledge/criminal_law_full.json": "e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+    "backend/data/law_knowledge/criminal_law_full.review.json": "dc0ab53b83dc54463c25f79409e6ea6ff6419a03819666d6e1b0c368e2ae70fc",
+    "evaluation/full_retrieval_cases.jsonl": "c5637d38c67d499b8bcfbc2b2770d148535080c33de983a2653aeb3b02dd1506"
+  },
+  "raw_reports": {
+    "before": {
+      "path": "knowledge_unification_before_2026-10-15.json",
+      "sha256": "sha256:e084dfd5ea3adb7f2ded6c9cc92c9c8c502ccb5fb9044ab5263d3139a9af8bd7"
+    },
+    "after": {
+      "path": "knowledge_unification_after_2026-10-15.json",
+      "sha256": "sha256:3b0a766b3c315b848fd321d818d047d097eaac6871a5f603f2fb5ee479667fc4"
+    }
+  }
+}

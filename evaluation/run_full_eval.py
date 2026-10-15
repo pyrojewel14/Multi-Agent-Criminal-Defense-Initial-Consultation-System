@@ -7,11 +7,30 @@ import json
 import os
 import sys
 import time
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 CASES = Path(__file__).with_name("full_cases.jsonl")
+
+
+@contextmanager
+def _lawref_search_runtime(resources):
+    """只在 LawRef 评测中替换法律工厂，完整退出后恢复生产入口。"""
+    from app.consultation.agents import legal_research
+    from app.knowledge.wiring import build_law_search_service
+
+    original = legal_research.build_law_search_service
+
+    def factory(*, law_data=None):
+        return build_law_search_service(law_data=law_data, profile="full", resources=resources)
+
+    legal_research.build_law_search_service = factory
+    try:
+        yield
+    finally:
+        legal_research.build_law_search_service = original
 
 
 async def run_evaluation(
@@ -22,10 +41,34 @@ async def run_evaluation(
         *,
         cases_path: Path = CASES,
 ) -> dict:
+    """每次评测独立持有模型资源，正常、异常和取消退出均释放。"""
+    from app.knowledge.wiring import KnowledgeResources
+
+    resources = KnowledgeResources()
+    try:
+        with _lawref_search_runtime(resources) if mode == "live-lawref" else nullcontext():
+            return await _run_evaluation(mode, output, case_ids, query_mode, cases_path=cases_path, resources=resources)
+    finally:
+        resources.close()
+
+
+async def _run_evaluation(
+        mode: str,
+        output: Path,
+        case_ids: list[str] | None,
+        query_mode: str,
+        *,
+        cases_path: Path,
+        resources,
+) -> dict:
     """运行固定公共案例；离线模式只调用真实关键词与读取工具。"""
     from app.consultation.agents.legal_research import LegalToolRegistry
-    from app.knowledge import law_retrieval
-    from app.knowledge.law_knowledge import _build_article_index, load_criminal_law_data
+    from app.knowledge.law.repository import _build_article_index
+    from app.knowledge.law.corpus import load_criminal_law_data
+    from app.knowledge.law.keyword import facts_query, facts_terms
+    from app.knowledge.retrieval.config import RetrievalConfig
+    from app.knowledge.retrieval.pipeline import RetrievalPipeline
+    from app.knowledge.wiring import build_law_search_service
 
     if mode not in {"offline", "live-rag", "live-lawref"}:
         raise ValueError("未知评测模式")
@@ -40,6 +83,9 @@ async def run_evaluation(
         if set(case_ids) != {c["id"] for c in cases}:
             raise ValueError("未知评测案例")
     index = _build_article_index(corpus)
+    service = None if mode == "live-lawref" else build_law_search_service(
+        law_data=corpus, profile="full", resources=resources,
+        pipeline=RetrievalPipeline(None, config=RetrievalConfig(rerank=False)) if mode == "offline" else None)
     rows = []
     for case in cases:
         started = time.monotonic()
@@ -68,7 +114,7 @@ async def run_evaluation(
                 selected = [
                                a["article_number"] for a in state.get("applied_laws", [])
                            ] + [a["article_number"] for a in state.get("law_text_candidates", [])]
-                from app.knowledge.law_knowledge import _normalize_article_number
+                from app.knowledge.law.identifiers import _normalize_article_number
 
                 ids = [_normalize_article_number(n) for n in selected]
                 coverage = await _analyze_coverage(facts, state["applied_laws"])
@@ -112,17 +158,13 @@ async def run_evaluation(
                     )
                     row["passed"] = row["passed"] and row["guardrail_passed"]
             else:
-                if mode == "offline":
-                    laws = await law_retrieval.search_laws_by_keyword(facts, corpus)
-                else:
-                    laws = await law_retrieval.search_laws_by_rag(
-                        facts, "public-full-eval"
-                    )
-                    if getattr(laws, "dependency_failed", False):
-                        raise RuntimeError("rag dependency failed")
-                    laws = law_retrieval._verify_and_enrich_with_json(laws, index)
-                registry = LegalToolRegistry(facts, None, corpus)
-                from app.knowledge.law_knowledge import _normalize_article_number
+                result = await service.search(facts_query(facts), user_id=None if mode == "offline" else "public-full-eval",
+                                              keyword_terms=facts_terms(facts))
+                if result.search.dependency_failed:
+                    raise RuntimeError("rag dependency failed")
+                laws = result.as_laws()
+                registry = LegalToolRegistry(facts, None, corpus, search_service=service)
+                from app.knowledge.law.identifiers import _normalize_article_number
 
                 for law in laws:
                     number = _normalize_article_number(law["article_number"])
@@ -175,6 +217,8 @@ async def run_evaluation(
             "live-lawref": "real-lawref-llm-rag-coverage",
         }[mode],
         "query_mode": query_mode,
+        "retrieval_semantics": "unified-pipeline-rrf-verified-keyword-v1",
+        "historical_strict_comparison_supported": False,
         "cases_sha256": "sha256:" + hashlib.sha256(cases_path.read_bytes()).hexdigest(),
         "runtime_config": {key: os.getenv(key) for key in (
             "LAW_KNOWLEDGE_PROFILE", "LAW_FULL_DEMO_ANNOTATIONS", "LAW_FULL_INDEX_DIRECTORY",

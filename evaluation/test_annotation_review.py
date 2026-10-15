@@ -98,7 +98,8 @@ def test_unchanged_body_with_changed_original_annotations_rejects_stale_review()
 def test_delivered_review_keeps_all_pending_annotations_outside_runtime():
     from pathlib import Path
 
-    from app.knowledge.law_knowledge import _build_article_index, is_lawref_eligible
+    from app.knowledge.law.repository import _build_article_index
+    from app.knowledge.law.verification import is_lawref_eligible
 
     from evaluation.review_annotations import build_review, fingerprint
 
@@ -145,8 +146,8 @@ def test_review_rejects_unbound_text_evidence(change):
 
 @pytest.mark.parametrize("change", ["locator", "credentials", "blank_reviewer", "blank_element", "duplicate_name", "charge", "title", "legal_claim"])
 def test_demo_rejects_incomplete_qualification(tmp_path, change):
-    from app.knowledge.demo_law_annotations import apply_demo_annotations
-    from app.knowledge.law_knowledge import LawKnowledgeDataError
+    from app.knowledge.law.annotations import apply_demo_annotations
+    from app.knowledge.law.models import LawKnowledgeDataError
 
     from evaluation.review_annotations import fingerprint
 

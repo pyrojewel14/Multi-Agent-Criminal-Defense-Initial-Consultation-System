@@ -12,8 +12,13 @@ from langchain_core.messages import AIMessage
 from langchain_ollama import ChatOllama
 
 from app.consultation import workflow
+from app.consultation.agents import legal_research
 from app.consultation.memory.summary import SUMMARY_SYSTEM_PROMPT
 from app.infrastructure.observability.tracing import current_trace_context
+from app.knowledge.law.corpus import load_criminal_law_data
+from app.knowledge.retrieval.config import RetrievalConfig
+from app.knowledge.retrieval.pipeline import RetrievalPipeline
+from app.knowledge.wiring import build_law_search_service
 
 MODE = os.environ['MEMORY_EVAL_MODE']
 JOURNAL = Path(os.environ['MEMORY_EVAL_JOURNAL'])
@@ -86,6 +91,13 @@ async def law(state):
     return state
 
 
+def snapshot_law_factory(*, law_data=None):
+    """法律节点为替身；意外调用仍固定六条无向量资产，不读取上传库。"""
+    return build_law_search_service(law_data=load_criminal_law_data(profile='snapshot'), profile='snapshot',
+                                   pipeline=RetrievalPipeline(None, config=RetrievalConfig(rerank=False)),
+                                   source_id='law:memory-evaluation-snapshot')
+
+
 async def coverage(state):
     return dict(state, current_agent='FactDigger', facts_coverage_rate=0.0,
                 final_output='已记录本轮陈述，仍待核实；请继续补充。', pending_questions=['请补充'])
@@ -94,6 +106,7 @@ async def coverage(state):
 ChatOllama.ainvoke = capture_invoke
 workflow.law_ref_node = law
 workflow._fact_digger_workflow_node = coverage
+legal_research.build_law_search_service = snapshot_law_factory
 
 import main  # noqa: E402
 

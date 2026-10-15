@@ -90,18 +90,15 @@ async def admin_app(test_app, monkeypatch):
     monkeypatch.setattr(knowledge_module, "require_admin", _admin_override, raising=False)
     test_app.dependency_overrides[rbac_module.require_admin] = _admin_override
 
-    # Bypass rate limiter by overriding the rate_limit module's dep factory
-    # so the generated dependency is a no-op.
-    async def _noop(request):
+    # Depends captured these closures when the router was imported.
+    async def _noop():
         return None
-
-    def _noop_factory(limit=None, window=None):
-        return _noop
-
-    monkeypatch.setattr(rate_limit_module, "rate_limit", _noop_factory)
-    # Also patch the reference inside the knowledge module (since the Depends
-    # was evaluated at import time)
-    monkeypatch.setattr(knowledge_module, "rate_limit", _noop_factory, raising=False)
+    for route in test_app.routes:
+        if not getattr(route, "path", "").startswith(KNOWLEDGE_PREFIX):
+            continue
+        for dependency in route.dependant.dependencies:
+            if getattr(dependency.call, "__module__", "") == rate_limit_module.__name__:
+                test_app.dependency_overrides[dependency.call] = _noop
 
     yield test_app
 
@@ -140,13 +137,13 @@ class TestAddVectorSingle:
     @pytest.mark.asyncio
     async def test_add_single_success(self, admin_app, mock_knowledge_service):
         admin_app.dependency_overrides[
-            __import__("app.knowledge.service", fromlist=["get_knowledge_service"]).get_knowledge_service
+            __import__("app.knowledge.wiring", fromlist=["get_document_service"]).get_document_service
         ] = lambda: mock_knowledge_service
 
         # Build a multipart upload
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         files = {"file": ("test.pdf", io.BytesIO(b"PDF-content"), "application/pdf")}
 
@@ -169,9 +166,9 @@ class TestAddVectorSingle:
 class TestAddVectorMultiple:
     @pytest.mark.asyncio
     async def test_add_multiple_success(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         files = [
             ("files", ("file1.pdf", io.BytesIO(b"PDF-1"), "application/pdf")),
@@ -197,9 +194,9 @@ class TestAddVectorMultiple:
 class TestCleanAllVectors:
     @pytest.mark.asyncio
     async def test_clean_all_success(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.delete(f"{KNOWLEDGE_PREFIX}/clean")
@@ -216,9 +213,9 @@ class TestCleanAllVectors:
 class TestClearAllMd5:
     @pytest.mark.asyncio
     async def test_clear_all_md5_with_documents(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.delete(f"{KNOWLEDGE_PREFIX}/md5/clear?delete_documents=true")
@@ -229,9 +226,9 @@ class TestClearAllMd5:
 
     @pytest.mark.asyncio
     async def test_clear_all_md5_without_documents(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.delete(f"{KNOWLEDGE_PREFIX}/md5/clear?delete_documents=false")
@@ -249,9 +246,9 @@ class TestClearAllMd5:
 class TestDeleteSingleMd5:
     @pytest.mark.asyncio
     async def test_delete_md5_with_documents(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.delete(f"{KNOWLEDGE_PREFIX}/md5/delete/abc123?delete_documents=true")
@@ -261,9 +258,9 @@ class TestDeleteSingleMd5:
 
     @pytest.mark.asyncio
     async def test_delete_md5_without_documents(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.delete(f"{KNOWLEDGE_PREFIX}/md5/delete/abc123?delete_documents=false")
@@ -273,10 +270,10 @@ class TestDeleteSingleMd5:
 
     @pytest.mark.asyncio
     async def test_delete_md5_not_found(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
         mock_knowledge_service.handle_delete_single_md5 = AsyncMock(return_value=False)
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.delete(f"{KNOWLEDGE_PREFIX}/md5/delete/nonexistent")
@@ -292,9 +289,9 @@ class TestDeleteSingleMd5:
 class TestDeleteByFilename:
     @pytest.mark.asyncio
     async def test_delete_by_filename_with_documents(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.delete(
@@ -306,9 +303,9 @@ class TestDeleteByFilename:
 
     @pytest.mark.asyncio
     async def test_delete_by_filename_without_documents(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.delete(
@@ -319,10 +316,10 @@ class TestDeleteByFilename:
 
     @pytest.mark.asyncio
     async def test_delete_by_filename_not_found(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
         mock_knowledge_service.handle_delete_by_filename = AsyncMock(return_value=False)
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.delete(f"{KNOWLEDGE_PREFIX}/delete/filename?filename=nonexistent.pdf")
@@ -338,9 +335,9 @@ class TestDeleteByFilename:
 class TestGetAllMd5Records:
     @pytest.mark.asyncio
     async def test_get_all_md5_records(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.get(f"{KNOWLEDGE_PREFIX}/md5/list")
@@ -359,9 +356,9 @@ class TestGetAllMd5Records:
 class TestGetMd5Info:
     @pytest.mark.asyncio
     async def test_get_md5_info_success(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.get(f"{KNOWLEDGE_PREFIX}/md5/abc123")
@@ -371,10 +368,10 @@ class TestGetMd5Info:
 
     @pytest.mark.asyncio
     async def test_get_md5_info_not_found(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
         mock_knowledge_service.handle_get_md5_info = AsyncMock(return_value=None)
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.get(f"{KNOWLEDGE_PREFIX}/md5/missing")
@@ -390,9 +387,9 @@ class TestGetMd5Info:
 class TestGetAllKnowledgeList:
     @pytest.mark.asyncio
     async def test_get_all_knowledge_list(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.get(f"{KNOWLEDGE_PREFIX}/list")
@@ -410,9 +407,9 @@ class TestGetAllKnowledgeList:
 class TestGetDocumentDetail:
     @pytest.mark.asyncio
     async def test_get_document_detail_success(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.get(f"{KNOWLEDGE_PREFIX}/detail?filename=test.pdf")
@@ -429,15 +426,80 @@ class TestGetDocumentDetail:
 class TestGetDocumentChunks:
     @pytest.mark.asyncio
     async def test_get_document_chunks_success(self, admin_app, mock_knowledge_service):
-        from app.api.v1.routers.knowledge_router import get_knowledge_service
+        from app.api.v1.routers.knowledge_router import get_document_service
 
-        admin_app.dependency_overrides[get_knowledge_service] = lambda: mock_knowledge_service
+        admin_app.dependency_overrides[get_document_service] = lambda: mock_knowledge_service
 
         async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
             response = await client_http.get(f"{KNOWLEDGE_PREFIX}/chunks?filename=test.pdf")
 
             assert response.status_code == 200
             assert response.json()["data"]["total_chunks"] == 5
+
+
+@pytest.fixture
+def real_document_service(tmp_path):
+    import chromadb
+    from app.knowledge.storage.chroma import ChromaSource
+    from app.knowledge.wiring import KnowledgeResources, build_document_services
+    resources = KnowledgeResources()
+    client = chromadb.PersistentClient(path=str(tmp_path / "uploads"))
+    async def embed_documents(texts):
+        return [[1., 0.] for _ in texts]
+    async def embed_query(text):
+        return [1., 0.]
+    service = build_document_services(source=ChromaSource("api-documents", client, "api-documents"),
+        create_missing=True, md5_directory=tmp_path / "hashes", resources=resources,
+        embed_documents=embed_documents, embed_query=embed_query, env={"LAW_FULL_RERANK_ENABLED": "false"})
+    yield service
+    resources.close()
+
+
+@pytest.mark.asyncio
+async def test_real_upload_management_and_delete_reupload_contract(admin_app, real_document_service):
+    from app.knowledge.wiring import get_document_service
+    admin_app.dependency_overrides[get_document_service] = lambda: real_document_service
+    async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
+        async def upload_case():
+            return await client_http.post(f"{KNOWLEDGE_PREFIX}/add/single",
+                files={"file": ("case.txt", b"real owned content", "text/plain")})
+        assert (await upload_case()).status_code == 200
+        listing = (await client_http.get(f"{KNOWLEDGE_PREFIX}/list")).json()["data"]
+        assert listing["total_count"] == 1
+        assert listing["documents"][0]["filename"] == "case.txt"
+        detail = (await client_http.get(f"{KNOWLEDGE_PREFIX}/detail", params={"filename": "case.txt"})).json()["data"]
+        assert detail["content"] == "real owned content"
+        chunks = (await client_http.get(f"{KNOWLEDGE_PREFIX}/chunks", params={"filename": "case.txt"})).json()["data"]
+        assert chunks["total_chunks"] == 1
+        assert chunks["chunks"][0]["content"] == "real owned content"
+        hashes = (await client_http.get(f"{KNOWLEDGE_PREFIX}/md5/list")).json()["data"]
+        assert hashes["total_count"] == 1
+        assert hashes["records"][0]["filename"] == "case.txt"
+        assert (await client_http.delete(f"{KNOWLEDGE_PREFIX}/delete/filename", params={"filename": "case.txt"})).status_code == 200
+        assert (await client_http.get(f"{KNOWLEDGE_PREFIX}/detail", params={"filename": "case.txt"})).status_code == 404
+        assert (await upload_case()).status_code == 200
+        assert (await client_http.get(f"{KNOWLEDGE_PREFIX}/list")).json()["data"]["total_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_real_stream_failure_preserves_sse_and_does_not_report_success(admin_app, real_document_service):
+    import json
+    from app.knowledge.wiring import get_document_service
+    async def fail(texts):
+        raise RuntimeError("embedding unavailable")
+    real_document_service.embed_documents = fail
+    admin_app.dependency_overrides[get_document_service] = lambda: real_document_service
+    async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
+        response = await client_http.post(f"{KNOWLEDGE_PREFIX}/add/multiple/stream",
+            files=[("files", ("case.txt", b"real owned content", "text/plain"))])
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+    assert [event["event_type"] for event in events] == ["start", "slicing_completed", "writing", "error", "finish"]
+    assert events[-1]["success_count"] == 0
+    assert events[-1]["failed_count"] == 1
+    assert await real_document_service.handle_get_user_knowledge("admin-001") == []
+    assert await real_document_service.handle_get_all_md5_records("admin-001") == []
 
 
 if __name__ == "__main__":

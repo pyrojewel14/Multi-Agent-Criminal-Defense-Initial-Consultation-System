@@ -13,7 +13,9 @@ import sys
 import time
 import urllib.request
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
@@ -224,6 +226,8 @@ def preflight(
         issues.append("reranker_weights_missing")
     build_manifest: dict[str, Any] | None = None
     manifest_path = index_dir.parent / f"{index_dir.name}.manifest.json"
+    if index_count and not manifest_path.is_file():
+        issues.append("index_manifest_missing")
     if index_count and manifest_path.is_file():
         try:
             candidate = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -363,11 +367,13 @@ def _metadata(pre: dict[str, Any], cases: list[dict[str, str]]) -> dict[str, Any
     prompt_dir = BACKEND / "app/prompts"
     return {
         **pre,
+        "retrieval_semantics": "unified-pipeline-rrf-explicit-snapshot-v1",
+        "historical_strict_comparison_supported": False,
         "prompt_hashes": {path.name: _sha256(path) for path in sorted(prompt_dir.glob("*.txt"))},
         "prompt_registry_sha256": _sha256(BACKEND / "app/config/prompt.yaml"),
         "cases_sha256": _sha256(CASES),
         "case_count": len(cases),
-        "index_collection": os.environ.get("CHROMA_COLLECTION_NAME", "rag_collection"),
+        "index_collection": os.environ.get("LAW_SNAPSHOT_INDEX_COLLECTION", "rag_collection"),
         "checkpoint": "MemorySaver process-local",
         "llm_policy": {
             "total_timeout_seconds": policy.total_timeout_seconds,
@@ -376,6 +382,101 @@ def _metadata(pre: dict[str, Any], cases: list[dict[str, str]]) -> dict[str, Any
             "backoff_seconds": policy.backoff_seconds,
         },
     }
+
+
+def build_snapshot_search_service(*, resources, index_dir: Path, collection: str, embedding_model: str,
+                                  embedding_digest: str, law_path: Path = LAW, law_data=None,
+                                  embed_query=None, config=None):
+    """显式绑定已构建的六条隔离索引，拒绝读取上传库或回退到其他数据源。"""
+    import chromadb
+    from app.knowledge.law.corpus import load_criminal_law_data
+    from app.knowledge.retrieval.bm25 import BM25Retriever
+    from app.knowledge.retrieval.config import RerankerConfig, RetrievalConfig
+    from app.knowledge.retrieval.pipeline import RetrievalPipeline
+    from app.knowledge.retrieval.vector import ChromaVectorRetriever
+    from app.knowledge.storage.chroma import ChromaSource, ChromaStore, validate_embedding
+    from app.knowledge.wiring import build_law_search_service
+
+    index_dir = Path(index_dir).resolve()
+    manifest = json.loads((index_dir.parent / f"{index_dir.name}.manifest.json").read_text())
+    data = law_data if law_data is not None else load_criminal_law_data(profile="snapshot")
+    articles = sorted((article for chapter in data["chapters"] for article in chapter["articles"]),
+                      key=lambda article: article["article_number"])
+    documents = [f"{article['article_number']} {article['content']}" for article in articles]
+    documents_hash = "sha256:" + hashlib.sha256(json.dumps(documents, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+    if (manifest.get("snapshot_sha256") != _sha256(law_path)
+            or manifest.get("snapshot_version") != data["metadata"]["dataset_version"]
+            or manifest.get("collection") != collection
+            or manifest.get("embedding_model") != embedding_model
+            or manifest.get("embedding_model_digest") != embedding_digest
+            or manifest.get("document_count") != 6 or len(documents) != 6
+            or manifest.get("documents_sha256") != documents_hash
+            or type(manifest.get("embedding_dimension")) is not int
+            or manifest["embedding_dimension"] <= 0):
+        raise ValueError("snapshot index manifest mismatch")
+    if not (index_dir / "chroma.sqlite3").is_file():
+        raise FileNotFoundError("snapshot index missing")
+    source_id = "law:snapshot-evaluation:" + manifest["snapshot_sha256"].split(":", 1)[1][:16]
+    store = ChromaStore.open_existing(ChromaSource(source_id, chromadb.PersistentClient(path=str(index_dir)), collection))
+    rows = store.read_snapshot(where={"is_public": True}).rows
+    if len(rows) != 6 or sorted(row.content for row in rows) != sorted(documents):
+        raise ValueError("snapshot index documents mismatch")
+    article_by_document = dict(zip(documents, articles))
+    for row in rows:
+        article = article_by_document[row.content]
+        expected = {"article_number": article["article_number"], "is_public": True,
+                    "official_text_source": article["official_text_source"], "annotation_source": article["annotation_source"],
+                    "source": f"{article['official_text_source']}:{article['article_number']}",
+                    "snapshot_version": data["metadata"]["dataset_version"]}
+        if any(row.metadata.get(key) != value for key, value in expected.items()):
+            raise ValueError("snapshot index metadata mismatch")
+    if embed_query is None:
+        async def embed_query(query):
+            import httpx
+
+            async with httpx.AsyncClient(trust_env=False, timeout=60) as client:
+                response = await client.post(os.environ["OLLAMA_BASE_URL"].rstrip("/") + "/api/embed",
+                                             json={"model": embedding_model, "input": [query], "truncate": False})
+                response.raise_for_status()
+                vectors = response.json()["embeddings"]
+            if len(vectors) != 1:
+                raise ValueError("query embedding count invalid")
+            return validate_embedding(vectors[0], expected_dimension=manifest["embedding_dimension"])
+    config = config if config is not None else RetrievalConfig.from_env()
+    scorer = resources.scorer(RerankerConfig.from_env()) if config.rerank else None
+    expander = None
+    if config.hyde:
+        from app.knowledge.retrieval.hyde import HyDEExpander, ollama_generate
+
+        model = os.environ.get("OLLAMA_MODEL_NAME", "qwen3.5:0.8b")
+        expander = HyDEExpander(partial(ollama_generate, base_url=os.environ["OLLAMA_BASE_URL"], model_name=model), model_name=model)
+    pipeline = RetrievalPipeline(ChromaVectorRetriever(store, embed_query, manifest["embedding_dimension"]),
+                                 bm25=BM25Retriever(store), reranker=scorer, expander=expander, config=config)
+    return build_law_search_service(law_data=data, profile="snapshot", pipeline=pipeline, source_id=source_id,
+                                    resources=resources)
+
+
+@contextmanager
+def snapshot_search_runtime(*, index_dir: Path, preflight_result: dict[str, Any]):
+    """仅在真实链评测期间注入隔离法律工厂，退出时恢复生产组装入口。"""
+    from app.consultation.agents import legal_research
+    from app.knowledge.wiring import KnowledgeResources
+
+    original = legal_research.build_law_search_service
+    resources = KnowledgeResources()
+
+    def factory(*, law_data=None):
+        return build_snapshot_search_service(resources=resources, index_dir=index_dir, law_data=law_data,
+                                             collection=preflight_result["index_collection"],
+                                             embedding_model=os.environ["TEXT_EMBEDDING_MODEL_NAME"],
+                                             embedding_digest=preflight_result["embedding_digest"])
+
+    legal_research.build_law_search_service = factory
+    try:
+        yield
+    finally:
+        legal_research.build_law_search_service = original
+        resources.close()
 
 
 async def _execute_chain(case: dict[str, str]) -> dict[str, Any]:
@@ -533,11 +634,11 @@ def configure_runtime() -> dict[str, Path]:
     os.environ.setdefault("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     os.environ.setdefault("OLLAMA_MODEL_NAME", "qwen3.5:0.8b")
     os.environ.setdefault("TEXT_EMBEDDING_MODEL_NAME", "qwen3-embedding:0.6b")
-    os.environ.setdefault("CHROMA_PERSIST_DIRECTORY", str(BACKEND / "data/chromadb"))
+    os.environ.setdefault("LAW_SNAPSHOT_INDEX_DIRECTORY", str(ROOT / "evaluation/live_index"))
     os.environ.setdefault("RERANKER_MODEL_PATH", str(BACKEND / "data/models/Qwen/Qwen3-Reranker-0.6B"))
-    index_dir = Path(os.environ["CHROMA_PERSIST_DIRECTORY"]).resolve()
+    index_dir = Path(os.environ["LAW_SNAPSHOT_INDEX_DIRECTORY"]).resolve()
     reranker_path = Path(os.environ["RERANKER_MODEL_PATH"]).resolve()
-    os.environ["CHROMA_PERSIST_DIRECTORY"] = str(index_dir)
+    os.environ["LAW_SNAPSHOT_INDEX_DIRECTORY"] = str(index_dir)
     os.environ["RERANKER_MODEL_PATH"] = str(reranker_path)
     return {"index_dir": index_dir, "reranker_path": reranker_path}
 
@@ -556,7 +657,7 @@ def main() -> int:
         index_dir=paths["index_dir"],
         reranker_path=paths["reranker_path"],
         law_path=LAW,
-        collection=os.environ.get("CHROMA_COLLECTION_NAME", "rag_collection"),
+        collection=os.environ.get("LAW_SNAPSHOT_INDEX_COLLECTION", "rag_collection"),
     )
     cases = _load_cases()
     metadata = _metadata(pre, cases)
@@ -577,7 +678,8 @@ def main() -> int:
         return 2
     output = args.output or OUTPUT_DIR / ("chain.json" if args.mode == "run" else "receptionist_ablation.json")
     if args.mode == "run":
-        result = asyncio.run(run_cases(cases, _execute_chain, output, metadata=metadata, mode="live-chain"))
+        with snapshot_search_runtime(index_dir=paths["index_dir"], preflight_result=pre):
+            result = asyncio.run(run_cases(cases, _execute_chain, output, metadata=metadata, mode="live-chain"))
     else:
         result = asyncio.run(_run_ablation(cases, output, metadata))
     print(json.dumps({"output": str(output), "aggregate": result["aggregate"]}, ensure_ascii=False))

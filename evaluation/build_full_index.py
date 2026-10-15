@@ -46,7 +46,7 @@ def main():
             response.raise_for_status()
             return response.json()["embeddings"]
 
-    from app.knowledge.full_law_index import build_full_index
+    from app.knowledge.law.index import build_full_index
 
     manifest = build_full_index(
         args.corpus, args.index_dir, args.collection, model, digest, embed

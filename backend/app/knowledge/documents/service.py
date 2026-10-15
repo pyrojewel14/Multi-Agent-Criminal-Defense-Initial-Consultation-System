@@ -1,10 +1,10 @@
 import asyncio
 import hashlib
-import queue as queue_module
-import uuid
 import os
+import queue as queue_module
 import tempfile
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import AsyncGenerator, List
@@ -13,13 +13,14 @@ import magic
 from fastapi import HTTPException, UploadFile
 
 from app.infrastructure.logging import get_logger
-from .fingerprints import get_file_md5_hex_sync
-from .events import SliceResult, SSEEvent
-from .tasks import TaskQueue
 from app.knowledge.retrieval.models import RetrievalRequest, RetrievalScope, SearchResult
 from app.knowledge.storage.chroma import StoredRow
+
+from .events import SliceResult, SSEEvent
+from .fingerprints import get_file_md5_hex_sync
 from .processor import DocumentProcessor
 from .repository import DocumentRepository
+from .tasks import TaskQueue
 
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".pptx", ".docx", ".json"}
 ALLOWED_MIME_TYPES = {

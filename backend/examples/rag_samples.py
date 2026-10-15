@@ -9,22 +9,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from collections import Counter
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from app.knowledge.law_knowledge import (
-    _build_article_index,
-    _normalize_article_number,
-    load_criminal_law_data,
-)
-from app.knowledge.law_retrieval import (
-    _extract_article_number_from_text,
-    _verify_and_enrich_with_json,
-    search_laws_by_keyword,
-)
+from app.knowledge.law.corpus import load_criminal_law_data
+from app.knowledge.law.identifiers import normalize_article_number as _normalize_article_number
+from app.knowledge.law.keyword import facts_terms
+from app.knowledge.wiring import KnowledgeResources, build_law_search_service
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 QUERY_FILE = PROJECT_ROOT / "demos" / "rag" / "queries.json"
@@ -91,6 +85,8 @@ def compact_result(result: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "schema_version": result["schema_version"],
+        "retrieval_semantics": result["retrieval_semantics"],
+        "historical_strict_comparison_supported": result["historical_strict_comparison_supported"],
         "generated_at": result["generated_at"],
         "run_mode": result["run_mode"],
         "top_k": result["top_k"],
@@ -104,247 +100,65 @@ def _error_result(exc: Exception) -> dict[str, Any]:
     return {
         "status": "failed",
         "error_type": type(exc).__name__,
-        "message": str(exc) or "依赖返回空错误信息",
         "status_code": getattr(exc, "status_code", None),
     }
 
 
 async def probe_dependencies(probe_live: bool) -> dict[str, Any]:
-    """探测本地知识库、Chroma、BM25、HyDE 和 embedding 状态。"""
-    from app.knowledge.rag.vector_store import get_vector_store
-
+    """离线只加载受控资产；显式在线探针通过同一法律服务报告实际阶段。"""
     law_data = load_criminal_law_data()
-    article_count = sum(len(chapter.get("articles", [])) for chapter in law_data.get("chapters", []))
-
-    vector_store = get_vector_store()
-    collection = await asyncio.to_thread(
-        vector_store.vectors_store.get,
-        include=["documents", "metadatas"],
-    )
-    collection_count = len(collection.get("documents", []))
-    collection_metadata = collection.get("metadatas", [])
-    bm25 = await vector_store.hybrid_retriever.get_bm25_retriever(
-        user_id="phase3-rag-samples",
-        include_public=True,
-    )
-
-    dependencies: dict[str, Any] = {
-        "json_knowledge": {"status": "available", "article_count": article_count},
-        "chroma": {
-            "status": "available" if collection_count else "available_empty",
-            "collection_name": "rag_collection",
-            "document_count": collection_count,
-            "owner_counts": dict(Counter(item.get("user_id") for item in collection_metadata)),
-            "public_counts": {
-                str(key).lower(): value
-                for key, value in Counter(item.get("is_public") for item in collection_metadata).items()
-            },
-            "source_counts": dict(Counter(item.get("original_filename") for item in collection_metadata)),
-        },
-        "bm25": {
-            "status": "available" if bm25 is not None else "unavailable_empty_corpus",
-        },
-        "hyde": {"status": "not_probed"},
-        "embedding": {"status": "not_probed"},
-        "vector_search": {
-            "status": "not_run",
-            "reason": (
-                "等待 live 样例执行" if collection_count else "当前 Chroma collection 为空，不能产生真实向量 top-k"
-            ),
-        },
+    result = {
+        "json_knowledge": {"status": "available", "article_count": sum(len(c["articles"]) for c in law_data["chapters"])},
+        "chroma": {"status": "not_probed", "document_count": None},
+        "bm25": {"status": "not_probed"}, "hyde": {"status": "not_probed"},
+        "embedding": {"status": "not_probed"}, "vector_search": {"status": "not_run"},
     }
-
     if not probe_live:
-        dependencies["hyde"]["reason"] = "离线模式不调用本机 LLM"
-        dependencies["embedding"]["reason"] = "离线模式不调用本机 embedding"
-        return dependencies
-
-    probe_query = "故意伤害他人身体"
-
+        return result
+    resources = KnowledgeResources()
     try:
-        from app.knowledge.rag.rag_service import RagService
-
-        service = RagService(user_id="phase3-rag-samples", include_public=True)
-        hypothetical = await service.generate_hypothetical_document(probe_query)
-        dependencies["hyde"] = {
-            "status": "fallback_to_query" if hypothetical == probe_query else "success",
-            "returned_original_query": hypothetical == probe_query,
-            "model": getattr(service.chat_model, "model", None),
-            "output_length": len(hypothetical),
-        }
+        service = build_law_search_service(law_data=law_data, resources=resources)
+        searched = await service.search("故意伤害", user_id=LIVE_VALIDATION_USER_ID)
+        status = dict(searched.search.retrieval_status)
+        for name in ("bm25", "hyde"):
+            result[name] = {"status": status.get(name, "unconfigured")}
+        result["chroma"]["status"] = status.get("vector", "unconfigured")
+        result["embedding"] = {"status": status.get("vector", "unconfigured")}
+        result["vector_search"] = {"status": status.get("vector", "unconfigured"),
+                                   "dependency_failed": searched.search.dependency_failed,
+                                   "retrieval_status": status}
     except Exception as exc:
-        dependencies["hyde"] = _error_result(exc)
-
-    try:
-        from app.infrastructure.llm.factory import embed_model
-
-        vector = await asyncio.to_thread(embed_model.embed_query, probe_query)
-        dependencies["embedding"] = {
-            "status": "success",
-            "model": getattr(embed_model, "model", None),
-            "dimensions": len(vector),
-        }
-    except Exception as exc:
-        dependencies["embedding"] = _error_result(exc)
-
-    return dependencies
+        result["vector_search"] = _error_result(exc)
+    finally:
+        resources.close()
+    return result
 
 
-async def _run_live_rag_sample(
-    query: str,
-    law_data: dict[str, Any],
-    top_k: int,
-) -> dict[str, Any]:
-    """按真实 RAG 子链运行单条查询并记录各层结果。"""
-    from app.knowledge.rag.rag_service import RagService, _deduplicate_documents
-    from app.knowledge.rag.reorder_service import reorder_service
-
-    service = RagService(user_id=LIVE_VALIDATION_USER_ID, include_public=True)
-    hypothetical = await service.generate_hypothetical_document(query)
-    retriever = await service.vector_store.get_retriever(
-        hypothetical,
-        LIVE_VALIDATION_USER_ID,
-        True,
-    )
-
-    documents = await retriever.ainvoke(hypothetical)
-    deduplicated = _deduplicate_documents(documents)
-    content_to_metadata = {doc.page_content: doc.metadata for doc in deduplicated}
-    contents = list(content_to_metadata)
-    rerank_result = await reorder_service.reorder_documents(query, contents)
-
-    if rerank_result.get("success"):
-        ranked_items = rerank_result.get("documents", [])
-        reranker = {
-            "status": "success",
-            "model": reorder_service.config.model_name,
-        }
-    else:
-        ranked_items = [{"document": content, "similarity": None} for content in contents]
-        reranker = {
-            "status": "fallback_to_retrieval_order",
-            "error": rerank_result.get("error", "未知 rerank 错误"),
-        }
-
-    rag_candidates = []
-    ranked_metadata = []
-    for item in ranked_items[:top_k]:
-        content = item.get("document", "")
-        rag_candidates.append(
-            {
-                "article_number": _extract_article_number_from_text(content),
-                "title": "",
-                "content": content,
-                "elements": [],
-                "base_sentence": "",
-                "charge_tags": [],
-                "common_keywords": [],
-                "chapter": "",
-                "relevance_score": 1.0,
-                "matched_tags": ["RAG 真实检索"],
-                "data_source": "rag",
-            }
-        )
-        ranked_metadata.append(
-            {
-                "rerank_score": (round(float(item["similarity"]), 6) if item.get("similarity") is not None else None),
-                "metadata": content_to_metadata.get(content, {}),
-            }
-        )
-
-    verified = _verify_and_enrich_with_json(
-        rag_candidates,
-        _build_article_index(law_data),
-    )
-    top_results = []
-    for rank, (law, trace) in enumerate(zip(verified, ranked_metadata), 1):
-        metadata = trace["metadata"]
-        top_results.append(
-            {
-                "rank": rank,
-                "article_number": law.get("article_number", ""),
-                "title": law.get("title", ""),
-                "data_source": law.get("data_source", "rag_unverified"),
-                "rerank_score": trace["rerank_score"],
-                "json_verified": law.get("data_source") == "rag_verified",
-                "content_preview": law.get("content", "")[:240],
-                "source": metadata.get("original_filename", metadata.get("source", "")),
-                "metadata_user_id": metadata.get("user_id"),
-                "metadata_is_public": metadata.get("is_public"),
-            }
-        )
-
-    return {
-        "hypothetical_document": hypothetical,
-        "live_rag_top_k": top_results,
-        "layers": {
-            "hyde": {
-                "status": "success" if hypothetical != query else "fallback_to_query",
-                "model": getattr(service.chat_model, "model", None),
-                "output_length": len(hypothetical),
-            },
-            "retriever": {
-                "status": "success",
-                "type": type(retriever).__name__,
-                "uses_ensemble": type(retriever).__name__ == "EnsembleRetriever",
-                "raw_count": len(documents),
-            },
-            "deduplicate": {
-                "status": "success",
-                "before": len(documents),
-                "after": len(deduplicated),
-            },
-            "reranker": reranker,
-            "json_verification": {
-                "status": "success",
-                "verified_count": sum(item["json_verified"] for item in top_results),
-                "unverified_count": sum(not item["json_verified"] for item in top_results),
-            },
-        },
-    }
-
-
-def _candidate_text(law: dict[str, Any]) -> str:
-    """构造本地 reranker 使用的法条文本。"""
-    return " ".join(
-        part
-        for part in (
-            law.get("article_number", ""),
-            law.get("title", ""),
-            law.get("content", ""),
-        )
-        if part
-    )
-
-
-async def _rank_candidates(
-    query: str,
-    candidates: list[dict[str, Any]],
-    with_reranker: bool,
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """按需运行本地 reranker，并保留失败时的原始关键词顺序。"""
-    if not candidates:
-        return [], {"status": "not_run_empty_candidates"}
-
-    if not with_reranker:
-        return candidates, {"status": "not_run"}
-
-    from app.knowledge.rag.reorder_service import reorder_service
-
-    document_map = {_candidate_text(law): law for law in candidates}
-    result = await reorder_service.reorder_documents(query, list(document_map))
-    if not result.get("success"):
-        return candidates, {
-            "status": "fallback_to_keyword_order",
-            "error": result.get("error", "未知 rerank 错误"),
-        }
-
-    ranked = []
-    for item in result.get("documents", []):
-        law = dict(document_map[item["document"]])
-        law["rerank_score"] = round(float(item.get("similarity", 0.0)), 6)
-        ranked.append(law)
-    return ranked, {"status": "success", "model": "Qwen/Qwen3-Reranker-0.6B"}
+async def _run_live_rag_sample(query: str, law_data: dict[str, Any], top_k: int,
+                               resources: KnowledgeResources) -> dict[str, Any]:
+    """调用统一法律服务，保留关键词、向量及核验的独立来源状态。"""
+    service = build_law_search_service(law_data=law_data, resources=resources)
+    searched = await service.search(query, user_id=LIVE_VALIDATION_USER_ID)
+    status = dict(searched.search.retrieval_status)
+    results = []
+    for law in searched.as_laws()[:top_k]:
+        origins = law.get("origins", [])
+        metadata = next((origin["metadata"] for origin in origins if origin["channel"] == "vector"), {})
+        results.append({
+            "rank": law.get("rank"), "article_number": law.get("article_number", ""),
+            "title": law.get("title", ""), "data_source": law["data_source"],
+            "rerank_score": law.get("rerank_score"), "fusion_score": law.get("fusion_score"),
+            "json_verified": law["data_source"] in {"rag_verified", "json_keyword", "text_only"},
+            "content_preview": law.get("content", "")[:240], "source": metadata.get("source"),
+            "metadata_user_id": metadata.get("user_id"), "metadata_is_public": metadata.get("is_public"),
+            "recall_ranks": law.get("recall_ranks", {}),
+        })
+    return {"hypothetical_document": None, "live_rag_top_k": results,
+            "dependency_failed": searched.search.dependency_failed,
+            "layers": {"retrieval_status": status,
+                       "retriever": {"status": status.get("vector"), "type": "RetrievalPipeline", "uses_ensemble": False},
+                       "hyde": {"status": status.get("hyde")}, "reranker": {"status": status.get("rerank")},
+                       "json_verification": {"status": "executed", "verified_count": sum(r["json_verified"] for r in results)}}}
 
 
 async def run_samples(
@@ -360,144 +174,158 @@ async def run_samples(
     dependencies = await probe_dependencies(probe_live or live_rag)
     sample_results = []
     reranker_statuses = []
+    resources = KnowledgeResources()
+    try:
+        offline_service = build_law_search_service(law_data=law_data, resources=resources, env={
+            **os.environ, "LAW_FULL_RERANK_ENABLED": str(with_reranker and not live_rag).lower(),
+            "LAW_FULL_HYDE_ENABLED": "false"})
 
-    for sample in queries:
-        keyword_results = await search_laws_by_keyword(sample["facts_structured"], law_data)
-        ranked_results, reranker = await _rank_candidates(
-            sample["query"],
-            keyword_results[:top_k],
-            with_reranker and not live_rag,
-        )
-        reranker_statuses.append(reranker["status"])
+        for sample in queries:
+            searched = await offline_service.search(sample["query"], user_id=None,
+                                                     keyword_terms=facts_terms(sample["facts_structured"]))
+            ranked_results = searched.as_laws()
+            reranker = {"status": searched.search.retrieval_status.get("rerank", "disabled")}
+            reranker_statuses.append(reranker["status"])
 
-        actual_top_k = []
-        for rank, law in enumerate(ranked_results[:top_k], 1):
-            actual_top_k.append(
+            actual_top_k = []
+            for rank, law in enumerate(ranked_results[:top_k], 1):
+                actual_top_k.append(
+                    {
+                        "rank": rank,
+                        "article_number": law.get("article_number", ""),
+                        "title": law.get("title", ""),
+                        "data_source": law["data_source"],
+                        "relevance_score": law.get("relevance_score"),
+                        "rerank_score": law.get("rerank_score"),
+                        "matched_tags": law.get("matched_tags", []),
+                        "json_verified": True,
+                    }
+                )
+
+            expected_normalized = _normalize_article_number(sample["expected_article_number"])
+            fallback_expected_hit = any(
+                _normalize_article_number(item["article_number"]) == expected_normalized for item in actual_top_k
+            )
+
+            live_result = {
+                "hypothetical_document": None,
+                "live_rag_top_k": [],
+                "layers": {
+                    "status": "not_run",
+                    "reason": "离线模式不执行 HyDE、Chroma、BM25 或 reranker",
+                },
+            }
+            live_error = None
+            if live_rag:
+                try:
+                    live_result = await _run_live_rag_sample(
+                        sample["query"],
+                        law_data,
+                        top_k,
+                        resources,
+                    )
+                except Exception as exc:
+                    live_error = _error_result(exc)
+                    live_result = {
+                        "hypothetical_document": None,
+                        "live_rag_top_k": [],
+                        "layers": {"status": "failed", "error": live_error},
+                    }
+
+            live_expected_hit = any(
+                _normalize_article_number(item["article_number"]) == expected_normalized
+                for item in live_result["live_rag_top_k"]
+            )
+            live_json_verified = any(
+                _normalize_article_number(item["article_number"]) == expected_normalized and item["json_verified"]
+                for item in live_result["live_rag_top_k"]
+            )
+
+            if live_rag and live_result.get("dependency_failed"):
+                failure_reason = "法律索引依赖失败；候选只表示独立受控关键词回退"
+            elif live_rag and live_error:
+                failure_reason = f"真实检索失败: {live_error['error_type']}"
+            elif live_rag and not live_expected_hit:
+                failure_reason = "真实 RAG top-k 未命中预期法条"
+            elif live_rag and not live_json_verified:
+                failure_reason = "真实 RAG 命中预期编号，但未通过本地 JSON 验证"
+            elif not live_rag and not fallback_expected_hit:
+                failure_reason = "JSON 关键词召回未命中预期法条"
+            else:
+                failure_reason = None
+
+            sample_results.append(
                 {
-                    "rank": rank,
-                    "article_number": law.get("article_number", ""),
-                    "title": law.get("title", ""),
-                    "data_source": "json_keyword",
-                    "relevance_score": law.get("relevance_score"),
-                    "rerank_score": law.get("rerank_score"),
-                    "matched_tags": law.get("matched_tags", []),
-                    "json_verified": True,
+                    "id": sample["id"],
+                    "query": sample["query"],
+                    "expected_law": {
+                        "article_number": sample["expected_article_number"],
+                        "title": sample["expected_law_title"],
+                    },
+                    "retrieval_mode": "live_rag" if live_rag else "json_keyword_fallback",
+                    "hypothetical_document": live_result["hypothetical_document"],
+                    "live_rag_top_k": live_result["live_rag_top_k"],
+                    "json_fallback_top_k": actual_top_k,
+                    "actual_top_k": live_result["live_rag_top_k"] if live_rag else actual_top_k,
+                    "live_expected_hit": live_expected_hit,
+                    "fallback_expected_hit": fallback_expected_hit,
+                    "expected_hit": live_expected_hit if live_rag else fallback_expected_hit,
+                    "json_verification_passed": live_json_verified if live_rag else fallback_expected_hit,
+                    "verification_method": (
+                        "unified_law_service_domain_verification"
+                        if live_rag
+                        else "candidate_originates_from_local_json_keyword_search"
+                    ),
+                    "layers": live_result["layers"],
+                    "fallback_reranker": reranker,
+                    "failure_reason": failure_reason,
+                    "live_rag_failure_reason": failure_reason if live_rag else "真实 RAG 未执行",
                 }
             )
 
-        expected_normalized = _normalize_article_number(sample["expected_article_number"])
-        fallback_expected_hit = any(
-            _normalize_article_number(item["article_number"]) == expected_normalized for item in actual_top_k
-        )
-
-        live_result = {
-            "hypothetical_document": None,
-            "live_rag_top_k": [],
-            "layers": {
-                "status": "not_run",
-                "reason": "离线模式不执行 HyDE、Chroma、BM25 或 reranker",
-            },
+        live_reranker_statuses = [
+            sample.get("layers", {}).get("reranker", {}).get("status", "not_run") for sample in sample_results
+        ]
+        dependencies["reranker"] = {
+            "status": (
+                "success_in_live_cases"
+                if live_rag and all(status == "executed" for status in live_reranker_statuses)
+                else "success"
+                if reranker_statuses and all(status == "executed" for status in reranker_statuses)
+                else "partial_or_not_run"
+            ),
+            "live_case_statuses": live_reranker_statuses if live_rag else [],
+            "fallback_case_statuses": reranker_statuses,
         }
-        live_error = None
         if live_rag:
-            try:
-                live_result = await _run_live_rag_sample(
-                    sample["query"],
-                    law_data,
-                    top_k,
-                )
-            except Exception as exc:
-                live_error = _error_result(exc)
-                live_result = {
-                    "hypothetical_document": None,
-                    "live_rag_top_k": [],
-                    "layers": {"status": "failed", "error": live_error},
-                }
-
-        live_expected_hit = any(
-            _normalize_article_number(item["article_number"]) == expected_normalized
-            for item in live_result["live_rag_top_k"]
-        )
-        live_json_verified = any(
-            _normalize_article_number(item["article_number"]) == expected_normalized and item["json_verified"]
-            for item in live_result["live_rag_top_k"]
-        )
-
-        if live_rag and live_error:
-            failure_reason = f"真实 RAG 子链失败: {live_error['error_type']}: {live_error['message']}"
-        elif live_rag and not live_expected_hit:
-            failure_reason = "真实 RAG top-k 未命中预期法条"
-        elif live_rag and not live_json_verified:
-            failure_reason = "真实 RAG 命中预期编号，但未通过本地 JSON 验证"
-        elif not live_rag and not fallback_expected_hit:
-            failure_reason = "JSON 关键词召回未命中预期法条"
-        else:
-            failure_reason = None
-
-        sample_results.append(
-            {
-                "id": sample["id"],
-                "query": sample["query"],
-                "expected_law": {
-                    "article_number": sample["expected_article_number"],
-                    "title": sample["expected_law_title"],
-                },
-                "retrieval_mode": "live_rag" if live_rag else "json_keyword_fallback",
-                "hypothetical_document": live_result["hypothetical_document"],
-                "live_rag_top_k": live_result["live_rag_top_k"],
-                "json_fallback_top_k": actual_top_k,
-                "actual_top_k": live_result["live_rag_top_k"] if live_rag else actual_top_k,
-                "live_expected_hit": live_expected_hit,
-                "fallback_expected_hit": fallback_expected_hit,
-                "expected_hit": live_expected_hit if live_rag else fallback_expected_hit,
-                "json_verification_passed": live_json_verified if live_rag else fallback_expected_hit,
-                "verification_method": (
-                    "live_rag_candidate_verified_by__verify_and_enrich_with_json"
-                    if live_rag
-                    else "candidate_originates_from_local_json_keyword_search"
-                ),
-                "layers": live_result["layers"],
-                "fallback_reranker": reranker,
-                "failure_reason": failure_reason,
-                "live_rag_failure_reason": failure_reason if live_rag else "真实 RAG 未执行",
+            states = [sample["layers"].get("retrieval_status", {}).get("vector", "failed") for sample in sample_results]
+            dependencies["vector_search"] = {
+                "status": states[0] if states and len(set(states)) == 1 else "mixed",
+                "executed_case_count": sum(state == "executed" for state in states),
+                "case_states": states,
+                "case_result_counts": [len(sample["live_rag_top_k"]) for sample in sample_results],
             }
-        )
+            dependencies["live_validation_user_id"] = LIVE_VALIDATION_USER_ID
 
-    live_reranker_statuses = [
-        sample.get("layers", {}).get("reranker", {}).get("status", "not_run") for sample in sample_results
-    ]
-    dependencies["reranker"] = {
-        "status": (
-            "success_in_live_cases"
-            if live_rag and all(status == "success" for status in live_reranker_statuses)
-            else "success"
-            if reranker_statuses and all(status == "success" for status in reranker_statuses)
-            else "partial_or_not_run"
-        ),
-        "live_case_statuses": live_reranker_statuses if live_rag else [],
-        "fallback_case_statuses": reranker_statuses,
-    }
-    if live_rag:
-        dependencies["vector_search"] = {
-            "status": "success" if any(sample["live_rag_top_k"] for sample in sample_results) else "failed",
-            "case_result_counts": [len(sample["live_rag_top_k"]) for sample in sample_results],
+        return {
+            "schema_version": 3,
+            "retrieval_semantics": "unified-pipeline-rrf-verified-keyword-v1",
+            "historical_strict_comparison_supported": False,
+            "generated_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds"),
+            "run_mode": (
+                "live_unified_law_search"
+                if live_rag
+                else "offline_json_keyword_plus_local_reranker"
+                if with_reranker
+                else "offline_json_keyword_contract"
+            ),
+            "top_k": top_k,
+            "dependencies": dependencies,
+            "samples": sample_results,
         }
-        dependencies["live_validation_user_id"] = LIVE_VALIDATION_USER_ID
 
-    return {
-        "schema_version": 2,
-        "generated_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds"),
-        "run_mode": (
-            "live_hyde_chroma_bm25_reranker_json_verification"
-            if live_rag
-            else "offline_json_keyword_plus_local_reranker"
-            if with_reranker
-            else "offline_json_keyword_contract"
-        ),
-        "top_k": top_k,
-        "dependencies": dependencies,
-        "samples": sample_results,
-    }
+    finally:
+        resources.close()
 
 
 def main() -> None:

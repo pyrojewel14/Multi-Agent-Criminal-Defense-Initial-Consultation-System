@@ -129,7 +129,7 @@ export LAW_FULL_INDEX_COLLECTION=criminal_law_full
 export LAW_FULL_EMBEDDING_DIGEST='<manifest和/api/tags中的实际digest>'
 ```
 
-该索引与通用 `CHROMA_*` 用户上传索引隔离；full 使用自己的混合召回、Qwen 重排及可选 HyDE，配置集中见 [全量检索说明](full_law_retrieval.md)。没有 `user_id`时仍跳过RAG，JSON正文检索可以继续；索引未配置或不一致时记录RAG依赖失败，不自动改读旧六条索引。
+该索引与 `CHROMA_*` 用户上传索引隔离；full 与其他数据源共用 `RetrievalPipeline` 的向量、BM25、Qwen 重排及可选 HyDE，通过组装层绑定不同 collection 和 Embedding。配置集中见 [全量检索说明](full_law_retrieval.md)。没有 `user_id` 时仍跳过 RAG，受控 JSON 关键词检索可以继续；索引未配置或不一致时记录依赖失败，不自动改读上传库或旧六条索引。`snapshot` 只选择六条资产，需要 RAG 时须显式注入匹配索引，否则仅关键词召回。
 
 更新应使用新语料文件、新目录和新manifest；先完整核验，再检查运行中服务和会话保存方式后切换。回滚是恢复上一套明确语料路径、索引目录、collection和digest后重启，或改回 `LAW_KNOWLEDGE_PROFILE=snapshot`。回滚配置不会回滚checkpoint、数据库或已生成报告。
 

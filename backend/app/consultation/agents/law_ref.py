@@ -14,13 +14,10 @@ from app.errors.exceptions import LLMServiceException, LLMTimeoutException
 from app.infrastructure.config.prompts import prompt_loader
 from app.infrastructure.llm.gateway import llm_gateway
 from app.infrastructure.logging import get_logger
-from app.knowledge.law_knowledge import (
-    LawKnowledgeDataError,
-    _element_name,
-    _normalize_article_number,
-    is_lawref_eligible,
-    load_criminal_law_data,
-)
+from app.knowledge.law.corpus import load_criminal_law_data
+from app.knowledge.law.identifiers import _normalize_article_number
+from app.knowledge.law.models import LawKnowledgeDataError
+from app.knowledge.law.verification import _element_name, is_lawref_eligible
 from app.security.sensitive_filter import mask_pii
 
 if TYPE_CHECKING:

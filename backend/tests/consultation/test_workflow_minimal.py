@@ -234,16 +234,19 @@ async def test_resumed_fact_refreshes_law_query_and_risk_laws(monkeypatch):
             "has_tool_call": False,
         }
 
-    class FakeRagService:
-        def __init__(self, **_: object) -> None:
-            pass
-
-        async def initialize_retriever(self, query: str) -> None:
-            rag_queries.append(query)
-
-        async def retrieve_documents(self, query: str) -> list[str]:
-            article = "第二百六十三条" if "持刀" in query else "第二百九十三条"
-            return [f"中华人民共和国刑法{article}"]
+    def build_search_service(*, law_data, **kwargs):
+        from app.knowledge.law.repository import LawRepository
+        from app.knowledge.law.service import LawSearchService
+        from app.knowledge.retrieval.config import RetrievalConfig
+        from app.knowledge.retrieval.models import ChannelResult, RetrievalCandidate, StageStatus
+        from app.knowledge.retrieval.pipeline import RetrievalPipeline
+        class Vector:
+            async def retrieve(self, request):
+                rag_queries.append(request.query)
+                article = "第二百六十三条" if "持刀" in request.query else "第二百九十三条"
+                candidate = RetrievalCandidate(article, request.scope.source_id, f"中华人民共和国刑法{article}", {"article_number": article})
+                return ChannelResult("vector", (candidate,), {}, StageStatus("executed"))
+        return LawSearchService(LawRepository(law_data), RetrievalPipeline(Vector(), config=RetrievalConfig(rerank=False)))
 
     law_data = {
         "chapters": [
@@ -371,7 +374,7 @@ async def test_resumed_fact_refreshes_law_query_and_risk_laws(monkeypatch):
             new_callable=AsyncMock,
             return_value="事实摘要",
         ),
-        patch("app.knowledge.rag.rag_service.RagService", FakeRagService),
+        patch("app.consultation.agents.legal_research.build_law_search_service", build_search_service),
         patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", new=law_decision),
         patch("app.consultation.agents.law_ref.load_criminal_law_data", return_value=law_data),
         patch(

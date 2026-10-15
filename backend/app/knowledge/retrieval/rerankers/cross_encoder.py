@@ -27,7 +27,7 @@ class CrossEncoderReranker(LocalScorer):
             self._set_load_status("ready")
             return model
         except Exception as exc:
-            self._set_load_status("error", type(exc).__name__)
+            self._set_load_status("error", exc)
             raise
 
     def _score_sync(self, query: str, documents: Sequence[str]) -> Sequence[float]:

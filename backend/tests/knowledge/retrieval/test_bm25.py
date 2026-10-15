@@ -182,3 +182,28 @@ async def test_all_punctuation_documents_do_not_build_invalid_index(store):
     store.upsert_rows([StoredRow("punctuation", "！？！", {"user_id": "alice"})], embeddings=[[1.0, 0.0]])
     result = await BM25Retriever(store).retrieve(request())
     assert result.status.state == "executed" and result.candidates == ()
+
+
+async def test_concurrent_same_scope_builds_one_index(store, monkeypatch):
+    import time
+    builds = []
+    real = bm25.BM25Okapi
+
+    def slow_build(tokens):
+        builds.append(tokens)
+        time.sleep(0.02)
+        return real(tokens)
+
+    monkeypatch.setattr(bm25, "BM25Okapi", slow_build)
+    retriever = BM25Retriever(store)
+    results = await asyncio.gather(*(retriever.retrieve(request()) for _ in range(4)))
+    assert len(builds) == 1
+    assert all(result.candidates[0].content == TEXTS[0] for result in results)
+
+
+async def test_punctuation_row_does_not_shift_matching_document(store):
+    store.upsert_rows([StoredRow("punctuation", "……！！！", {"user_id": "alice"})],
+                      embeddings=[[1.0, 0.0]])
+    result = await BM25Retriever(store).retrieve(request())
+    assert result.candidates[0].content == TEXTS[0]
+    assert result.candidates[0].metadata["row_id"] == "0"

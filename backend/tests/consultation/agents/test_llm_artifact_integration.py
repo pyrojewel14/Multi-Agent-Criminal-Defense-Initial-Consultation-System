@@ -1,5 +1,8 @@
 """四类 LLM 产物接入 Agent 状态机的回归测试。"""
 
+from tests.knowledge.law.helpers import patch_law_recall, patch_law_keyword
+
+
 import json
 from unittest.mock import AsyncMock, patch
 
@@ -138,7 +141,7 @@ async def test_law_valid_content_json_records_content_json_source():
         },
     ]
     with (
-        patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+        patch_law_recall( return_value=[]),
         patch(
             "app.consultation.agents.legal_research.llm_gateway.generate_with_tools",
             new_callable=AsyncMock,
@@ -167,7 +170,7 @@ async def test_law_invalid_final_degrades_without_success_candidate():
     }
     invalid = {"content": '{"article_ids":["第234条"]}', "tool_calls": [], "has_tool_call": False}
     with (
-        patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+        patch_law_recall( return_value=[]),
         patch(
             "app.consultation.agents.legal_research.llm_gateway.generate_with_tools",
             new_callable=AsyncMock,

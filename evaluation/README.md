@@ -28,6 +28,8 @@ backend/.venv/bin/python evaluation/run_live_eval.py run
 
 真实链默认输出到被 Git 忽略的 `evaluation/live_results/`。若需要保存可公开的证据，可显式传入 `--output evaluation/evidence/<name>.json`；该入口的输出只保留受控状态、错误码和内容/来源指纹，不保存案件正文、原始模型输出或异常消息。索引构建器 `build_live_index.py` 拒绝覆盖已有目录；构建 manifest 标识快照、文档和 embedding 输入。Chroma 目录本身可在读取时变化，其字节哈希不是稳定的索引版本号。运行准备见 [评估说明](../docs/evaluation.md)。
 
+snapshot 真实检索使用专用 `LAW_SNAPSHOT_INDEX_DIRECTORY`（默认 `evaluation/live_index`）和 `LAW_SNAPSHOT_INDEX_COLLECTION`，不再借用或改写 `CHROMA_*` 上传库配置。评测显式校验已有六条索引及 manifest，并把匹配的向量/BM25 Pipeline 注入法律服务；仅选择 `snapshot` 资产不会自动连接向量库。Memory 离线重启评测的法律节点仍是替身，不据此声称执行过法条 RAG。
+
 ## 全量正文与检索消融
 
 `run_full_eval.py` 的三种模式分别调用离线关键词与读取工具、实际 RAG、实际 LawRef 节点；`--query-mode semantic` 使用样例中的自然语言查询，默认 `article` 使用条号查询。准备好 [全量资产与索引](../docs/knowledge/full_criminal_law.md) 后，从仓库根目录选择模式运行：
@@ -45,6 +47,10 @@ backend/.venv/bin/python evaluation/run_full_retrieval_ablation.py --output eval
 ```
 
 该脚本读取已有配置，不构建索引或下载模型；输出文件必须尚不存在。可用 `--modes vector hybrid hybrid_rerank` 选择组别，`--limit <n>` 缩小探针范围，`--case-timeout <seconds>` 设置逐例时限。保留的 [2026-10-02 四组结果](evidence/full_retrieval_ablation_final_2026-10-02.json) 与 [独立核验](evidence/full_retrieval_verification_2026-10-02.json) 是当日证据，不能替代新配置的复跑。
+
+当前四组均经过同一 Registry、法律服务及 Pipeline，保留共同的受控关键词通道。`vector` 仅关闭 RAG 的 BM25、HyDE 和重排，最终仍统一融合；历史来源优先排序已取消。输出指纹标明这一语义变化，不能把历史 vector 与当前 vector 当成同算法的严格前后对照。
+
+[2026-10-15 统一架构对照](../docs/knowledge/full_law_retrieval.md#2026-10-15-统一架构对照) 保留新旧各 120 条真实调用的原始结果、身份与逐例排名核验。默认混合重排组 30 条 Top 5 顺序相同；HyDE 的冷调用超时差异及 vector 语义变化分别说明，不能当作一般化质量或性能提升。
 
 ## 结果与历史材料
 

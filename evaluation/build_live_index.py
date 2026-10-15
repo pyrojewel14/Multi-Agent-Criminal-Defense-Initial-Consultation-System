@@ -5,15 +5,16 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import math
 import subprocess
+import sys
 from pathlib import Path
-from typing import Callable, cast
+from typing import Callable
 
 import chromadb
-from chromadb.api.types import Embedding, Metadata
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "backend") not in sys.path:
+    sys.path.insert(0, str(ROOT / "backend"))
 SNAPSHOT = ROOT / "backend/data/law_knowledge/criminal_law_chapters.json"
 EXPECTED_ARTICLES = {
     "第二百三十二条",
@@ -38,6 +39,7 @@ def build_index(
     embed_documents: Callable[[list[str]], list[list[float]]],
 ) -> dict:
     """Validate provenance first; never overwrite an existing index directory."""
+    from app.knowledge.storage.chroma import ChromaSource, ChromaStore, StoredRow, validate_embedding
     snapshot_path = Path(snapshot_path).resolve()
     index_dir = Path(index_dir).resolve()
     if index_dir.exists():
@@ -62,15 +64,9 @@ def build_index(
     embeddings = embed_documents(documents)
     if len(embeddings) != len(documents):
         raise ValueError("embedding count mismatch")
-    dimensions = {len(vector) for vector in embeddings}
-    if (
-        len(dimensions) != 1
-        or not dimensions.pop()
-        or any(
-            not isinstance(value, (int, float)) or not math.isfinite(value) for vector in embeddings for value in vector
-        )
-    ):
-        raise ValueError("embedding vector invalid")
+    embeddings = [validate_embedding(vector) for vector in embeddings]
+    if len({len(vector) for vector in embeddings}) != 1:
+        raise ValueError("embedding dimension mismatch")
     ids = [_hash_bytes(article["article_number"].encode("utf-8")) for article in articles]
     chroma_metadata = [
         {
@@ -85,14 +81,12 @@ def build_index(
     ]
     index_dir.mkdir(parents=True)
     client = chromadb.PersistentClient(path=str(index_dir))
-    target = client.create_collection(collection)
-    # Chroma 运行时接受普通数值列表，其类型声明要求 Embedding/Metadata 别名。
-    target.add(
-        ids=ids,
-        documents=documents,
-        embeddings=cast(list[Embedding], embeddings),
-        metadatas=cast(list[Metadata], chroma_metadata),
+    store = ChromaStore.create(ChromaSource("law:snapshot-evaluation", client, collection))
+    store.upsert_rows(
+        [StoredRow(identifier, document, metadata) for identifier, document, metadata in zip(ids, documents, chroma_metadata)],
+        embeddings=embeddings,
     )
+    target = client.get_collection(collection, embedding_function=None)
     if (
         target.count() != 6
         or not target.query(query_embeddings=[embeddings[0]], n_results=1, where={"is_public": True})["ids"][0]

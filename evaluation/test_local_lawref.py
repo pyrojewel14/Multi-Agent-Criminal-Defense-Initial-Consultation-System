@@ -287,9 +287,10 @@ async def test_available_run_uses_isolated_dotted_index_and_fixed_gateway_budget
 @pytest.mark.parametrize("returned_model", ["qwen3.5:9b", "unrequested-model", "mixed-models"])
 async def test_fixed_six_replay_through_real_lawref_and_original_scorer(tmp_path, monkeypatch, returned_model):
     """仅供应商与RAG网络用替身，实际工具消息、读取和评分走正式入口。"""
-    from unittest.mock import AsyncMock
-
-    from app.knowledge import law_retrieval
+    from app.knowledge import wiring
+    from app.knowledge.retrieval.config import RetrievalConfig
+    from app.knowledge.retrieval.pipeline import RetrievalPipeline
+    from app.knowledge.wiring import build_law_search_service
 
     index = tmp_path / "public.index"
     index.mkdir()
@@ -301,7 +302,9 @@ async def test_fixed_six_replay_through_real_lawref_and_original_scorer(tmp_path
                 {"endpoint": "/api/tags", "body": {"models": [{"name": "embedding", "digest": "emb"}]}}
             ]}
     monkeypatch.setattr(runner, "probe", available)
-    monkeypatch.setattr(law_retrieval, "search_laws_by_rag", AsyncMock(return_value=[]))
+    monkeypatch.setattr(wiring, "build_law_search_service", lambda *, law_data, profile, resources: build_law_search_service(
+        law_data=law_data, profile=profile, resources=resources,
+        pipeline=RetrievalPipeline(None, config=RetrievalConfig(rerank=False))))
     sent = []
     def respond(request):
         if request.url.path == "/api/ps":

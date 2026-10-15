@@ -8,8 +8,9 @@ import pytest
 from langchain_core.runnables import RunnableConfig
 
 from app.consultation.agents.legal_research import LegalToolRegistry
-from app.knowledge import law_knowledge as knowledge
-from app.knowledge.law_retrieval import _verify_and_enrich_with_json, search_laws_by_keyword
+from app.knowledge.law import corpus as knowledge
+from app.knowledge.law.verification import is_lawref_eligible
+from tests.knowledge.law.helpers import keyword_laws, patch_law_keyword, patch_law_recall, verified_laws
 
 
 @pytest.mark.asyncio
@@ -21,7 +22,7 @@ async def test_unconfigured_application_loads_full_demo_and_falls_back_without_i
     index = knowledge._build_article_index(data)
     assert len(index) == 505
     assert sum(knowledge.is_article_in_force(a) for a in index.values()) == 504
-    assert sum(knowledge.is_lawref_eligible(a) for a in index.values()) == 38
+    assert sum(is_lawref_eligible(a) for a in index.values()) == 38
     registry = LegalToolRegistry({}, "default-test", data)
     result = await registry._search_laws("第133条之一")
     assert result["rag_dependency_failed"] is True
@@ -42,8 +43,8 @@ def test_full_profile_loads_body_without_promoting_annotations(full):
     index = knowledge._build_article_index(full)
     assert len(index) == 505
     assert not knowledge.is_article_in_force(index["第199条"])
-    assert not knowledge.is_lawref_eligible(index["第133条之一"])
-    assert knowledge.is_lawref_eligible(index["第264条"])
+    assert not is_lawref_eligible(index["第133条之一"])
+    assert is_lawref_eligible(index["第264条"])
     assert index["第1条"]["elements"] == []
     assert index["第1条"]["base_sentence"] == ""
     assert index["第133条之一"]["annotations"]["elements"]["review_status"] == "pending"
@@ -51,7 +52,7 @@ def test_full_profile_loads_body_without_promoting_annotations(full):
 
 @pytest.mark.asyncio
 async def test_text_search_and_read_outside_six_has_no_coverage_elements(full):
-    with patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]):
+    with patch_law_recall( return_value=[]):
         registry = LegalToolRegistry({}, None, full)
         result = await registry._search_laws("第133条之一")
         assert result["candidates"][0]["article_id"] == "第133条之一"
@@ -68,17 +69,17 @@ async def test_text_search_and_read_outside_six_has_no_coverage_elements(full):
 @pytest.mark.asyncio
 async def test_general_and_cross_reference_body_readable(full):
     for query, wanted in [("第1条", "第一条"), ("第149条", "第一百四十九条"), ("第277条", "第二百七十七条")]:
-        laws = await search_laws_by_keyword({"behavior_sequence": [query]}, full)
+        laws = await keyword_laws({"behavior_sequence": [query]}, full)
         assert laws[0]["article_number"] == wanted
         assert laws[0]["required_elements"] == []
-    assert await search_laws_by_keyword({"behavior_sequence": ["第199条"]}, full) == []
+    assert await keyword_laws({"behavior_sequence": ["第199条"]}, full) == []
 
 
 def test_full_rag_mismatch_does_not_inherit_elements(full):
     index = knowledge._build_article_index(full)
     article = index["第264条"]
     hit = {"article_number": "第264条", "content": article["content"], "corpus_sha256": "sha256:wrong"}
-    enriched = _verify_and_enrich_with_json([hit], index)
+    enriched = verified_laws([hit], index)
     assert enriched[0]["data_source"] == "rag_unverified"
     assert enriched[0].get("required_elements", []) == []
 
@@ -99,7 +100,7 @@ def test_invalid_profile_fails_closed(monkeypatch):
 
 
 def test_tampered_pending_annotations_fail_validation(full):
-    from app.knowledge.full_law_corpus import validate_full_corpus
+    from app.knowledge.law.corpus import validate_full_corpus
 
     changed = copy.deepcopy(full)
     article = changed["chapters"][0]["articles"][0]
@@ -139,7 +140,7 @@ async def test_real_lawref_text_only_final_cannot_create_coverage(full):
             new_callable=AsyncMock,
             side_effect=responses,
         ),
-        patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+        patch_law_recall( return_value=[]),
     ):
         state = await law_ref_node(
             make_consultation_state(facts_structured={"behavior_sequence": ["醉酒驾驶机动车"]}, applied_laws=[])
@@ -176,7 +177,7 @@ async def test_full_profile_six_fixture_keeps_real_coverage_path(full):
             new_callable=AsyncMock,
             side_effect=responses,
         ),
-        patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[]),
+        patch_law_recall( return_value=[]),
     ):
         state = await law_ref_node(
             make_consultation_state(facts_structured={"behavior_sequence": ["盗窃"]}, applied_laws=[])
@@ -195,20 +196,21 @@ def test_matching_rag_full_body_inherits_only_core_elements(full):
             "content": index[n]["article_number"] + " " + index[n]["content"],
             "corpus_sha256": index[n]["corpus_sha256"],
             "corpus_version": index[n]["corpus_version"],
+            "content_sha256": index[n]["text_provenance"]["content_sha256"],
         }
         for n in ["第264条", "第133条之一"]
     ]
-    laws = _verify_and_enrich_with_json(hits, index)
+    laws = verified_laws(hits, index)
     assert laws[0]["data_source"] == "rag_verified"
     assert laws[0]["required_elements"]
     assert laws[1]["data_source"] == "text_only"
     assert laws[1]["required_elements"] == []
     hits[0]["content"] = "第264条 invented content"
-    assert _verify_and_enrich_with_json(hits, index)[0]["data_source"] == "rag_unverified"
+    assert verified_laws(hits, index)[0]["data_source"] == "rag_unverified"
 
 
 def test_import_reproducible_and_keeps_pending_proposals(full):
-    from app.knowledge.full_law_corpus import prepare_full_corpus, review_queue
+    from app.knowledge.law.corpus import prepare_full_corpus, review_queue
 
     candidate = copy.deepcopy(full)
     candidate["metadata"]["dataset_version"] = "candidate"
@@ -239,7 +241,7 @@ def test_derived_arabic_suffix_resolves_same_body(full):
 
 @pytest.mark.parametrize("mutation", ["source", "derived"])
 def test_full_validator_rejects_wrong_source_and_wrong_derived_number(full, mutation):
-    from app.knowledge.full_law_corpus import validate_full_corpus
+    from app.knowledge.law.corpus import validate_full_corpus
 
     broken = copy.deepcopy(full)
     if mutation == "source":
@@ -325,7 +327,7 @@ def test_copied_public_backend_loads_without_supplier_directory(tmp_path):
     import sys
     from pathlib import Path
 
-    backend = Path(knowledge.__file__).resolve().parents[2]
+    backend = Path(knowledge.__file__).resolve().parents[3]
     destination = tmp_path / "backend"
     shutil.copytree(backend / "app", destination / "app", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     data = destination / "data/law_knowledge"
@@ -338,7 +340,7 @@ def test_copied_public_backend_loads_without_supplier_directory(tmp_path):
         [
             sys.executable,
             "-c",
-            "from app.knowledge.law_knowledge import load_criminal_law_data,_build_article_index; d=load_criminal_law_data(); i=_build_article_index(d); assert len(i)==505; assert '醉酒驾驶机动车' in i['第133条之一']['content']; print('portable-full-text-ok')",
+            "from app.knowledge.law.corpus import load_criminal_law_data; from app.knowledge.law.repository import _build_article_index; d=load_criminal_law_data(); i=_build_article_index(d); assert len(i)==505; assert '醉酒驾驶机动车' in i['第133条之一']['content']; print('portable-full-text-ok')",
         ],
         cwd=tmp_path,
         env=env,
@@ -353,8 +355,8 @@ def test_copied_public_backend_loads_without_supplier_directory(tmp_path):
 async def test_text_only_rag_keeps_retrieval_method_in_tool_observation(full):
     index = knowledge._build_article_index(full)
     a = index["第133条之一"]
-    hit = {"article_number": a["article_number"], "content": a["article_number"] + " " + a["content"], "corpus_sha256": a["corpus_sha256"], "corpus_version": a["corpus_version"], "retrieval_method": "vector_index"}
-    with patch("app.knowledge.law_retrieval.search_laws_by_rag", new_callable=AsyncMock, return_value=[hit]):
+    hit = {"article_number": a["article_number"], "content": a["article_number"] + " " + a["content"], "corpus_sha256": a["corpus_sha256"], "corpus_version": a["corpus_version"], "content_sha256": a["text_provenance"]["content_sha256"], "retrieval_method": "vector_index"}
+    with patch_law_recall( return_value=[hit]), patch_law_keyword(return_value=[]):
         result = await LegalToolRegistry({}, "user", full)._search_laws("醉酒驾驶机动车")
     candidate = next(c for c in result["candidates"] if c["article_id"] == "第133条之一")
     assert candidate["source"] == "text_only"

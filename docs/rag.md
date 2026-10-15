@@ -21,39 +21,26 @@
 
 正文来源和逐条 hash 保存在 `text_provenance`；快照版本整合至刑法修正案（十二）。不要把资产版本时点解释为每条的最初施行日期或当前个案的适用法。来源与时间字段详见 [审查与适用时间契约](knowledge/full_criminal_law.md#审查与适用时间契约)。
 
-## 两条检索路径
+## 一条检索流程，分别绑定数据源
 
-两条路径都从结构化事实构造查询，经过 JSON 核验与关键词补召回，再由 LawRef 读取条文并提交最终答案。
+`LegalToolRegistry` 把模型的搜索查询交给 `LawSearchService`。服务收集原查询向量、BM25、可选 HyDE 和受控关键词通道，核验完整候选池后，交 `RetrievalPipeline.finalize()` 统一融合、可选重排并取最终 top5。Registry 只维护工具协议和已搜索/已读取约束，检索算法不会在工具层再执行一次。
 
-### 默认 `full`：独立公共索引
+`LAW_KNOWLEDGE_PROFILE` 选择 `full` 或六条 `snapshot` 资产。两种资产共用同一服务与 Pipeline；区别在资产、数据源和核验要求：
 
-自然语言默认链路是：原查询向量 top20 + 中文 BM25 top20 → RRF 融合 → 受控 JSON 核验及关键词合并 → Qwen 统一重排 top5 → LawRef 读取与最终核验。可选 HyDE 默认关闭；精确条号直接读取，跳过扩展与重排。
+| 绑定 | 行为 |
+| --- | --- |
+| 默认 `full` | 只打开明确配置的独立公共 collection；每请求核验 manifest、正文、metadata、向量与实际 Embedding 模型 digest |
+| `snapshot` 未绑定向量源 | 仅使用受控 JSON 关键词，向量状态为 `unconfigured` |
+| `snapshot` 显式注入匹配 Pipeline | 用相应 collection 和 Embedding 运行同一流程；测试和历史 live 评测须明确绑定 |
+| 上传文档 | `DocumentService` 绑定上传 collection，按用户和公共范围检索；不会自动成为法条来源 |
 
-full 使用独立公共 collection，与用户上传 collection 隔离。索引目录、manifest、语料与实际 embedding digest 必须匹配；构建操作见 [setup](setup.md#4-构建并连接全量法条索引)。专用配置、预算、设备与失败回退只在 [全量检索说明](knowledge/full_law_retrieval.md) 维护。
+缺少认证 `user_id` 时法条服务跳过 RAG，仍可运行受控关键词。不能用 `session_id` 代替身份。full 索引缺失或不一致是依赖失败；不会改读上传库。构建操作见 [setup](setup.md#4-构建并连接全量法条索引)，排序、预算和设备配置见 [全量检索说明](knowledge/full_law_retrieval.md)。
 
-### `snapshot`：通用 RagService
+BM25 文档和查询共用中文单字及相邻双字切分，英文和数字按词处理。每次检索先从 Chroma 读取当前授权快照，再使用按数据源、用户/公共范围、正文/metadata 指纹和分词版本分隔的有界缓存；每个组件最多保留 8 份。读取失败不能返回旧缓存。缓存省去重复分词与统计构建，不省略读库或 full 完整性核验。
 
-```text
-结构化事实
-  → RagService(user_id, include_public=True)
-      HyDE 改写查询
-      Chroma 向量检索
-      有语料时使用 BM25 / Ensemble
-      去重、reranker 重排
-  → 用六条 JSON 快照连接条号和项目标注
-  → JSON 关键词补召回
-  → LawRef 读取候选并核验最终答案
-```
+向量召回、BM25 和 HyDE 只返回通道候选；RRF 使用通道排名，不直接混加向量距离、BM25 与模型分数。`vector` 模式关闭 BM25 和 HyDE，法条领域关键词仍进入共同候选池；它不会恢复历史来源优先排序。各原始来源及核验结果保存在 `origins`，选择可信代表不会洗白不一致的 RAG 来源。
 
-这条路径需要自行准备用户/公共文档库；六条 JSON 本身不是预建的 Chroma 索引。HyDE 失败时回退原查询，BM25 无语料或语料没有可索引 token 时保留向量检索，reranker 失败时保留召回顺序。
-
-通用 BM25 的文档与查询共用中文单字及相邻双字切分，英文和数字按词处理；与 full 复用同一切分函数。
-
-每个 `HybridRetriever` 实例按用户和是否包含公共库分别缓存统计索引，最多保留 8 个范围，按最近使用顺序淘汰。每次获取检索器仍从 Chroma 读取当前授权范围内的文档快照，正文、metadata 或切分版本变化时重建，范围变空时删除对应缓存；读取失败时不返回旧缓存。缓存省去重复的文档分词和 BM25 统计构建，读库成本仍保留，索引只存于进程内。返回的文档容器和检索数量独立，避免调用方修改污染后续检索。
-
-通用 `CausalLMReranker` 默认按 [Qwen 官方评分协议](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B#using-transformers) 使用完整 system/user/assistant 与空 think 模板，对最后位置的 `yes/no` logits 做二元归一化。前后缀预留 token 预算，查询与文档组成的正文按剩余长度截断；token IDs 直接填充后送入模型，避免解码往返丢失特殊 token。该路径与 full 专用重排器分别管理加载、设备和失败处理；协议一致不代表真实排序质量已得到验证。
-
-两条路径的 `search_laws_by_rag()` 都先检查 `user_id`。旧 checkpoint 缺少用户身份时跳过 RAG，关键词检索仍可运行；不能用 `session_id` 代替身份。`full` 的公共索引与 `snapshot` 的用户权限过滤应分别理解。
+Qwen 与 Cross-Encoder 分别实现同一评分协议，Pipeline 根据注入的组件决定是否重排。Qwen 使用官方 yes/no token 模板，保留完整查询并只截断文档；评分器返回输入顺序的分数，最终排序与截断由 Pipeline 完成。加载、设备、busy、超时及关闭由共享执行器管理，运行时仅加载本地文件。文件职责见 [Knowledge 模块组织](architecture.md#knowledge-模块如何组织)。
 
 ## 候选来源与覆盖资格
 

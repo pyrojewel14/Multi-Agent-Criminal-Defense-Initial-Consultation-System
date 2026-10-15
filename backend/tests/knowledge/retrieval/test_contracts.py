@@ -1,6 +1,7 @@
 """Shared retrieval records preserve failures and independent immutable snapshots."""
 
 from dataclasses import FrozenInstanceError, replace
+
 import pytest
 
 from app.knowledge.retrieval import models
@@ -16,7 +17,7 @@ def test_empty_result_preserves_dependency_status():
     for record in (result, pool):
         assert record.dependency_failed is True
         assert record.retrieval_status["vector"].state == "failed"
-        assert record.retrieval_status["vector"].error_type == "MissingCollection"
+        assert record.retrieval_status["vector"].error_type == "OtherError"
         assert record.retrieval_status["vector"].degraded is True
     assert result.candidates == ()
 

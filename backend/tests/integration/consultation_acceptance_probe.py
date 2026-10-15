@@ -101,8 +101,12 @@ def worker(output, runtime, restore):
     from app.consultation.memory.context import current_node_context
     from app.infrastructure.database.db import AsyncSessionLocal
     from app.infrastructure.llm.gateway import LLMGateway
-    from app.knowledge import law_retrieval
-    from app.knowledge.law_knowledge import load_criminal_law_data
+    from app.consultation.agents import legal_research
+    from app.knowledge.law.corpus import load_criminal_law_data
+    from app.knowledge.retrieval.config import RetrievalConfig
+    from app.knowledge.retrieval.models import ChannelResult, RetrievalCandidate, StageStatus
+    from app.knowledge.retrieval.pipeline import RetrievalPipeline
+    from app.knowledge.wiring import build_law_search_service
     from app.models import Consultation, ConsultationMessage, User, UserRole
     from app.security.jwt import create_access_token
 
@@ -180,13 +184,21 @@ def worker(output, runtime, restore):
             return "合成案件记忆摘要，陈述尚待核实。"
         raise AssertionError(f"未声明的模型调用节点：{node}")
 
-    async def rag(facts, user_id=None, **kwargs):
-        rag_calls.append({"user_id": user_id, "mode": "vector_boundary_stub"})
-        # 向量召回边界返回固定候选；条文校验、关键词召回和工具循环均执行真实代码。
-        return [{"article_number": law["article_number"], "content": law["content"], "relevance_score": 1.0}]
+    class VectorBoundaryStub:
+        async def retrieve(self, request):
+            rag_calls.append({"user_id": request.scope.user_id, "mode": "vector_boundary_stub"})
+            # 只替换向量召回；统一 Pipeline、领域核验及工具循环均执行真实代码。
+            candidate = RetrievalCandidate("acceptance-law", request.scope.source_id, law["content"],
+                                           {"article_number": law["article_number"]})
+            return ChannelResult("vector", (candidate,), {candidate.candidate_id: 0.1}, StageStatus("executed"))
+
+    def search_service(*, law_data=None, **kwargs):
+        pipeline = RetrievalPipeline(VectorBoundaryStub(), config=RetrievalConfig(mode="vector", rerank=False))
+        return build_law_search_service(law_data=law_data, profile="snapshot", pipeline=pipeline,
+                                       source_id="law:snapshot-acceptance")
     LLMGateway.generate = generate
     LLMGateway.generate_with_tools = tools
-    law_retrieval.search_laws_by_rag = rag
+    legal_research.build_law_search_service = search_service
     from main import app
 
     tokens = {}

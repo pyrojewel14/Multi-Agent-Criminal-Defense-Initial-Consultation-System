@@ -291,10 +291,8 @@ async def run(args) -> dict:
               "LANGGRAPH_CHECKPOINT_DB_PATH": (state / "checkpoints.sqlite").resolve()}
     with environment(config):
         from app.consultation.agents.legal_research import _SYSTEM_PROMPT
-        from app.knowledge.law_knowledge import (
-            _build_article_index,
-            load_criminal_law_data,
-        )
+        from app.knowledge.law.repository import _build_article_index
+        from app.knowledge.law.corpus import load_criminal_law_data
 
         from evaluation.run_full_eval import run_evaluation
 

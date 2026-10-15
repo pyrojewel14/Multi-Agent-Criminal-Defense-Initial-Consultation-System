@@ -14,7 +14,7 @@
 | `run_full_retrieval_ablation.py` | full，真实 Registry/索引/重排，可选 HyDE | 四组检索候选对照，详见 [全量检索说明](knowledge/full_law_retrieval.md#复跑消融) |
 | `run_memory_eval.py` | 固定多轮样例，按 runner 模式使用替身或真实模型 | Memory/上下文评测，不能与单输入 baseline 混合 |
 | `run_full_eval.py live-lawref` | full，真实聊天模型和检索 | LawRef 局部最终答案；不是整条咨询 |
-| `run_live_eval.py` | 历史 snapshot 与配套索引 | preflight、组件对照或生产图链路 |
+| `run_live_eval.py` | snapshot 与显式绑定的专用六条索引 | preflight、组件对照或生产图链路 |
 | `run_cloud_lawref.py` | 指定云模型、full 索引、公开固定案例 | 显式配置下的 LawRef 云对照 |
 
 先按 [安装说明](setup.md) 准备依赖。不同入口有独立样例、评分与结果格式，不能混合计分。

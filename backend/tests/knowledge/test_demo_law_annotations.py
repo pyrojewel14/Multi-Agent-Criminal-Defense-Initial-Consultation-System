@@ -8,7 +8,8 @@ import pytest
 from langchain_core.runnables import RunnableConfig
 
 from app.consultation.agents.legal_research import LegalToolRegistry
-from app.knowledge import law_knowledge as knowledge
+from app.knowledge.law import corpus as knowledge
+from app.knowledge.law.verification import is_lawref_eligible
 
 
 @pytest.fixture
@@ -30,29 +31,29 @@ async def test_full_demo_profile_releases_reviewed_demo_into_tools(demo):
     assert body["required_elements"]
     assert body["annotation_usage"] == "demo"
     assert knowledge._build_article_index(demo)["第134条"]["annotations"]["elements"]["legal_review_status"] == "pending"
-    assert sum(knowledge.is_lawref_eligible(a) for a in knowledge._build_article_index(demo).values()) == 38
+    assert sum(is_lawref_eligible(a) for a in knowledge._build_article_index(demo).values()) == 38
 
 
 def test_full_profile_needs_no_additional_review_opt_in(monkeypatch):
     monkeypatch.setenv("LAW_KNOWLEDGE_PROFILE", "full")
     monkeypatch.delenv("LAW_FULL_DEMO_ANNOTATIONS", raising=False)
     data = knowledge.load_criminal_law_data()
-    assert knowledge.is_lawref_eligible(knowledge._build_article_index(data)["第133条之一"])
+    assert is_lawref_eligible(knowledge._build_article_index(data)["第133条之一"])
 
 
 def test_demo_keeps_general_repealed_and_unreviewed_out(demo):
     index = knowledge._build_article_index(demo)
     for num in ("第1条", "第17条", "第149条", "第199条", "第123条"):
-        assert not knowledge.is_lawref_eligible(index[num])
+        assert not is_lawref_eligible(index[num])
         assert index[num]["elements"] == []
-    assert knowledge.is_lawref_eligible(index["第133条之一"])
+    assert is_lawref_eligible(index["第133条之一"])
     assert all("demo_condition" not in e["key"] for e in index["第264条"]["elements"])
 
 
 def test_switching_demo_off_restores_six_without_stale_cache(demo, monkeypatch):
     monkeypatch.setenv("LAW_FULL_DEMO_ANNOTATIONS", "off")
     raw = knowledge.load_criminal_law_data()
-    assert sum(knowledge.is_lawref_eligible(a) for a in knowledge._build_article_index(raw).values()) == 6
+    assert sum(is_lawref_eligible(a) for a in knowledge._build_article_index(raw).values()) == 6
     assert knowledge._build_article_index(raw)["第133条之一"]["elements"] == []
 
 
@@ -114,7 +115,7 @@ async def test_demo_missing_branch_stays_missing_despite_overlapping_keywords(de
 
 def test_mismatched_demo_asset_fails_without_promoting(demo, monkeypatch, tmp_path):
     from pathlib import Path
-    path = Path(knowledge.__file__).resolve().parents[2] / "data/law_knowledge/criminal_law_demo_annotations.json"
+    path = Path(knowledge.__file__).resolve().parents[3] / "data/law_knowledge/criminal_law_demo_annotations.json"
     asset = json.loads(path.read_text())
     asset["corpus_sha256"] = "sha256:stale"
     bad = tmp_path / "annotations.json"

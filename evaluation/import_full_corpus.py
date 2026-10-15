@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
-from app.knowledge.full_law_corpus import prepare_full_corpus, review_queue, sha256
+from app.knowledge.law.corpus import prepare_full_corpus, review_queue, sha256
 
 
 def main():

@@ -5,7 +5,6 @@ from langchain.embeddings.base import Embeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
-
 class AsyncTextSplitter:
     """
     异步文本分割器类

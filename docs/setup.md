@@ -112,6 +112,16 @@ LAW_FULL_EMBEDDING_DIGEST=<构建输出中的实际 embedding_model_digest>
 
 默认 full 的混合召回、Qwen 重排、可选 HyDE 和设备配置见 [全量检索说明](knowledge/full_law_retrieval.md#配置与-hyde)。Memory 输入/摘要预算见 [Memory 配置](memory/README.md#配置与预算)，需按实际模型窗口配置。
 
+运行时只读取本地重排权重，不在请求或 readiness 中自动下载。可在仓库根目录显式准备：
+
+```bash
+backend/.venv/bin/python backend/scripts/prepare_reranker.py
+# 确认需要下载缺失模型后再执行：
+backend/.venv/bin/python backend/scripts/prepare_reranker.py --download
+```
+
+第一条只检查已有目录，缺失时非零退出；第二条才允许通过 ModelScope 下载。权重就绪不代表已完成真实检索质量验证。
+
 ## 5. 启动服务
 
 分别在三个终端的仓库根目录运行：
@@ -171,7 +181,7 @@ make eval
 
 ```bash
 (cd backend && .venv/bin/python -c \
-  "from app.knowledge.law_knowledge import preflight_law_knowledge; preflight_law_knowledge(); print('preflight OK')")
+  "from app.knowledge.law.corpus import preflight_law_knowledge; preflight_law_knowledge(); print('preflight OK')")
 ```
 
 预期最后输出 `preflight OK`；数据缺失或校验失败时抛出错误。它检查结构、来源和标注契约，不连 Ollama，不校验 Chroma 索引。
@@ -218,7 +228,7 @@ services:
 | Redis 连接失败，应用无法启动 | `redis-cli ping`、地址、端口、密码 | 修 Redis 配置；它是启动硬依赖 |
 | 法条预检失败 | 报错中的文件和字段 | 恢复匹配的公开资产，检查自定义语料/标注路径 |
 | 模型不可达 | base URL、模型名、服务状态 | 容器使用宿主机地址，本地使用 loopback 地址 |
-| reranker 缺失、超时或繁忙 | `RERANKER_MODEL_PATH` 与 full 专用状态 | full 回退融合顺序；snapshot 回退召回顺序，详见 [全量检索说明](knowledge/full_law_retrieval.md) |
+| reranker 缺失、超时或繁忙 | `RERANKER_MODEL_PATH` 与阶段状态 | 统一 Pipeline 回退融合顺序，详见 [全量检索说明](knowledge/full_law_retrieval.md) |
 
 ## 边界
 

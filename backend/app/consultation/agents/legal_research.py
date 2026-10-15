@@ -23,14 +23,12 @@ from app.infrastructure.observability.tracing import (
     trace_span,
     trace_store,
 )
-from app.knowledge import law_retrieval
-from app.knowledge.law_knowledge import (
-    _build_article_index,
-    _element_name,
-    _normalize_article_number,
-    is_article_in_force,
-    is_lawref_eligible,
-)
+from app.knowledge.law.identifiers import _normalize_article_number
+from app.knowledge.law.models import plain
+from app.knowledge.law.repository import _build_article_index, is_article_in_force
+from app.knowledge.law.service import LawSearchService
+from app.knowledge.law.verification import _element_name, is_lawref_eligible
+from app.knowledge.wiring import build_law_search_service
 from app.security.sensitive_filter import mask_pii
 
 
@@ -117,10 +115,12 @@ def _article_fingerprint(article: dict[str, Any], law_data: dict[str, Any]) -> s
 class LegalToolRegistry:
     """仅开放三种固定工具；模型返回的名称与参数均不直接执行。"""
 
-    def __init__(self, facts: dict[str, Any], user_id: str | None, law_data: dict[str, Any]):
+    def __init__(self, facts: dict[str, Any], user_id: str | None, law_data: dict[str, Any], *,
+                 search_service: LawSearchService | None = None):
         self.facts = facts
         self.user_id = user_id
         self.law_data = law_data
+        self.search_service = search_service if search_service is not None else build_law_search_service(law_data=law_data)
         self.searched: dict[str, dict[str, Any]] = {}
         self.observed: set[str] = set()
         self.rag_dependency_failed = False
@@ -151,52 +151,12 @@ class LegalToolRegistry:
         ]
 
     async def _search_laws(self, query: str) -> dict[str, Any]:
-        """复用原有 RAG、快照验证和关键词召回，不重复实现索引。"""
-        query_facts = {"behavior_sequence": [query.strip()], "consequence": ""}
-        full_profile = os.getenv("LAW_KNOWLEDGE_PROFILE", "full") == "full"
-        if full_profile:
-            rag_results = await law_retrieval.search_laws_by_rag(query_facts, self.user_id, candidate_pool=True)
-        else:
-            rag_results = await law_retrieval.search_laws_by_rag(query_facts, self.user_id)
-        self.rag_dependency_failed = bool(getattr(rag_results, "dependency_failed", False))
+        """消费法律服务结果，只记录已搜索项并组织工具 observation。"""
+        result = await self.search_service.search(query, user_id=self.user_id)
+        self.rag_dependency_failed = result.search.dependency_failed
         index = _build_article_index(self.law_data)
-        verified_rag = law_retrieval._verify_and_enrich_with_json(rag_results, index)
-        keyword = await law_retrieval.search_laws_by_keyword(query_facts, self.law_data)
-        merged = law_retrieval._merge_and_deduplicate(verified_rag, keyword)
-        retrieval_status = dict(getattr(rag_results, "retrieval_status", {}))
-        if full_profile and retrieval_status.get("method") in {"hybrid_index", "vector_index", "article_id_index"}:
-            from app.knowledge.full_law_retrieval import RetrievalConfig, finalize_candidates
-
-            config = RetrievalConfig.from_env()
-            # 精确条号不扩展到其他候选；自然语言合并后只重排一次。
-            if retrieval_status["method"] == "article_id_index":
-                merged = verified_rag
-            elif retrieval_status["method"] == "hybrid_index":
-                keyword = keyword[:config.recall_k]
-                merged = law_retrieval._merge_and_deduplicate(verified_rag, keyword)
-                retrieval_status["keyword_recall_count"] = len(keyword)
-                by_id = {
-                    _normalize_article_number(law["article_number"]): {
-                        **law,
-                        "recall_ranks": dict(law.get("recall_ranks", {})),
-                        "recall_scores": dict(law.get("recall_scores", {})),
-                    }
-                    for law in merged
-                }
-                for rank, law in enumerate(keyword, 1):
-                    candidate = by_id[_normalize_article_number(law["article_number"])]
-                    candidate["fusion_score"] = candidate.get("fusion_score", 0) + 1 / (60 + rank)
-                    candidate["recall_ranks"]["keyword"] = rank
-                    candidate["recall_scores"]["keyword"] = law.get("relevance_score")
-                merged = sorted(by_id.values(), key=lambda law: -law.get("fusion_score", 0))
-            elif not config.rerank:
-                # 显式 vector 消融保留历史工具排序，避免改写对照基线。
-                merged.sort(key=lambda law: law.get("data_source") not in {"rag_verified", "json_keyword"})
-                retrieval_status["ranking_contract"] = "legacy_source_priority"
-            merged = await finalize_candidates(query.strip(), merged, retrieval_status, config)
-        else:
-            merged.sort(key=lambda law: law.get("data_source") not in {"rag_verified", "json_keyword"})
-            merged = merged[:5]
+        merged = result.as_laws()
+        retrieval_status = plain(result.search.retrieval_status)
         candidates = []
         for law in merged:
             article_id = _normalize_article_number(law.get("article_number", ""))
@@ -216,7 +176,7 @@ class LegalToolRegistry:
                 {
                     "article_id": article_id,
                     "title": law.get("title") or law.get("display_title", ""),
-                    "score": law.get("rerank_score", law.get("fusion_score", law.get("relevance_score"))),
+                    "score": law.get("rerank_score") if law.get("rerank_score") is not None else law.get("fusion_score", law.get("relevance_score")),
                     "rank": law.get("rank"),
                     "fusion_score": law.get("fusion_score"),
                     "rerank_score": law.get("rerank_score"),
@@ -224,20 +184,16 @@ class LegalToolRegistry:
                     "recall_scores": law.get("recall_scores", {}),
                     "retrieval_status": law.get("retrieval_status", retrieval_status),
                     "article_status": index.get(article_id, {}).get("status"),
-                    "coverage_eligible": article_id in self.searched and is_lawref_eligible(index[article_id]),
-                    "provenance": {
-                        key: law.get(key) or index.get(article_id, {}).get(key)
-                        for key in (
-                            "corpus_version",
-                            "corpus_sha256",
-                            "content_sha256",
-                            "official_text_source",
-                            "text_provenance",
-                            "source",
-                            "text_review_status",
-                            "legal_review_status",
-                        )
-                    },
+                    "coverage_eligible": law.get("coverage_eligible", False),
+                    "provenance": law.get("provenance", {}),
+                    "origins": [
+                        {"source_id": origin["source_id"], "candidate_id": origin["candidate_id"],
+                         "channel": origin["channel"],
+                         "source": origin.get("verification", {}).get("source", "rag_unverified"),
+                         "coverage_eligible": origin.get("verification", {}).get("coverage_eligible", False),
+                         "verified": origin.get("verification", {}).get("provenance", {}).get("verified", False)}
+                        for origin in law.get("origins", [])
+                    ],
                     "source": source,
                     "retrieval_method": law.get("retrieval_method")
                     or ("rag" if source.startswith("rag_") else "keyword"),

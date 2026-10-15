@@ -1,78 +1,57 @@
-"""全量重排器的设备选择、配置切换与失败回退。"""
+"""统一重排器组装的设备配置隔离与不可用设备降级。"""
+
+from dataclasses import replace
 
 import pytest
 import torch
 
-from app.knowledge import full_law_retrieval as retrieval
-from app.knowledge.full_law_reranker import QwenFullReranker
-
-
-@pytest.mark.parametrize(
-    "requested,cuda,mps,expected",
-    [
-        ("auto", True, True, "cuda"),
-        ("auto", False, True, "mps"),
-        ("auto", False, False, "cpu"),
-        ("cpu", True, True, "cpu"),
-        ("mps", True, True, "mps"),
-        ("cuda", True, False, "cuda"),
-    ],
+from app.knowledge.retrieval.config import RerankerConfig, RetrievalConfig
+from app.knowledge.retrieval.models import (
+    ChannelResult,
+    RetrievalCandidate,
+    RetrievalRequest,
+    RetrievalScope,
+    StageStatus,
 )
-def test_device_selection_respects_explicit_choice(monkeypatch, requested, cuda, mps, expected):
-    monkeypatch.setattr(torch.cuda, "is_available", lambda: cuda)
-    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: mps)
-    assert QwenFullReranker.resolve_device(requested) == expected
-
-
-@pytest.mark.parametrize("requested", ["cuda", "mps"])
-def test_unavailable_explicit_device_is_not_silently_replaced(monkeypatch, requested):
-    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
-    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
-    with pytest.raises(RuntimeError, match="unavailable"):
-        QwenFullReranker.resolve_device(requested)
+from app.knowledge.retrieval.pipeline import RetrievalPipeline
+from app.knowledge.retrieval.rerankers import QwenReranker
+from app.knowledge.wiring import KnowledgeResources
 
 
 @pytest.mark.parametrize("requested", ["metal", "mps:0"])
 def test_invalid_device_rejected_before_allocating_model(requested):
     with pytest.raises(ValueError, match="device"):
-        QwenFullReranker("unused", 512, "instruction", device=requested)
+        RerankerConfig(device=requested)
 
 
-@pytest.mark.asyncio
-async def test_device_setting_changes_the_cached_scorer(monkeypatch):
-    import app.knowledge.full_law_reranker as module
-
-    class LocalScorer:
-        def __init__(self, path, length, instruction, device="auto"):
-            self.device = device
-
-        async def score(self, query, documents, timeout):
-            return [{"cpu": 0.25, "mps": 0.75, "auto": 0.1}[self.device]] * len(documents)
-
-    monkeypatch.setattr(module, "QwenFullReranker", LocalScorer)
-    retrieval._scorer.cache_clear()
+def test_device_setting_changes_cached_scorer_without_loading_model():
+    resources = KnowledgeResources()
+    config = RerankerConfig(device="cpu")
     try:
-        monkeypatch.setenv("LAW_FULL_RERANK_DEVICE", "cpu")
-        assert await retrieval.score_candidates("query", ["document"], 1) == [0.25]
-        monkeypatch.setenv("LAW_FULL_RERANK_DEVICE", "mps")
-        assert await retrieval.score_candidates("query", ["document"], 1) == [0.75]
+        cpu = resources.scorer(config)
+        mps = resources.scorer(replace(config, device="mps"))
+        assert cpu is resources.scorer(config)
+        assert cpu is not mps
+        assert cpu.config.device == "cpu" and mps.config.device == "mps"
+        assert cpu.readiness()["status"] == mps.readiness()["status"] == "not_loaded"
     finally:
-        retrieval._scorer.cache_clear()
+        resources.close()
 
 
 @pytest.mark.asyncio
 async def test_unavailable_mps_preserves_fusion_order_and_records_failure(monkeypatch):
-    monkeypatch.setenv("LAW_FULL_RERANK_DEVICE", "mps")
-    monkeypatch.setenv("LAW_FULL_RERANK_ENABLED", "true")
     monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
-    laws = [{"content": "候选一"}, {"content": "候选二"}]
-    status = {}
-    scorer = QwenFullReranker("unused", 512, "instruction", device="mps")
-    monkeypatch.setattr(retrieval, "_scorer", lambda *args: scorer)
+    scorer = QwenReranker(RerankerConfig(local_path="unused", device="mps"))
+    class Vector:
+        async def retrieve(self, request):
+            candidates = tuple(RetrievalCandidate(str(i), "law", body, {}) for i, body in enumerate(("候选一", "候选二")))
+            return ChannelResult("vector", candidates, {}, StageStatus("executed"))
+    pipeline = RetrievalPipeline(Vector(), reranker=scorer, config=RetrievalConfig(rerank=True))
     try:
-        result = await retrieval.finalize_candidates("query", laws, status, retrieval.RetrievalConfig.from_env())
-        assert [law["content"] for law in result] == ["候选一", "候选二"]
-        assert status["rerank"] == "failed" and status["degraded"] is True
-        assert status["rerank_error"] == "RuntimeError"
+        result = await pipeline.search(RetrievalRequest("query", RetrievalScope("law", "alice", True), 20, 5))
+        assert [candidate.content for candidate in result.candidates] == ["候选一", "候选二"]
+        assert result.retrieval_status["rerank"] == "failed"
+        assert result.retrieval_status["degraded"] is True
+        assert result.retrieval_status["rerank_error"] == "RuntimeError"
     finally:
         scorer.close()

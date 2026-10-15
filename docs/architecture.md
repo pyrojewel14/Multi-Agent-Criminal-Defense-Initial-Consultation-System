@@ -14,7 +14,7 @@ React / TypeScript 用户界面
   → ConsultationService：授权、恢复、串行执行、幂等与业务审计
   → LangGraph 工作流：9 个执行节点
       → LLM Gateway：模型调用、deadline 与有限重试
-      → 法条检索：full 公共索引 / snapshot 通用 RagService
+      → LawSearchService：法条核验与统一 RetrievalPipeline
       → LangGraph checkpoint SQLite：图执行状态
       → 业务 SQLite：用户、咨询与消息审计
       → Redis：缓存与观测投影
@@ -31,6 +31,58 @@ JWT 是签名访问令牌，RBAC 是按角色控制权限，LangGraph 是保存�
 5. 风险与服务节点生成草案，律师明确审核后才可完成普通流程。
 
 9 个节点、五种法条结果和三次连续失败窗口只在 [工作流](workflow.md) 维护。语料与覆盖资格见 [法条与检索](rag.md)，混合召回与重排由 [全量检索说明](knowledge/full_law_retrieval.md) 维护，原文、派生记忆和上下文预算由 [Memory 说明](memory/README.md) 维护。
+
+## Knowledge 模块如何组织
+
+`backend/app/knowledge/` 按职责拆分。法条检索与上传文档检索共用 `RetrievalPipeline`，由 `wiring.py` 注入各自的 Chroma collection、Embedding、配置和可选模型组件。`full` / `snapshot` 选择法条资产，不选择另一套检索算法；上传库不会自动成为法条数据源。
+
+```text
+knowledge/
+├── wiring.py                     组装数据源、Embedding、服务与模型生命周期
+├── retrieval/                    不依赖法律业务的检索组件
+│   ├── models.py                 请求、范围、候选、通道池、状态和最终结果
+│   ├── protocols.py              Retriever、QueryExpander、Reranker 注入契约
+│   ├── config.py                 检索和模型配置；在组装时读取环境
+│   ├── errors.py                 固定安全诊断类别，未知异常名归 OtherError
+│   ├── pipeline.py               召回、一次融合、可选重排、最后 Top K 和降级
+│   ├── vector.py                 指定数据源和授权范围的向量召回
+│   ├── bm25.py                   指定授权快照的 BM25 与有界缓存
+│   ├── tokenization.py           文档和查询共用中文单字/双字切分
+│   ├── fusion.py                 RRF、去重及原始通道证据保留
+│   ├── hyde.py                   可选假设文本生成、预算和 usage 记录
+│   └── rerankers/
+│       ├── qwen.py               Qwen yes/no 评分协议，返回输入顺序的分数
+│       ├── cross_encoder.py      Cross-Encoder 评分适配
+│       └── _execution.py         本地加载、设备、单工作线程、busy/关闭
+├── storage/
+│   └── chroma.py                 原生 Chroma 读写，禁用隐式 Embedding
+├── law/                          法律领域规则，不实现另一套排序
+│   ├── models.py                 法条结果、资格核验与 JSON 输出
+│   ├── identifiers.py            母条/增补条识别与规范化
+│   ├── corpus.py                 全量正文、来源及版本校验
+│   ├── annotations.py            demo 标注加载与放行门槛
+│   ├── repository.py             资产选择、条号索引与法条读取
+│   ├── verification.py           正文一致性、来源和覆盖资格核验
+│   ├── keyword.py                受控 JSON 关键词召回通道
+│   ├── index.py                  全量索引构建、manifest/向量完整性校验
+│   └── service.py                精确条号分流、核验完整池、交 Pipeline 排序
+└── documents/                    上传文档的管理与统一检索
+    ├── service.py                上传/SSE、搜索和管理操作的协调
+    ├── repository.py             用户文档、分块、指纹记录的读写
+    ├── processor.py              加载与切块，不写向量库
+    ├── loaders.py                文件格式加载
+    ├── fingerprints.py           文件 MD5 计算、文档和分块去重记录
+    ├── events.py                 SSE 事件及切片结果
+    ├── tasks.py                  切片工作队列
+    ├── summary.py                消费已完成的 SearchResult 生成摘要
+    └── splitters/{text,legal}.py  普通文本与法律文本切块
+```
+
+`pipeline.py` 只决定阶段如何组合；评分算法具体在 `rerankers/qwen.py` 和 `cross_encoder.py`。评分器不去重、不融合、不截断，Pipeline 收到完整候选池的分数后才决定最终顺序。`HyDEExpander` 只生成额外召回文本，`BM25Retriever` 与 `ChromaVectorRetriever` 只返回各自通道结果。
+
+法条服务先 `recall()`，把关键词放进同一池并核验每个原始候选，再 `finalize()` 一次完成融合、重排和截断。领域服务可选择可信的同条代表，但失败来源的核验结果仍保留在 `origins`，相关性分数不能提升覆盖资格。普通文档直接调用 `search()`；摘要复用该结果，不重新检索或重排。
+
+上传文档以原文件名统一列表、详情与删除的管理身份。服务先准备分块和显式向量，再协调 Chroma 与 JSONL 指纹；加载、Embedding 或写入失败通过现有错误响应/SSE 返回。稳定行 ID 与限定本次上传的补偿支持失败重试，文件指纹必须得到实际完整分块支撑才视为已上传。这不是跨库事务，补偿失败仍明确报错。上传管理组装入口显式允许初始化缺失 collection；法条索引仍只打开已有库，不借此创建或回退。
 
 ## 存储与恢复
 

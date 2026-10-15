@@ -3,12 +3,9 @@
 from app.consultation.agents.law_ref import (
     _build_element_to_law_mapping,
 )
-from app.knowledge.law_knowledge import _build_article_index, _cn_to_arabic, _normalize_article_number
-from app.knowledge.law_retrieval import (
-    _extract_article_number_from_text,
-    _merge_and_deduplicate,
-    _verify_and_enrich_with_json,
-)
+from app.knowledge.law.identifiers import _cn_to_arabic, _extract_article_number_from_text, _normalize_article_number
+from app.knowledge.law.repository import _build_article_index
+from tests.knowledge.law.helpers import verified_laws
 
 # ──────────────────────────── _cn_to_arabic ──────────────────────────────────
 
@@ -230,7 +227,7 @@ class TestVerifyAndEnrichWithJson:
                 "common_keywords": [],
             }
         ]
-        enriched = _verify_and_enrich_with_json(rag_results, article_index)
+        enriched = verified_laws(rag_results, article_index)
 
         assert len(enriched) == 1
         assert enriched[0]["data_source"] == "rag_verified"
@@ -248,14 +245,14 @@ class TestVerifyAndEnrichWithJson:
                 "content": "内容",
             }
         ]
-        enriched = _verify_and_enrich_with_json(rag_results, article_index)
+        enriched = verified_laws(rag_results, article_index)
 
         assert len(enriched) == 1
         assert enriched[0]["data_source"] == "rag_unverified"
         assert enriched[0]["title"] == "未知"
 
     def test_empty_rag_results(self):
-        enriched = _verify_and_enrich_with_json([], {})
+        enriched = verified_laws([], {})
         assert enriched == []
 
     def test_chinese_article_number_normalized(self):
@@ -284,57 +281,13 @@ class TestVerifyAndEnrichWithJson:
                 "common_keywords": [],
             }
         ]
-        enriched = _verify_and_enrich_with_json(rag_results, article_index)
+        enriched = verified_laws(rag_results, article_index)
         assert enriched[0]["data_source"] == "rag_verified"
 
 
 # ──────────────────────────── _merge_and_deduplicate ─────────────────────────
 
 
-class TestMergeAndDeduplicate:
-    """_merge_and_deduplicate 测试。"""
-
-    def test_merge_primary_and_secondary(self):
-        primary = [{"article_number": "第1条", "title": "A"}]
-        secondary = [{"article_number": "第2条", "title": "B"}]
-        result = _merge_and_deduplicate(primary, secondary)
-        assert len(result) == 2
-
-    def test_dedup_by_article_number(self):
-        primary = [{"article_number": "第1条", "title": "A"}]
-        secondary = [{"article_number": "第1条", "title": "B"}]
-        result = _merge_and_deduplicate(primary, secondary)
-        assert len(result) == 1
-        assert result[0]["title"] == "A"
-
-    def test_primary_takes_precedence(self):
-        primary = [{"article_number": "第1条", "title": "Primary", "data_source": "rag_verified"}]
-        secondary = [{"article_number": "第1条", "title": "Secondary", "data_source": "json_keyword"}]
-        result = _merge_and_deduplicate(primary, secondary)
-        assert len(result) == 1
-        assert result[0]["title"] == "Primary"
-
-    def test_empty_lists(self):
-        assert _merge_and_deduplicate([], []) == []
-
-    def test_no_article_number_uses_title_as_key(self):
-        primary = [{"article_number": "", "title": "故意伤害罪"}]
-        secondary = [{"article_number": "", "title": "故意伤害罪"}]
-        result = _merge_and_deduplicate(primary, secondary)
-        assert len(result) == 1
-
-    def test_no_number_no_title_added_directly(self):
-        primary = [{"article_number": "", "title": "", "content": "X"}]
-        result = _merge_and_deduplicate(primary, [])
-        assert len(result) == 1
-
-    def test_chinese_and_arabic_dedup(self):
-        """中文和阿拉伯数字的法条编号归一化后应去重。"""
-        primary = [{"article_number": "第234条", "title": "A"}]
-        secondary = [{"article_number": "第二百三十四条", "title": "B"}]
-        result = _merge_and_deduplicate(primary, secondary)
-        assert len(result) == 1
-        assert result[0]["title"] == "A"
 
 
 # ──────────────────────────── _build_element_to_law_mapping ──────────────────
