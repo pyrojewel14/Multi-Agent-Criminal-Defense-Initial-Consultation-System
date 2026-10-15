@@ -12,6 +12,10 @@ import argparse
 import asyncio
 import getpass
 import sys
+from pathlib import Path
+
+# 直接执行 backend/scripts/*.py 时，Python 的模块搜索路径不一定包含 backend/。
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import func, select
 
