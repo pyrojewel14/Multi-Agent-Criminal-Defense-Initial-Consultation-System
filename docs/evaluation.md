@@ -29,6 +29,8 @@ Memory 的状态与预算契约见 [当前说明](memory/README.md)。[阶段 3 
 
 全量正文的索引与离线工具证据见 [全量资产说明](knowledge/full_criminal_law.md#评测与证据)。
 
+2026-10-16 多工具拒绝反馈修正后，真实 9b 仅复测上述六例中的两条条号案例，评分 2/2；保持原窗口、预算与案例字节。其余四例未重跑，不能合并成新的六例总分，汇总脚本收尾异常与离线补齐也单独记录。详见[协议修正与子集证据](knowledge/lawref_response_protocol.md#本地有限对照入口)。
+
 ## 评估定位
 
 `evaluation/run_eval.py` 是小规模离线评估，用于检查事实字段、法条关键词、高风险转人工、追问和拒答/免责声明等基础契约。运行模式为 `offline-deterministic-baseline`，不调用 LLM、Ollama、ChromaDB、向量检索或 reranker。独立的 `run_live_eval.py` 有单独样例与结果格式；其 preflight 和组件 ablation 不能冒充完整链评估。

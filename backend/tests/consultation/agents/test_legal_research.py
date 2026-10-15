@@ -47,6 +47,128 @@ async def test_application_default_keeps_candidate_protocol_disabled(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_legacy_recovers_from_multiple_calls_with_linked_rejections(monkeypatch):
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    monkeypatch.setenv("LAW_AGENT_FINAL_PROTOCOL", "legacy")
+    rejected = {
+        "content": "",
+        "tool_calls": [
+            {"name": "get_article", "args": {"article_id": "第264条"}, "id": "read-article"},
+            {"name": "search_elements", "args": {"article_id": "第264条"}, "id": "read-elements"},
+        ],
+    }
+    histories = []
+
+    async def respond(system, prompt, tools, **kwargs):
+        history = list(kwargs.get("message_history", []))
+        histories.append(history)
+        if len(histories) == 1:
+            return decision("search_laws", {"query": "盗窃"})
+        if len(histories) == 2:
+            return rejected
+        feedback = [
+            message
+            for message in history
+            if isinstance(message, ToolMessage) and message.tool_call_id in {"read-article", "read-elements"}
+        ]
+        if len(feedback) != 2:
+            return rejected
+        if len(histories) == 3:
+            return decision("get_article", {"article_id": "第264条"})
+        return final()
+
+    with (
+        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", side_effect=respond),
+        patch_law_recall(return_value=[]),
+    ):
+        result = await run_legal_research(FACTS, "user", load_criminal_law_data(), max_steps=4)
+
+    assert result.termination_reason == "final_answer"
+    assert result.step_count == 4
+    assert result.successful_tool_call_count == 2
+    assert result.failed_tool_call_count == 2
+    assert result.candidate_laws[0]["article_number"] == "第二百六十四条"
+    rejected_call = next(
+        message for message in histories[2] if isinstance(message, AIMessage) and len(message.tool_calls) == 2
+    )
+    feedback = [
+        message
+        for message in histories[2]
+        if isinstance(message, ToolMessage) and message.tool_call_id in {"read-article", "read-elements"}
+    ]
+    assert {call["id"] for call in rejected_call.tool_calls} == {message.tool_call_id for message in feedback}
+    for message in feedback:
+        payload = json.loads(message.content)
+        assert payload["status"] == "invalid_arguments"
+        assert payload["result"]["error"] == "single_tool_call_required"
+        assert payload["result"]["executed"] is False
+
+
+@pytest.mark.asyncio
+async def test_rejected_multiple_calls_do_not_mark_article_as_read(monkeypatch):
+    monkeypatch.setenv("LAW_AGENT_FINAL_PROTOCOL", "legacy")
+    responses = [
+        decision("search_laws", {"query": "盗窃"}),
+        {
+            "content": "",
+            "tool_calls": [
+                {"name": "get_article", "args": {"article_id": "第264条"}, "id": "article"},
+                {"name": "search_elements", "args": {"article_id": "第264条"}, "id": "elements"},
+            ],
+        },
+        final(),
+    ]
+    with (
+        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", side_effect=responses),
+        patch_law_recall(return_value=[]),
+    ):
+        result = await run_legal_research(FACTS, "user", load_criminal_law_data(), max_steps=3)
+
+    assert result.candidate_laws == []
+    assert result.termination_reason == "max_steps"
+    assert result.trajectory[-1].tool_result_summary["rejection_reason"] == "unread_article"
+    assert result.successful_tool_call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "calls",
+    [
+        [{"name": "get_article", "args": {}}, {"name": "search_elements", "args": {}}],
+        [{"name": "get_article", "args": {}, "id": "same"}, {"name": "search_elements", "args": {}, "id": "same"}],
+        [None, {"name": "get_article", "args": None}],
+    ],
+)
+async def test_rejected_call_feedback_stays_linked_and_bounded(monkeypatch, calls):
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from app.consultation.memory.context import message_groups
+
+    monkeypatch.setenv("LAW_AGENT_FINAL_PROTOCOL", "legacy")
+    histories = []
+
+    async def respond(system, prompt, tools, **kwargs):
+        histories.append(list(kwargs.get("message_history", [])))
+        return {"content": "", "tool_calls": calls}
+
+    with patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", side_effect=respond):
+        result = await run_legal_research(FACTS, "user", load_criminal_law_data(), max_steps=2)
+
+    assert result.termination_reason == "max_steps"
+    assert result.step_count == 2
+    assert result.candidate_laws == []
+    assert result.successful_tool_call_count == 0
+    assert histories[1]
+    groups = message_groups(histories[1])
+    for group in groups:
+        if isinstance(group[0], AIMessage):
+            ids = [call["id"] for call in group[0].tool_calls]
+            assert len(ids) == len(set(ids))
+            assert set(ids) == {message.tool_call_id for message in group[1:] if isinstance(message, ToolMessage)}
+
+
+@pytest.mark.asyncio
 async def test_model_receives_assistant_calls_and_linked_tool_results():
     from langchain_core.messages import AIMessage, ToolMessage
 

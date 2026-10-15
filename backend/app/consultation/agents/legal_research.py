@@ -115,6 +115,56 @@ def _article_fingerprint(article: dict[str, Any], law_data: dict[str, Any]) -> s
     return f"sha256:{hashlib.sha256(json.dumps(payload, ensure_ascii=False).encode('utf-8')).hexdigest()}"
 
 
+def _rejected_tool_feedback(calls: list[Any], step: int) -> list[BaseMessage]:
+    """为未执行的调用返回完整关联错误，避免下一轮重复同一请求。"""
+    normalized = []
+    identifiers: set[str] = set()
+    for position, call in enumerate(calls):
+        if not isinstance(call, dict) or not isinstance(call.get("name"), str) or not call["name"]:
+            continue
+        identifier = str(call.get("id") or f"lawref-{step}-rejected-{position}")
+        while identifier in identifiers:
+            identifier += "-rejected"
+        identifiers.add(identifier)
+        normalized.append(
+            {
+                "name": call["name"],
+                "args": call.get("args") if isinstance(call.get("args"), dict) else {},
+                "id": identifier,
+            }
+        )
+    feedback: list[BaseMessage] = []
+    if normalized:
+        feedback.append(AIMessage(content="", tool_calls=normalized))
+        for call in normalized:
+            feedback.append(
+                ToolMessage(
+                    content=json.dumps(
+                        {
+                            "status": "invalid_arguments",
+                            "result": {
+                                "error": "single_tool_call_required",
+                                "executed": False,
+                            },
+                        }
+                    ),
+                    tool_call_id=call["id"],
+                    name=call["name"],
+                )
+            )
+    # 无法规范为工具消息的响应也得到纠偏；不能把拒绝的调用记为已执行或已读取。
+    feedback.append(
+        HumanMessage(
+            content=(
+                "上一轮工具请求被拒绝，未执行任何工具。每轮只允许一个格式正确的工具调用。"
+                "下一轮请选择一个工具；get_article 已同时返回正文与构成要件，"
+                "无需同时调用 search_elements。"
+            )
+        )
+    )
+    return feedback
+
+
 class LegalToolRegistry:
     """仅开放三种固定工具；模型返回的名称与参数均不直接执行。"""
 
@@ -150,7 +200,7 @@ class LegalToolRegistry:
             StructuredTool.from_function(
                 coroutine=self._get_article,
                 name="get_article",
-                description="按已检索到的条文编号读取验证快照中的法条正文及来源。",
+                description="按已检索条号读取法条正文、来源及构成要件；已包含要件，无需同时调用 search_elements。",
                 args_schema=ArticleArgs,
             ),
             StructuredTool.from_function(
@@ -479,6 +529,7 @@ async def run_legal_research(
                     )
                     result.tool_call_count += len(calls)
                     result.failed_tool_call_count += len(calls)
+                    message_history.extend(_rejected_tool_feedback(calls, step_number))
                     continue
                 call = calls[0]
                 result.tool_call_count += 1
