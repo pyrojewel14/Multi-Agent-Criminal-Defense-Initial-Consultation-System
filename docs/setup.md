@@ -62,7 +62,7 @@ LAW_FULL_DEMO_ANNOTATIONS=on
 
 embedding 把文字转换为向量，用于按语义检索。当前 `full` 索引入口只接受 Ollama embedding；聊天模型与 embedding 配置需分别核对，不能把云聊天配置直接当作全量检索配置。
 
-**先知道这个限制**：上述小模型是默认配置示例。最近记录的本地六例 LawRef 复测未通过；配置正确不保证生成有效最终答案。详见 [模型证据](knowledge/lawref_response_protocol.md#本地小模型与新提示词复测2026-10-01)。
+**先知道这个限制**：上述小模型是默认配置示例。2026-10-15 已安装的 `qwen3.5:9b` 六例 LawRef 复测仍未通过；配置正确不保证生成有效最终答案。详见 [模型证据](knowledge/lawref_response_protocol.md#本地有限对照入口)。
 
 ## 4. 构建并连接全量法条索引
 
@@ -201,6 +201,10 @@ make compose-down
 
 现有 Compose 包含 backend 与 Redis；法条 JSON 进入镜像，前端、Ollama、向量索引和模型权重需要另行准备。`host.docker.internal` 用于访问宿主机的 **Ollama HTTP 服务**，不能读取宿主机上的索引目录。
 
+后端镜像默认先从 PyTorch 官方 CPU 安装源安装 `torch`，再安装其余依赖，避免无 CUDA 的容器拉取 GPU 运行库。需要其他 PyTorch 构建时，可通过 `build.args.PYTORCH_INDEX_URL` 显式指定相应官方安装源；选择 CUDA wheel 本身不会为容器配置 GPU 设备。该默认值只影响镜像，不改变宿主机 Python 环境。
+
+Ollama 在另一台机器时，在本地 override 的 `environment.OLLAMA_BASE_URL` 中设置容器实际可达的 HTTP 地址；不能沿用容器内的 `127.0.0.1`。先从容器核对 `/api/version`、`/api/tags` 和 embedding digest，再运行真实检索；主机名在宿主机能解析，不代表在容器内也能解析。
+
 要在容器里使用宿主机已构建的索引，可创建本地 `docker-compose.override.yml`，同时挂载目录和相邻 manifest：
 
 ```yaml
@@ -215,6 +219,8 @@ services:
 ```
 
 示例采用可写挂载：Chroma 的读取可能更新 SQLite 文件。先停止使用同一索引的本地后端，再供容器使用；此示例不是多进程共享索引方案。改过目录名时同步修改容器内路径。override 文件已被 Git 忽略。
+
+挂载成功不代表跨环境索引校验通过。2026-10-15 的受控验收中，同一索引在宿主机通过精确向量哈希校验，在 Linux ARM 容器读回时有 198/504 条向量哈希不同，文档内容哈希一致，抽查向量值呈 float32 尾差。该差异的底层成因尚未确认，容器真实 RAG 被完整性检查拒绝；不能直接改 manifest 或关闭校验放行。跨环境使用前需在目标环境核验读回一致性，并单独验证重建或迁移方案。
 
 业务 SQLite、LangGraph checkpoint、通用 Chroma、MD5 store 与模型缓存放在 `backend-runtime` 命名卷，Redis 使用 `redis-data`。checkpoint 保存流程状态；保留卷和 checkpoint 文件才能恢复中断位置。详见 [存储与恢复](architecture.md#存储与恢复)。
 

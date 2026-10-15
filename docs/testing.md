@@ -136,6 +136,10 @@ cd backend
 
 2026-10-13 主线程独立复跑相关正式接口、工作流和 API 组 192 项通过；接口验收与 startup/readiness 另跑 5 项通过。这些是当时的定向证据，不能代替真实模型、容器构建运行或生产验收。
 
+2026-10-15 重构收尾后的定向组：`test_consultation_acceptance.py`、`test_main_startup.py`、`test_readiness.py` 与 `test_checkpoint_persistence.py` 共 13 项通过；本地评测／full 评分／索引测试共 28 项通过。前端 Vitest 5 文件 12 项通过，类型检查与构建退出码 0。后端确定性测试仍使用其声明的模型与向量替身。
+
+另行执行的[真实运行验收](../evaluation/evidence/runtime_acceptance_2026-10-15.json)使用隔离合成账号、两 SQLite、独立 Redis、已安装 9b、公共索引副本和真实页面：CPU 镜像构建、健康、pip check、权限隔离及正常重启后按 ID 读取状态／原文一致；页面登录、新建与告知通过。完整模型链未通过，宿主机 LawRef 超时、容器请求 504，均无报告草案；容器索引哈希拒绝使用。重启后的页面旧会话发现仍受活跃列表缓存限制，不能把这些局部通过称为完整前端端到端或生产验收。
+
 根目录的 `make test` 运行一个较小的后端配置/JWT/数据库/OpenAPI 分组和全部前端 Vitest：
 
 ```bash

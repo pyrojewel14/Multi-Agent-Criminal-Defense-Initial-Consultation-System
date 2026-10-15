@@ -1,0 +1,208 @@
+{
+  "date": "2026-10-15",
+  "source_head": "fd7286bf46eb1947902a4e66a843177181dcb7cb",
+  "source_files_verified_in_container": 148,
+  "container_source_hashes_match": true,
+  "docker_server_version": "28.3.2",
+  "compose_version": "2.39.1-desktop.1",
+  "image": {
+    "id": "sha256:cbaab199db874494cd6291a42cda49ff2660fbf02e57cb63dbda53ce527d181a",
+    "architecture": "arm64",
+    "os": "linux",
+    "size_bytes": 2226833146
+  },
+  "containers": [
+    {
+      "service": "backend",
+      "state": "running",
+      "health": "healthy"
+    },
+    {
+      "service": "redis",
+      "state": "running",
+      "health": "healthy"
+    }
+  ],
+  "packages_and_retrieval_probe": {
+    "torch": "2.14.1+cpu",
+    "torch_cuda": null,
+    "gpu_packages": [],
+    "pip_check_exit": 0,
+    "pip_check": "No broken requirements found.",
+    "ollama": {
+      "version_http": 200,
+      "version": "0.40.4",
+      "tags_http": 200,
+      "models": [
+        "qwen3-embedding:0.6b",
+        "qwen3.5:9b"
+      ]
+    },
+    "retrieval": {
+      "candidate_count": 0,
+      "dependency_failed": true,
+      "status": {
+        "degraded": true,
+        "hyde_attempt_count": 0,
+        "keyword": "executed",
+        "vector": "failed",
+        "bm25": "failed",
+        "hyde": "failed",
+        "rerank": "skipped_empty",
+        "recall_counts": {
+          "keyword": 0,
+          "vector": 0,
+          "bm25": 0,
+          "hyde": 0
+        },
+        "mode": "hybrid",
+        "method": "hybrid_index",
+        "integrity_error": "ValueError",
+        "candidate_count": 0
+      },
+      "sources": []
+    }
+  },
+  "container_real_embedding": {
+    "http_status": 200,
+    "model": "qwen3-embedding:0.6b",
+    "vectors": 1,
+    "dimension": 1024
+  },
+  "cross_environment_index_check": {
+    "same_chroma_version": "1.5.9",
+    "numpy_host": "2.4.6",
+    "numpy_container": "2.5.4",
+    "host_manifest_vectors_match": true,
+    "container_manifest_vectors_match": false,
+    "documents_hashes_identical": true,
+    "different_vector_rows": 198,
+    "total_vector_rows": 504,
+    "first_vector_sample_host": [
+      -0.07150571793317795,
+      -0.06871096789836884,
+      -0.007722624111920595,
+      0.017840081825852394,
+      -0.045716654509305954,
+      -0.1299547404050827,
+      0.053597524762153625,
+      0.007706780917942524,
+      -0.02355012856423855,
+      0.03423676639795303
+    ],
+    "first_vector_sample_container": [
+      -0.07150571793317795,
+      -0.06871096789836884,
+      -0.0077226245775818825,
+      0.017840081825852394,
+      -0.045716654509305954,
+      -0.1299547404050827,
+      0.053597528487443924,
+      0.007706781383603811,
+      -0.023550130426883698,
+      0.03423676639795303
+    ],
+    "cause_confirmed": false,
+    "integrity_check_bypassed": false
+  },
+  "host_real_consultation": {
+    "message_http_status": 200,
+    "fact_extraction": "real model returned structured facts",
+    "lawref": "agent_timeout",
+    "draft_created": false,
+    "normal_restart_state_identical": true,
+    "normal_restart_history_identical": true
+  },
+  "container_real_consultation": {
+    "message_http_status": 504,
+    "error_code": "LLM_TIMEOUT",
+    "persisted_law_sources": [
+      "json_keyword"
+    ],
+    "draft_http_status": 404,
+    "draft_created": false,
+    "register_login_consent_assignment_succeeded": true,
+    "other_owner_state_http_status": 403,
+    "normal_restart_state_identical": true,
+    "normal_restart_history_identical": true,
+    "readiness": {
+      "status": "degraded",
+      "api": "ready",
+      "dependencies": {
+        "reranker": {
+          "status": "not_loaded",
+          "available": false,
+          "model": "Qwen/Qwen3-Reranker-0.6B",
+          "error": null,
+          "type": "causal_lm"
+        },
+        "raw_transcript": {
+          "status": "ready",
+          "initialized": true,
+          "available": true
+        },
+        "checkpoint": {
+          "status": "ready",
+          "initialized": true,
+          "available": true,
+          "persistence": "persistent",
+          "restart_recovery": true,
+          "restart_recovery_scope": "single_worker_normal_restart",
+          "recovery_verified_now": false
+        }
+      },
+      "memory": {
+        "summary": {
+          "enabled": true,
+          "requires_consent": true,
+          "input_budget": 6000,
+          "output_budget": 1000,
+          "timeout_seconds": 20.0
+        },
+        "structured_case": {
+          "enabled": true
+        },
+        "context": {
+          "recent_messages": 8,
+          "token_budget": 24000,
+          "model_window": 32768,
+          "output_reserve": 2048
+        }
+      }
+    }
+  },
+  "targeted_tests": {
+    "evaluation": {
+      "passed": 28,
+      "paths": [
+        "evaluation/test_local_lawref.py",
+        "evaluation/test_full_eval.py",
+        "evaluation/test_full_index.py"
+      ]
+    },
+    "backend": {
+      "passed": 13,
+      "paths": [
+        "tests/integration/test_consultation_acceptance.py",
+        "tests/integration/test_main_startup.py",
+        "tests/integration/test_readiness.py",
+        "tests/consultation/test_checkpoint_persistence.py"
+      ],
+      "model_and_vector_substitutes": true
+    },
+    "frontend": {
+      "passed": 12,
+      "test_files": 5,
+      "typecheck_exit": 0,
+      "build_exit": 0
+    }
+  },
+  "browser": {
+    "real_built_frontend": true,
+    "isolated_host_backend": true,
+    "login_create_session_confirm_notice": "passed",
+    "old_session_discovery_after_restart": "limited by process-local active list"
+  },
+  "scope": "isolated synthetic inputs, public index copy, one backend worker, normal restart after completed or failed message; not crash, multiworker, production or professional legal acceptance",
+  "working_tree_source_change": "backend/Dockerfile: install CPU PyTorch from a configurable index before remaining requirements"
+}

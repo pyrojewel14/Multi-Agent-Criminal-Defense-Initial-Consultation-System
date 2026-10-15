@@ -11,7 +11,11 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY backend/requirements.txt ./requirements.txt
+# 默认构建 CPU 镜像，避免为无 CUDA 的容器安装整套 GPU 运行库。
+# GPU 部署可在构建时显式指定对应的 PyTorch 安装源。
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 RUN python -m pip install --upgrade pip \
+    && python -m pip install --index-url "${PYTORCH_INDEX_URL}" 'torch>=2.0.0' \
     && python -m pip install -r requirements.txt
 
 COPY backend/ ./

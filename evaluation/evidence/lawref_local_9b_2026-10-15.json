@@ -1,0 +1,476 @@
+{
+  "evidence_kind": "real-lawref-llm-rag-coverage",
+  "query_mode": "article",
+  "retrieval_semantics": "unified-pipeline-rrf-verified-keyword-v1",
+  "historical_strict_comparison_supported": false,
+  "cases_sha256": "sha256:b5958b42d62ede849bafc245d3e31a4e00ac6c653806471908b3f10bcb7c1985",
+  "runtime_config": {
+    "LAW_KNOWLEDGE_PROFILE": "full",
+    "LAW_FULL_DEMO_ANNOTATIONS": "on",
+    "LAW_FULL_INDEX_DIRECTORY": "<isolated-copy-of-verified-public-index>",
+    "LAW_FULL_INDEX_COLLECTION": "criminal_law_full",
+    "LAW_AGENT_MAX_STEPS": "4",
+    "LAW_AGENT_TIMEOUT_SECONDS": "240",
+    "LAW_AGENT_FINAL_PROTOCOL": "legacy",
+    "LAW_AGENT_TOOL_TIMEOUT_SECONDS": "90",
+    "LLM_TOTAL_TIMEOUT_SECONDS": "30",
+    "LLM_ATTEMPT_TIMEOUT_SECONDS": "15"
+  },
+  "corpus_version": "2026-09-30.2.integration1",
+  "corpus_sha256": "sha256:e516ad97aea80afa90659c3797a134240bf5b8f6aa10d443382cd7aef37da5d9",
+  "annotation_mode": "demo",
+  "demo_annotations": {
+    "annotation_id": "demo-reviewed-2026-10-01-v1",
+    "released_articles": 32,
+    "usage": "demo",
+    "official": false,
+    "legal_review_completed": false
+  },
+  "llm_executed": true,
+  "rag_executed": true,
+  "embedding_model": "qwen3-embedding:0.6b",
+  "embedding_digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+  "chat_model": "qwen3.5:9b",
+  "legal_review_completed": false,
+  "production_deployment_verified": false,
+  "passed": 0,
+  "total": 6,
+  "cases": [
+    {
+      "id": "dangerous-driving-derived",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "max_steps",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:6b0035cf48539dfc22dc3f308d91805073ff03104f610de5fe7cc69cd2572403",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 10257.012,
+          "token_usage": {
+            "input_tokens": 660,
+            "output_tokens": 32,
+            "total_tokens": 692
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "invalid_arguments",
+          "tool_result_summary": {},
+          "latency_ms": 8680.018,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "invalid_arguments",
+          "tool_result_summary": {},
+          "latency_ms": 3754.129,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        },
+        {
+          "step": 4,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "invalid_arguments",
+          "tool_result_summary": {},
+          "latency_ms": 3761.355,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "latency_ms": 26477.5
+    },
+    {
+      "id": "core-theft",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "max_steps",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:5f2535562483753bd3a5cd0938a57ddfcbfee42b6b869ab63980a7eca305769e",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 1,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 5145.024,
+          "token_usage": {
+            "input_tokens": 658,
+            "output_tokens": 30,
+            "total_tokens": 688
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "invalid_arguments",
+          "tool_result_summary": {},
+          "latency_ms": 8161.012,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        },
+        {
+          "step": 3,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "invalid_arguments",
+          "tool_result_summary": {},
+          "latency_ms": 3768.127,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        },
+        {
+          "step": 4,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "invalid_arguments",
+          "tool_result_summary": {},
+          "latency_ms": 3675.376,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "latency_ms": 20799.832
+    },
+    {
+      "id": "natural-theft",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "budget_exceeded",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:d0aaaddf9b63276b76934781b9c249397b96540a5eec1ff501caa37652beb233",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 6788.21,
+          "token_usage": {
+            "input_tokens": 677,
+            "output_tokens": 31,
+            "total_tokens": 708
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "budget_exceeded",
+          "tool_result_summary": {},
+          "latency_ms": 4.349,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "latency_ms": 6837.158
+    },
+    {
+      "id": "natural-drunk-driving",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "budget_exceeded",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:15017c41a76b0432193ea89b05eb9b4e9ee452c464e71b517ab9fa346164de18",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 6549.183,
+          "token_usage": {
+            "input_tokens": 682,
+            "output_tokens": 40,
+            "total_tokens": 722
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "budget_exceeded",
+          "tool_result_summary": {},
+          "latency_ms": 4.921,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "latency_ms": 6639.929
+    },
+    {
+      "id": "insufficient-theft-facts",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "budget_exceeded",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:25cfde8ccd5ffe3077a1f957d2803962af3d28d12201148df2707d0c1bcde862",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 5046.059,
+          "token_usage": {
+            "input_tokens": 667,
+            "output_tokens": 26,
+            "total_tokens": 693
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "budget_exceeded",
+          "tool_result_summary": {},
+          "latency_ms": 2.178,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "guardrail_passed": false,
+      "latency_ms": 5085.354
+    },
+    {
+      "id": "denied-theft-behavior",
+      "passed": false,
+      "expected_coverage_eligible": true,
+      "selected_article_ids": [],
+      "search_status": "dependency_failure",
+      "termination_reason": "budget_exceeded",
+      "total_elements": 0,
+      "degraded": true,
+      "trajectory": [
+        {
+          "step": 1,
+          "model_decision": "tool_call",
+          "tool_name": "search_laws",
+          "tool_arguments_fingerprint": "sha256:25cfde8ccd5ffe3077a1f957d2803962af3d28d12201148df2707d0c1bcde862",
+          "tool_status": "success",
+          "tool_result_summary": {
+            "count": 5,
+            "article_found": false,
+            "element_count": 0,
+            "rag_dependency_failed": false
+          },
+          "latency_ms": 5137.475,
+          "token_usage": {
+            "input_tokens": 675,
+            "output_tokens": 26,
+            "total_tokens": 701
+          }
+        },
+        {
+          "step": 2,
+          "model_decision": "invalid",
+          "tool_name": null,
+          "tool_arguments_fingerprint": null,
+          "tool_status": "budget_exceeded",
+          "tool_result_summary": {},
+          "latency_ms": 2.104,
+          "token_usage": {
+            "total_tokens": "unknown"
+          }
+        }
+      ],
+      "token_usage": {
+        "total_tokens": "unknown"
+      },
+      "selected_sources": [],
+      "guardrail_passed": false,
+      "latency_ms": 5165.078
+    }
+  ],
+  "latency_scope": "本机顺序组件调用，包含核验与模型预热；不是并发或生产性能测试",
+  "actual_execution": {
+    "model": "qwen3.5:9b",
+    "digest": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+    "protocol": "legacy",
+    "thinking": false,
+    "options": {
+      "temperature": 0,
+      "seed": 0,
+      "num_ctx": 8192,
+      "num_predict": 1024
+    },
+    "trust_env": false,
+    "max_http_requests": 48,
+    "round_timeout_seconds": 1500,
+    "system_prompt_sha256": "ff924fee8aa31b46a8e8200c07a182030bdf8ab0d92d7debd9afd1b12059b8a4",
+    "scorer_sha256": "0d636769978050c284312febe72ac3aae7806773356417c428ec20d48278504b",
+    "http_statuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "raw_sha256": "8fc1a089b3d1dc1c91e37d814a8bb8734f35e72432d023c7b27397b0f1b1c276",
+    "residency_before": {
+      "models": []
+    },
+    "residency_after": {
+      "models": [
+        {
+          "name": "qwen3.5:9b",
+          "model": "qwen3.5:9b",
+          "size": 5779509738,
+          "digest": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+          "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "qwen35",
+            "families": [
+              "qwen35"
+            ],
+            "parameter_size": "9.7B",
+            "quantization_level": "Q4_K_M"
+          },
+          "expires_at": "2026-10-15T15:35:36.260244+08:00",
+          "size_vram": 5779509738,
+          "context_length": 8192,
+          "runner": "llamacpp"
+        },
+        {
+          "name": "qwen3-embedding:0.6b",
+          "model": "qwen3-embedding:0.6b",
+          "size": 2395838873,
+          "digest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+          "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "qwen3",
+            "families": [
+              "qwen3"
+            ],
+            "parameter_size": "595.78M",
+            "quantization_level": "Q8_0"
+          },
+          "expires_at": "2026-10-15T15:35:36.691902+08:00",
+          "size_vram": 2395838873,
+          "context_length": 4096,
+          "runner": "llamacpp"
+        }
+      ]
+    },
+    "memory_scope": "Ollama模型驻留快照size_vram；不是进程峰值或整机内存峰值",
+    "identity_verified": true,
+    "payload_verified": true,
+    "returned_models": [
+      "qwen3.5:9b"
+    ],
+    "rag_execution_basis": "search_laws实际尝试轨迹；不等于召回成功"
+  },
+  "candidate_llm_executed": true,
+  "round_status": "completed",
+  "acceptance_date": "2026-10-15",
+  "source_baseline": "75c4cafec045c96e982824ecf91fd56ea0b65b83",
+  "subsequent_source_check": {
+    "head": "fd7286b",
+    "python_files_checked": 84,
+    "executable_ast_identical_ignoring_docstrings": true,
+    "scope": "comments, formatting and docstrings changed during acceptance; raw experiment retains original hashes"
+  },
+  "evidence_note": "Public projection of original summary: local index path replaced. Original provider streams and summary preserved privately without rewriting."
+}
