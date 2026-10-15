@@ -20,15 +20,23 @@ CASES_SHA256 = "b5958b42d62ede849bafc245d3e31a4e00ac6c653806471908b3f10bcb7c1985
 MODELS = ("qwen3.5:4b", "qwen3.5:9b")
 OPTIONS = {"temperature": 0, "seed": 0, "num_ctx": 8192, "num_predict": 1024}
 FIXED_ENV = {
-    "LLM_TYPE": "OLLAMA", "EMBED_MODEL_TYPE": "OLLAMA",
-    "LAW_KNOWLEDGE_PROFILE": "full", "LAW_FULL_DEMO_ANNOTATIONS": "on",
-    "LAW_AGENT_FINAL_PROTOCOL": "legacy", "LAW_AGENT_MAX_STEPS": "4",
-    "LAW_AGENT_TIMEOUT_SECONDS": "240", "LAW_AGENT_TOOL_TIMEOUT_SECONDS": "90",
-    "LLM_TOTAL_TIMEOUT_SECONDS": "30", "LLM_ATTEMPT_TIMEOUT_SECONDS": "15",
-    "LLM_MAX_ATTEMPTS": "2", "LLM_RETRY_BACKOFF_SECONDS": "0.25",
-    "MEMORY_MODEL_WINDOW": "8192", "MEMORY_OUTPUT_RESERVE": "1024",
+    "LLM_TYPE": "OLLAMA",
+    "EMBED_MODEL_TYPE": "OLLAMA",
+    "LAW_KNOWLEDGE_PROFILE": "full",
+    "LAW_FULL_DEMO_ANNOTATIONS": "on",
+    "LAW_AGENT_FINAL_PROTOCOL": "legacy",
+    "LAW_AGENT_MAX_STEPS": "4",
+    "LAW_AGENT_TIMEOUT_SECONDS": "240",
+    "LAW_AGENT_TOOL_TIMEOUT_SECONDS": "90",
+    "LLM_TOTAL_TIMEOUT_SECONDS": "30",
+    "LLM_ATTEMPT_TIMEOUT_SECONDS": "15",
+    "LLM_MAX_ATTEMPTS": "2",
+    "LLM_RETRY_BACKOFF_SECONDS": "0.25",
+    "MEMORY_MODEL_WINDOW": "8192",
+    "MEMORY_OUTPUT_RESERVE": "1024",
     "MEMORY_CONTEXT_TOKEN_BUDGET": "7168",
-    "LAW_FULL_RETRIEVAL_MODE": "vector", "LAW_FULL_RERANK_ENABLED": "false",
+    "LAW_FULL_RETRIEVAL_MODE": "vector",
+    "LAW_FULL_RERANK_ENABLED": "false",
     "LAW_FULL_HYDE_ENABLED": "false",
 }
 
@@ -58,8 +66,14 @@ def validate_args(args) -> None:
 
 async def probe(client: httpx.AsyncClient, base_url: str, models: list[str]) -> dict:
     """只读服务与模型元数据；不可达不生成六例分数，也不触发下载。"""
-    report = {"base_url": base_url, "trust_env": False, "llm_executed": False,
-              "available_models": [], "models": {}, "requests": []}
+    report = {
+        "base_url": base_url,
+        "trust_env": False,
+        "llm_executed": False,
+        "available_models": [],
+        "models": {},
+        "requests": [],
+    }
 
     async def request(method, endpoint, **kwargs):
         row = {"endpoint": endpoint}
@@ -140,7 +154,9 @@ class LocalCapture:
                 known = self.articles[article["article_id"]]
                 if article["content"] != known["content"] or article["required_elements"] != known.get("elements", []):
                     raise ValueError("工具正文或要件超出公开快照")
-            if "required_elements" in result and result["required_elements"] != self.articles[result["article_id"]].get("elements", []):
+            if "required_elements" in result and result["required_elements"] != self.articles[result["article_id"]].get(
+                "elements", []
+            ):
                 raise ValueError("工具要件超出公开快照")
 
     def __enter__(self):
@@ -154,8 +170,13 @@ class LocalCapture:
         owner = self
 
         def factory(temperature=0):
-            return ChatOllama(model=owner.model, base_url=owner.base_url, reasoning=False,
-                              client_kwargs=owner.client_kwargs, **OPTIONS)
+            return ChatOllama(
+                model=owner.model,
+                base_url=owner.base_url,
+                reasoning=False,
+                client_kwargs=owner.client_kwargs,
+                **OPTIONS,
+            )
 
         async def stream(model, messages, stop=None, **kwargs):
             async for chunk in owner.capture(model, messages, stop, **kwargs):
@@ -179,9 +200,16 @@ class LocalCapture:
         """流取消时保留原始片段；不把未完成请求的token或结束原因伪填为零。"""
         if len(self.records) >= self.max_requests:
             raise ValueError("达到本轮请求预算")
-        row = {"wire_request": None, "http_status": None, "content": "", "thinking": "",
-               "tool_calls": [], "last_response": None, "candidate_response_observed": False,
-               "returned_models": []}
+        row = {
+            "wire_request": None,
+            "http_status": None,
+            "content": "",
+            "thinking": "",
+            "tool_calls": [],
+            "last_response": None,
+            "candidate_response_observed": False,
+            "returned_models": [],
+        }
         self.records.append(row)
         started = time.monotonic()
         client = model._async_client._client
@@ -261,9 +289,15 @@ async def run(args) -> dict:
     async with httpx.AsyncClient(trust_env=False, timeout=8) as client:
         preflight = await probe(client, args.base_url, args.models)
     write_json(args.output_dir / "preflight.json", preflight)
-    result = {"status": "blocked_service_or_models", "preflight": preflight, "runs": [],
-              "llm_executed": False, "candidate_llm_executed": False,
-              "legal_review_completed": False, "production_deployment_verified": False}
+    result = {
+        "status": "blocked_service_or_models",
+        "preflight": preflight,
+        "runs": [],
+        "llm_executed": False,
+        "candidate_llm_executed": False,
+        "legal_review_completed": False,
+        "production_deployment_verified": False,
+    }
     if not preflight["available_models"]:
         write_json(args.output_dir / "comparison.json", result)
         return result
@@ -271,9 +305,16 @@ async def run(args) -> dict:
     # 只在服务可达后复制既有公共索引；Chroma读取可能写SQLite，不打开原索引。
     manifest_path = args.index_directory.parent / f"{args.index_directory.name}.manifest.json"
     manifest = json.loads(manifest_path.read_text())
-    embedding = next((item for row in preflight["requests"] if row["endpoint"] == "/api/tags"
-                      for item in row.get("body", {}).get("models", [])
-                      if item.get("name") == manifest["embedding_model"]), None)
+    embedding = next(
+        (
+            item
+            for row in preflight["requests"]
+            if row["endpoint"] == "/api/tags"
+            for item in row.get("body", {}).get("models", [])
+            if item.get("name") == manifest["embedding_model"]
+        ),
+        None,
+    )
     if not embedding or embedding.get("digest") != manifest["embedding_model_digest"]:
         result["status"] = "blocked_embedding_digest"
         write_json(args.output_dir / "comparison.json", result)
@@ -282,13 +323,16 @@ async def run(args) -> dict:
     isolated_index = state / args.index_directory.name
     shutil.copytree(args.index_directory, isolated_index)
     shutil.copy2(manifest_path, isolated_index.parent / f"{isolated_index.name}.manifest.json")
-    config = {**FIXED_ENV, "OLLAMA_BASE_URL": args.base_url,
-              "LAW_FULL_INDEX_DIRECTORY": isolated_index.resolve(),
-              "LAW_FULL_INDEX_COLLECTION": manifest["collection"],
-              "TEXT_EMBEDDING_MODEL_NAME": manifest["embedding_model"],
-              "LAW_FULL_EMBEDDING_DIGEST": manifest["embedding_model_digest"],
-              "DATABASE_PATH": (state / "eval.sqlite").resolve(),
-              "LANGGRAPH_CHECKPOINT_DB_PATH": (state / "checkpoints.sqlite").resolve()}
+    config = {
+        **FIXED_ENV,
+        "OLLAMA_BASE_URL": args.base_url,
+        "LAW_FULL_INDEX_DIRECTORY": isolated_index.resolve(),
+        "LAW_FULL_INDEX_COLLECTION": manifest["collection"],
+        "TEXT_EMBEDDING_MODEL_NAME": manifest["embedding_model"],
+        "LAW_FULL_EMBEDDING_DIGEST": manifest["embedding_model_digest"],
+        "DATABASE_PATH": (state / "eval.sqlite").resolve(),
+        "LANGGRAPH_CHECKPOINT_DB_PATH": (state / "checkpoints.sqlite").resolve(),
+    }
     with environment(config):
         from app.consultation.agents.legal_research import _SYSTEM_PROMPT
         from app.knowledge.law.repository import _build_article_index
@@ -304,55 +348,88 @@ async def run(args) -> dict:
                 raw_output = args.output_dir / f"{name}-raw.json"
                 before = await residency(args.base_url)
                 interruption = None
-                with environment({"OLLAMA_MODEL_NAME": model}), LocalCapture(
-                    model, args.base_url, raw_output, cases, articles
-                ) as capture:
+                with (
+                    environment({"OLLAMA_MODEL_NAME": model}),
+                    LocalCapture(model, args.base_url, raw_output, cases, articles) as capture,
+                ):
                     # 六例每例240秒，另留60秒给评分/索引核验；HTTP尝试上限为6*4*2。
                     try:
-                        summary = await asyncio.wait_for(run_evaluation(
-                            "live-lawref", output, query_mode="article", cases_path=CASES), timeout=1500)
+                        summary = await asyncio.wait_for(
+                            run_evaluation("live-lawref", output, query_mode="article", cases_path=CASES), timeout=1500
+                        )
                     except Exception as exc:  # noqa: BLE001 — 评测中断必须落盘且恢复进程配置
                         interruption = type(exc).__name__
-                        summary = {"evidence_kind": "local-lawref-interrupted", "cases": [],
-                                   "passed": None, "total": None, "error_type": interruption,
-                                   "legal_review_completed": False, "production_deployment_verified": False}
+                        summary = {
+                            "evidence_kind": "local-lawref-interrupted",
+                            "cases": [],
+                            "passed": None,
+                            "total": None,
+                            "error_type": interruption,
+                            "legal_review_completed": False,
+                            "production_deployment_verified": False,
+                        }
                 if not raw_output.exists():
                     write_json(raw_output, capture.records)
                 after = await residency(args.base_url)
                 summary["actual_execution"] = {
-                    "model": model, "digest": preflight["models"][model]["catalog_entry"]["digest"],
-                    "protocol": "legacy", "thinking": False, "options": OPTIONS,
-                    "trust_env": False, "max_http_requests": 48, "round_timeout_seconds": 1500,
+                    "model": model,
+                    "digest": preflight["models"][model]["catalog_entry"]["digest"],
+                    "protocol": "legacy",
+                    "thinking": False,
+                    "options": OPTIONS,
+                    "trust_env": False,
+                    "max_http_requests": 48,
+                    "round_timeout_seconds": 1500,
                     "system_prompt_sha256": hashlib.sha256(_SYSTEM_PROMPT.encode()).hexdigest(),
                     "scorer_sha256": hashlib.sha256((ROOT / "evaluation/run_full_eval.py").read_bytes()).hexdigest(),
                     "http_statuses": [row["http_status"] for row in capture.records],
                     "raw_sha256": hashlib.sha256(raw_output.read_bytes()).hexdigest() if raw_output.exists() else None,
-                    "residency_before": before, "residency_after": after,
+                    "residency_before": before,
+                    "residency_after": after,
                     "memory_scope": "Ollama模型驻留快照size_vram；不是进程峰值或整机内存峰值",
-                    "identity_verified": (not any(row.get("validation_error") == "model_identity_mismatch"
-                                                  for row in capture.records)) if any(
-                        row["last_response"] for row in capture.records) else None,
-                    "payload_verified": (not any(row.get("validation_error") == "payload_mismatch"
-                                                 for row in capture.records)) if any(
-                        row["wire_request"] for row in capture.records) else None,
-                    "returned_models": sorted({returned for row in capture.records
-                                               for returned in row["returned_models"] if returned is not None}),
+                    "identity_verified": (
+                        not any(row.get("validation_error") == "model_identity_mismatch" for row in capture.records)
+                    )
+                    if any(row["last_response"] for row in capture.records)
+                    else None,
+                    "payload_verified": (
+                        not any(row.get("validation_error") == "payload_mismatch" for row in capture.records)
+                    )
+                    if any(row["wire_request"] for row in capture.records)
+                    else None,
+                    "returned_models": sorted(
+                        {
+                            returned
+                            for row in capture.records
+                            for returned in row["returned_models"]
+                            if returned is not None
+                        }
+                    ),
                 }
                 summary["llm_executed"] = any(row["last_response"] for row in capture.records)
                 summary["candidate_llm_executed"] = any(row["candidate_response_observed"] for row in capture.records)
-                summary["rag_executed"] = any(step["tool_name"] == "search_laws" and step["tool_status"] in {
-                    "success", "empty", "partial_dependency_failure", "dependency_failure", "timeout"
-                } for case in summary["cases"] for step in case.get("trajectory", []))
+                summary["rag_executed"] = any(
+                    step["tool_name"] == "search_laws"
+                    and step["tool_status"]
+                    in {"success", "empty", "partial_dependency_failure", "dependency_failure", "timeout"}
+                    for case in summary["cases"]
+                    for step in case.get("trajectory", [])
+                )
                 summary["actual_execution"]["rag_execution_basis"] = "search_laws实际尝试轨迹；不等于召回成功"
                 if interruption:
                     # 评分器未交回完整轨迹时，不把无法确认的检索状态写成未执行。
                     summary["rag_executed"] = None
                     summary["actual_execution"]["rag_execution_basis"] = "中断轮未交回完整工具轨迹，检索状态未知"
                 round_status = (
-                    "runner_interrupted" if interruption else
-                    "identity_mismatch" if summary["actual_execution"]["identity_verified"] is False else
-                    "payload_mismatch" if summary["actual_execution"]["payload_verified"] is False else
-                    "no_inference" if not summary["candidate_llm_executed"] else "completed"
+                    "runner_interrupted"
+                    if interruption
+                    else "identity_mismatch"
+                    if summary["actual_execution"]["identity_verified"] is False
+                    else "payload_mismatch"
+                    if summary["actual_execution"]["payload_verified"] is False
+                    else "no_inference"
+                    if not summary["candidate_llm_executed"]
+                    else "completed"
                 )
                 summary["round_status"] = round_status
                 if round_status != "completed":
@@ -360,10 +437,19 @@ async def run(args) -> dict:
                     summary["attempted_case_count"] = summary["total"]
                     summary["passed"] = summary["total"] = None
                 write_json(output, summary)
-                result["runs"].append({"model": model, "round": number, "passed": summary["passed"],
-                                       "total": summary["total"], "summary": output.name, "raw": raw_output.name,
-                                       "status": round_status, "llm_executed": summary["llm_executed"],
-                                       "candidate_llm_executed": summary["candidate_llm_executed"]})
+                result["runs"].append(
+                    {
+                        "model": model,
+                        "round": number,
+                        "passed": summary["passed"],
+                        "total": summary["total"],
+                        "summary": output.name,
+                        "raw": raw_output.name,
+                        "status": round_status,
+                        "llm_executed": summary["llm_executed"],
+                        "candidate_llm_executed": summary["candidate_llm_executed"],
+                    }
+                )
                 result["llm_executed"] |= summary["llm_executed"]
                 result["candidate_llm_executed"] |= summary["candidate_llm_executed"]
                 if interruption:
@@ -378,7 +464,9 @@ async def run(args) -> dict:
     elif any(row["total"] is None for row in result["runs"]):
         result["status"] = "blocked_no_inference"
     else:
-        result["status"] = "evaluated" if len(preflight["available_models"]) == len(args.models) else "partially_evaluated"
+        result["status"] = (
+            "evaluated" if len(preflight["available_models"]) == len(args.models) else "partially_evaluated"
+        )
     write_json(args.output_dir / "comparison.json", result)
     return result
 

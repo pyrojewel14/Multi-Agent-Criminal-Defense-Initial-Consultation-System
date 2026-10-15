@@ -321,12 +321,15 @@ class TestEmbedModelFactory:
     def _make_factory(self):
         return EmbedModelFactory()
 
-    @pytest.mark.parametrize("base_url,client_kwargs", [
-        ("http://localhost:11434", {"trust_env": False}),
-        ("http://127.0.0.1:11434", {"trust_env": False}),
-        ("http://[::1]:11434", {"trust_env": False}),
-        ("https://ollama.example.test:11434", {}),
-    ])
+    @pytest.mark.parametrize(
+        "base_url,client_kwargs",
+        [
+            ("http://localhost:11434", {"trust_env": False}),
+            ("http://127.0.0.1:11434", {"trust_env": False}),
+            ("http://[::1]:11434", {"trust_env": False}),
+            ("https://ollama.example.test:11434", {}),
+        ],
+    )
     def test_create_embedding_model_ollama(self, monkeypatch, base_url, client_kwargs):
         """Ollama Embedding 显式使用配置端点，仅回环地址禁用环境代理。"""
         monkeypatch.setenv("EMBED_MODEL_TYPE", "OLLAMA")

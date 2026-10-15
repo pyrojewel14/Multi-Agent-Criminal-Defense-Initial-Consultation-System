@@ -26,8 +26,11 @@ async def test_registry_error_categories_do_not_expose_untrusted_exception_names
         raise error
 
     repository = LawRepository(load_criminal_law_data(profile="snapshot"))
-    selected = LawSearchService(repository, RetrievalPipeline(Vector(), config=RetrievalConfig(rerank=False)),
-        preflight=preflight if boundary == "preflight" else None)
+    selected = LawSearchService(
+        repository,
+        RetrievalPipeline(Vector(), config=RetrievalConfig(rerank=False)),
+        preflight=preflight if boundary == "preflight" else None,
+    )
     registry = LegalToolRegistry({}, "alice", repository.law_data, search_service=selected)
     status, observation, _ = await registry.execute("search_laws", {"query": query}, 1)
     assert status == "partial_dependency_failure"

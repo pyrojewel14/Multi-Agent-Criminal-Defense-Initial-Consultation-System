@@ -384,9 +384,18 @@ def _metadata(pre: dict[str, Any], cases: list[dict[str, str]]) -> dict[str, Any
     }
 
 
-def build_snapshot_search_service(*, resources, index_dir: Path, collection: str, embedding_model: str,
-                                  embedding_digest: str, law_path: Path = LAW, law_data=None,
-                                  embed_query=None, config=None):
+def build_snapshot_search_service(
+    *,
+    resources,
+    index_dir: Path,
+    collection: str,
+    embedding_model: str,
+    embedding_digest: str,
+    law_path: Path = LAW,
+    law_data=None,
+    embed_query=None,
+    config=None,
+):
     """显式绑定已构建的六条隔离索引，拒绝读取上传库或回退到其他数据源。"""
     import chromadb
     from app.knowledge.law.corpus import load_criminal_law_data
@@ -400,48 +409,66 @@ def build_snapshot_search_service(*, resources, index_dir: Path, collection: str
     index_dir = Path(index_dir).resolve()
     manifest = json.loads((index_dir.parent / f"{index_dir.name}.manifest.json").read_text())
     data = law_data if law_data is not None else load_criminal_law_data(profile="snapshot")
-    articles = sorted((article for chapter in data["chapters"] for article in chapter["articles"]),
-                      key=lambda article: article["article_number"])
+    articles = sorted(
+        (article for chapter in data["chapters"] for article in chapter["articles"]),
+        key=lambda article: article["article_number"],
+    )
     documents = [f"{article['article_number']} {article['content']}" for article in articles]
-    documents_hash = "sha256:" + hashlib.sha256(json.dumps(documents, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
-    if (manifest.get("snapshot_sha256") != _sha256(law_path)
-            or manifest.get("snapshot_version") != data["metadata"]["dataset_version"]
-            or manifest.get("collection") != collection
-            or manifest.get("embedding_model") != embedding_model
-            or manifest.get("embedding_model_digest") != embedding_digest
-            or manifest.get("document_count") != 6 or len(documents) != 6
-            or manifest.get("documents_sha256") != documents_hash
-            or type(manifest.get("embedding_dimension")) is not int
-            or manifest["embedding_dimension"] <= 0):
+    documents_hash = (
+        "sha256:"
+        + hashlib.sha256(json.dumps(documents, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+    )
+    if (
+        manifest.get("snapshot_sha256") != _sha256(law_path)
+        or manifest.get("snapshot_version") != data["metadata"]["dataset_version"]
+        or manifest.get("collection") != collection
+        or manifest.get("embedding_model") != embedding_model
+        or manifest.get("embedding_model_digest") != embedding_digest
+        or manifest.get("document_count") != 6
+        or len(documents) != 6
+        or manifest.get("documents_sha256") != documents_hash
+        or type(manifest.get("embedding_dimension")) is not int
+        or manifest["embedding_dimension"] <= 0
+    ):
         raise ValueError("snapshot index manifest mismatch")
     if not (index_dir / "chroma.sqlite3").is_file():
         raise FileNotFoundError("snapshot index missing")
     source_id = "law:snapshot-evaluation:" + manifest["snapshot_sha256"].split(":", 1)[1][:16]
-    store = ChromaStore.open_existing(ChromaSource(source_id, chromadb.PersistentClient(path=str(index_dir)), collection))
+    store = ChromaStore.open_existing(
+        ChromaSource(source_id, chromadb.PersistentClient(path=str(index_dir)), collection)
+    )
     rows = store.read_snapshot(where={"is_public": True}).rows
     if len(rows) != 6 or sorted(row.content for row in rows) != sorted(documents):
         raise ValueError("snapshot index documents mismatch")
     article_by_document = dict(zip(documents, articles))
     for row in rows:
         article = article_by_document[row.content]
-        expected = {"article_number": article["article_number"], "is_public": True,
-                    "official_text_source": article["official_text_source"], "annotation_source": article["annotation_source"],
-                    "source": f"{article['official_text_source']}:{article['article_number']}",
-                    "snapshot_version": data["metadata"]["dataset_version"]}
+        expected = {
+            "article_number": article["article_number"],
+            "is_public": True,
+            "official_text_source": article["official_text_source"],
+            "annotation_source": article["annotation_source"],
+            "source": f"{article['official_text_source']}:{article['article_number']}",
+            "snapshot_version": data["metadata"]["dataset_version"],
+        }
         if any(row.metadata.get(key) != value for key, value in expected.items()):
             raise ValueError("snapshot index metadata mismatch")
     if embed_query is None:
+
         async def embed_query(query):
             import httpx
 
             async with httpx.AsyncClient(trust_env=False, timeout=60) as client:
-                response = await client.post(os.environ["OLLAMA_BASE_URL"].rstrip("/") + "/api/embed",
-                                             json={"model": embedding_model, "input": [query], "truncate": False})
+                response = await client.post(
+                    os.environ["OLLAMA_BASE_URL"].rstrip("/") + "/api/embed",
+                    json={"model": embedding_model, "input": [query], "truncate": False},
+                )
                 response.raise_for_status()
                 vectors = response.json()["embeddings"]
             if len(vectors) != 1:
                 raise ValueError("query embedding count invalid")
             return validate_embedding(vectors[0], expected_dimension=manifest["embedding_dimension"])
+
     config = config if config is not None else RetrievalConfig.from_env()
     scorer = resources.scorer(RerankerConfig.from_env()) if config.rerank else None
     expander = None
@@ -449,11 +476,19 @@ def build_snapshot_search_service(*, resources, index_dir: Path, collection: str
         from app.knowledge.retrieval.hyde import HyDEExpander, ollama_generate
 
         model = os.environ.get("OLLAMA_MODEL_NAME", "qwen3.5:0.8b")
-        expander = HyDEExpander(partial(ollama_generate, base_url=os.environ["OLLAMA_BASE_URL"], model_name=model), model_name=model)
-    pipeline = RetrievalPipeline(ChromaVectorRetriever(store, embed_query, manifest["embedding_dimension"]),
-                                 bm25=BM25Retriever(store), reranker=scorer, expander=expander, config=config)
-    return build_law_search_service(law_data=data, profile="snapshot", pipeline=pipeline, source_id=source_id,
-                                    resources=resources)
+        expander = HyDEExpander(
+            partial(ollama_generate, base_url=os.environ["OLLAMA_BASE_URL"], model_name=model), model_name=model
+        )
+    pipeline = RetrievalPipeline(
+        ChromaVectorRetriever(store, embed_query, manifest["embedding_dimension"]),
+        bm25=BM25Retriever(store),
+        reranker=scorer,
+        expander=expander,
+        config=config,
+    )
+    return build_law_search_service(
+        law_data=data, profile="snapshot", pipeline=pipeline, source_id=source_id, resources=resources
+    )
 
 
 @contextmanager
@@ -466,10 +501,14 @@ def snapshot_search_runtime(*, index_dir: Path, preflight_result: dict[str, Any]
     resources = KnowledgeResources()
 
     def factory(*, law_data=None):
-        return build_snapshot_search_service(resources=resources, index_dir=index_dir, law_data=law_data,
-                                             collection=preflight_result["index_collection"],
-                                             embedding_model=os.environ["TEXT_EMBEDDING_MODEL_NAME"],
-                                             embedding_digest=preflight_result["embedding_digest"])
+        return build_snapshot_search_service(
+            resources=resources,
+            index_dir=index_dir,
+            law_data=law_data,
+            collection=preflight_result["index_collection"],
+            embedding_model=os.environ["TEXT_EMBEDDING_MODEL_NAME"],
+            embedding_digest=preflight_result["embedding_digest"],
+        )
 
     legal_research.build_law_search_service = factory
     try:

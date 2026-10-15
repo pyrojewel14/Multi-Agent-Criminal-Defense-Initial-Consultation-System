@@ -30,7 +30,9 @@ async def test_full_demo_profile_releases_reviewed_demo_into_tools(demo):
     assert "强令、组织他人违章冒险作业罪" in body["title"]
     assert body["required_elements"]
     assert body["annotation_usage"] == "demo"
-    assert knowledge._build_article_index(demo)["第134条"]["annotations"]["elements"]["legal_review_status"] == "pending"
+    assert (
+        knowledge._build_article_index(demo)["第134条"]["annotations"]["elements"]["legal_review_status"] == "pending"
+    )
     assert sum(is_lawref_eligible(a) for a in knowledge._build_article_index(demo).values()) == 38
 
 
@@ -69,10 +71,21 @@ async def test_real_lawref_demo_has_denominator_and_no_annotation_review_block(d
     responses = [
         {"content": "", "tool_calls": [{"name": "search_laws", "args": {"query": "第133条之一"}}]},
         {"content": "", "tool_calls": [{"name": "get_article", "args": {"article_id": "第133条之一"}}]},
-        {"content": json.dumps({"article_ids": ["第133条之一"], "matched_elements": {"第133条之一": names}, "confidence": "medium"}), "tool_calls": []},
+        {
+            "content": json.dumps(
+                {"article_ids": ["第133条之一"], "matched_elements": {"第133条之一": names}, "confidence": "medium"}
+            ),
+            "tool_calls": [],
+        },
     ]
-    with patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=responses):
-        state = await law_ref_node(make_consultation_state(user_id="", facts_structured={"behavior_sequence": ["在道路上醉酒驾驶机动车"]}))
+    with patch(
+        "app.consultation.agents.legal_research.llm_gateway.generate_with_tools",
+        new_callable=AsyncMock,
+        side_effect=responses,
+    ):
+        state = await law_ref_node(
+            make_consultation_state(user_id="", facts_structured={"behavior_sequence": ["在道路上醉酒驾驶机动车"]})
+        )
     assert "law_search_status" in state and "applied_laws" in state and "facts_structured" in state
     assert state["law_search_status"] == "success"
     assert state["applied_laws"][0]["annotation_usage"] == "demo"
@@ -81,7 +94,9 @@ async def test_real_lawref_demo_has_denominator_and_no_annotation_review_block(d
     assert coverage["coverage_rate"] == 1.0
     assert coverage["degraded"] is False
     law_state = copy.deepcopy(state)
-    with patch("app.consultation.agents.fact_digger.llm_gateway.generate", new_callable=AsyncMock, return_value="示例事实摘要"):
+    with patch(
+        "app.consultation.agents.fact_digger.llm_gateway.generate", new_callable=AsyncMock, return_value="示例事实摘要"
+    ):
         state = await fact_coverage_node(state)
     assert state.get("fact_law_termination_reason") != "annotation_review_required"
     assert check_facts_sufficient(state) == "complete"
@@ -90,7 +105,9 @@ async def test_real_lawref_demo_has_denominator_and_no_annotation_review_block(d
     compiled = ConsultationOrchestrator()._compiled_graph()
     config: RunnableConfig = {"configurable": {"thread_id": "demo-annotations-release"}}
     await compiled.aupdate_state(config, law_state, as_node="law_ref")
-    with patch("app.consultation.agents.fact_digger.llm_gateway.generate", new_callable=AsyncMock, return_value="示例事实摘要"):
+    with patch(
+        "app.consultation.agents.fact_digger.llm_gateway.generate", new_callable=AsyncMock, return_value="示例事实摘要"
+    ):
         result = await compiled.ainvoke(None, config, interrupt_before=["risk_assessor"])
     assert (await compiled.aget_state(config)).next == ("risk_assessor",)
     assert result["facts_coverage_rate"] == 1.0
@@ -104,9 +121,19 @@ async def test_demo_missing_branch_stays_missing_despite_overlapping_keywords(de
 
     a = knowledge._build_article_index(demo)["第133条之一"]
     law = {**a, "data_source": "json_keyword"}
-    applied = _build_applied_laws_from_structured([
-        {"article_number": "第133条之一", "charge_name": a["title"], "elements_matched": [], "elements_missing": [], "probability": "low", "base_sentence": a["base_sentence"]}
-    ], [law])
+    applied = _build_applied_laws_from_structured(
+        [
+            {
+                "article_number": "第133条之一",
+                "charge_name": a["title"],
+                "elements_matched": [],
+                "elements_missing": [],
+                "probability": "low",
+                "base_sentence": a["base_sentence"],
+            }
+        ],
+        [law],
+    )
     result = await _analyze_coverage({"behavior_sequence": ["有严重后果、情节恶劣"]}, applied)
     assert result["total_elements"] > 0
     assert result["covered_elements"] == 0
@@ -115,6 +142,7 @@ async def test_demo_missing_branch_stays_missing_despite_overlapping_keywords(de
 
 def test_mismatched_demo_asset_fails_without_promoting(demo, monkeypatch, tmp_path):
     from pathlib import Path
+
     path = Path(knowledge.__file__).resolve().parents[3] / "data/law_knowledge/criminal_law_demo_annotations.json"
     asset = json.loads(path.read_text())
     asset["corpus_sha256"] = "sha256:stale"

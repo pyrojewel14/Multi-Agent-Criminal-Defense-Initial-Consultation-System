@@ -21,15 +21,18 @@ def masked_case_facts(cases: list[dict], query_mode: str) -> set[str]:
     from app.security.sensitive_filter import mask_pii
 
     key = "semantic_query" if query_mode == "semantic" else "query"
-    return {mask_pii(json.dumps({"behavior_sequence": [case[key]], "consequence": ""},
-                               ensure_ascii=False, default=str)) for case in cases}
+    return {
+        mask_pii(json.dumps({"behavior_sequence": [case[key]], "consequence": ""}, ensure_ascii=False, default=str))
+        for case in cases
+    }
 
 
 class CloudCapture:
     """临时适配思考级别并记录实际云请求；退出时恢复工厂、流方法和事件钩子。"""
 
-    def __init__(self, model: str, thinking: str | bool, raw_output: Path,
-                 allowed_facts: set[str], articles: dict[str, Any]):
+    def __init__(
+        self, model: str, thinking: str | bool, raw_output: Path, allowed_facts: set[str], articles: dict[str, Any]
+    ):
         self.model = model
         self.thinking = thinking
         self.raw_output = raw_output
@@ -55,7 +58,9 @@ class CloudCapture:
                 known = self.articles[article["article_id"]]
                 if article["content"] != known["content"] or article["required_elements"] != known.get("elements", []):
                     raise ValueError("工具正文或要件超出公开快照")
-            if "required_elements" in result and result["required_elements"] != self.articles[result["article_id"]].get("elements", []):
+            if "required_elements" in result and result["required_elements"] != self.articles[result["article_id"]].get(
+                "elements", []
+            ):
                 raise ValueError("工具要件超出公开快照")
 
     def __enter__(self):
@@ -95,9 +100,17 @@ class CloudCapture:
         # Gateway 的本地预算不作为云请求参数；仅调整本次副本，显式 options 仍接受原校验。
         model = model.model_copy(update={"num_predict": None, "num_ctx": None})
         started = time.monotonic()
-        row = {"requested_model": model.model, "request_url": None, "wire_request": None,
-               "http_status": None, "content": "", "thinking": "", "tool_calls": [],
-               "last_response": None, "chunks": 0}
+        row = {
+            "requested_model": model.model,
+            "request_url": None,
+            "wire_request": None,
+            "http_status": None,
+            "content": "",
+            "thinking": "",
+            "tool_calls": [],
+            "last_response": None,
+            "chunks": 0,
+        }
         self.records.append(row)
         client = model._async_client._client
         original_request_hooks = list(client.event_hooks.get("request", []))
@@ -177,30 +190,46 @@ async def evaluate(args) -> dict:
         response.raise_for_status()
         tag = next((item for item in response.json()["models"] if item["name"] == args.model), None)
     corpus = load_criminal_law_data(profile="full")
-    with CloudCapture(args.model, thinking, args.raw_output,
-                      masked_case_facts(selected, args.query_mode), _build_article_index(corpus)) as capture:
+    with CloudCapture(
+        args.model,
+        thinking,
+        args.raw_output,
+        masked_case_facts(selected, args.query_mode),
+        _build_article_index(corpus),
+    ) as capture:
         result = await run_evaluation("live-lawref", args.output, args.case, args.query_mode, cases_path=args.cases)
     result["actual_execution"] = {
         "requested_model": args.model,
         "returned_models": sorted({row["last_response"]["model"] for row in capture.records if row["last_response"]}),
-        "provider": "Ollama cloud-tag proxy", "base_url": args.base_url, "thinking": thinking,
-        "show_metadata": show, "catalog_entry": tag,
+        "provider": "Ollama cloud-tag proxy",
+        "base_url": args.base_url,
+        "thinking": thinking,
+        "show_metadata": show,
+        "catalog_entry": tag,
         "remote_weights_digest_verified": None,
         "proxy_manifest_digest": tag.get("digest") if tag else None,
         "remote_host_observed": tag.get("remote_host") if tag else None,
         "http_statuses": [row["http_status"] for row in capture.records],
         "protocol": "legacy; evaluation-only model copy; no native format/num_predict",
-        "local_fallback": False, "raw_output": str(args.raw_output.resolve()),
+        "local_fallback": False,
+        "raw_output": str(args.raw_output.resolve()),
         "raw_sha256": "sha256:" + hashlib.sha256(args.raw_output.read_bytes()).hexdigest(),
         "payload_check": "原案例现有mask_pii完整输出与公开快照逐字核对；gold不传模型",
     }
     result["llm_executed"] = any(row["last_response"] for row in capture.records)
     # 按真实工具执行轨迹记录检索，不继承mode所表达的运行意图。
     result["rag_executed"] = any(
-        step["tool_name"] == "search_laws" and step["tool_status"] in {
-            "success", "empty", "partial_dependency_failure", "dependency_failure", "timeout",
+        step["tool_name"] == "search_laws"
+        and step["tool_status"]
+        in {
+            "success",
+            "empty",
+            "partial_dependency_failure",
+            "dependency_failure",
+            "timeout",
         }
-        for case in result["cases"] for step in case["trajectory"]
+        for case in result["cases"]
+        for step in case["trajectory"]
     )
     result["actual_execution"]["rag_execution_basis"] = "search_laws实际执行轨迹；不等于所有召回均成功"
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
@@ -219,9 +248,15 @@ def main() -> int:
     parser.add_argument("--case", action="append")
     parser.add_argument("--query-mode", choices=["article", "semantic"], default="article")
     args = parser.parse_args()
-    os.environ.update({"LLM_TYPE": "OLLAMA", "OLLAMA_MODEL_NAME": args.model,
-                       "OLLAMA_BASE_URL": args.base_url, "LAW_AGENT_FINAL_PROTOCOL": "legacy",
-                       "LAW_KNOWLEDGE_PROFILE": "full"})
+    os.environ.update(
+        {
+            "LLM_TYPE": "OLLAMA",
+            "OLLAMA_MODEL_NAME": args.model,
+            "OLLAMA_BASE_URL": args.base_url,
+            "LAW_AGENT_FINAL_PROTOCOL": "legacy",
+            "LAW_KNOWLEDGE_PROFILE": "full",
+        }
+    )
     result = asyncio.run(evaluate(args))
     print(json.dumps({"passed": result["passed"], "total": result["total"], "model": args.model}))
     return 0 if result["passed"] == result["total"] else 1

@@ -1,4 +1,5 @@
 """将受控法条关键词规则转换为统一召回通道。"""
+
 from typing import Any
 
 from app.knowledge.retrieval.models import CandidateOrigin, ChannelResult, RetrievalCandidate, StageStatus
@@ -24,7 +25,9 @@ def flatten_fact_terms(value: Any) -> list[str]:
 
 def facts_query(facts: dict[str, Any]) -> str:
     """沿用行为与后果字段生成原查询。"""
-    return " ".join(flatten_fact_terms(facts.get("behavior_sequence", [])) + flatten_fact_terms(facts.get("consequence", "")))
+    return " ".join(
+        flatten_fact_terms(facts.get("behavior_sequence", [])) + flatten_fact_terms(facts.get("consequence", ""))
+    )
 
 
 def facts_terms(facts: dict[str, Any]) -> list[str]:
@@ -34,6 +37,7 @@ def facts_terms(facts: dict[str, Any]) -> list[str]:
 
 class LawKeywordRetriever:
     """只召回受控资产；业务关键词与通用 BM25 分开。"""
+
     def __init__(self, repository: LawRepository):
         self.repository = repository
 
@@ -42,26 +46,46 @@ class LawKeywordRetriever:
         number = _normalize_article_number(article["article_number"])
         cid = candidate_identity(self.repository.source_id, f"keyword:{number}", article["content"])
         metadata = {**article, "retrieval_method": "article_id_json" if exact else "keyword", "relevance_score": score}
-        return RetrievalCandidate(cid, self.repository.source_id, article["content"], metadata,
-                                  origins=(CandidateOrigin(self.repository.source_id, cid, "exact" if exact else "keyword", metadata),))
+        return RetrievalCandidate(
+            cid,
+            self.repository.source_id,
+            article["content"],
+            metadata,
+            origins=(CandidateOrigin(self.repository.source_id, cid, "exact" if exact else "keyword", metadata),),
+        )
 
     def recall(self, query: str, k: int, *, terms: list[str] | None = None) -> ChannelResult:
         """沿用罪名、标签、关键词和正文匹配分召回，最终排序由 Pipeline 完成。"""
-        terms = [term.strip().lower() for term in terms if term.strip()] if terms is not None else [term.lower() for term in query.split() if term]
+        terms = (
+            [term.strip().lower() for term in terms if term.strip()]
+            if terms is not None
+            else [term.lower() for term in query.split() if term]
+        )
         matched = []
         for number, article in self.repository.article_index.items():
-            if not is_article_in_force(article) or (not is_lawref_eligible(article) and not article.get("text_provenance")):
+            if not is_article_in_force(article) or (
+                not is_lawref_eligible(article) and not article.get("text_provenance")
+            ):
                 continue
             title = (article.get("title") or article.get("display_title", "")).lower()
             tags = " ".join(article.get("charge_tags", [])).lower()
             keywords = " ".join(article.get("common_keywords", [])).lower()
             content = article.get("content", "").lower()
-            score = sum((100 if _normalize_article_number(term) == number else 0)
-                        + (3 if term in title else 0) + (2 if term in tags else 0)
-                        + (1 if term in keywords else 0) + (0.5 if term in content else 0) for term in terms)
+            score = sum(
+                (100 if _normalize_article_number(term) == number else 0)
+                + (3 if term in title else 0)
+                + (2 if term in tags else 0)
+                + (1 if term in keywords else 0)
+                + (0.5 if term in content else 0)
+                for term in terms
+            )
             if score > 0:
                 matched.append((article, score))
         matched.sort(key=lambda pair: -pair[1])
         candidates = tuple(self.candidate(article, score=score) for article, score in matched[:k])
-        return ChannelResult("keyword", candidates, {c.candidate_id: c.metadata["relevance_score"] for c in candidates},
-                             StageStatus("executed" if terms else "skipped_empty"))
+        return ChannelResult(
+            "keyword",
+            candidates,
+            {c.candidate_id: c.metadata["relevance_score"] for c in candidates},
+            StageStatus("executed" if terms else "skipped_empty"),
+        )

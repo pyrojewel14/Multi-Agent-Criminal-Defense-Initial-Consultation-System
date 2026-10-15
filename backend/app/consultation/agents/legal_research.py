@@ -33,6 +33,8 @@ from app.security.sensitive_filter import mask_pii
 
 
 class _StrictArgs(BaseModel):
+    """严格校验工具参数类型，并拒绝未声明的额外字段。"""
+
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
@@ -102,6 +104,7 @@ def _fingerprint(name: str, arguments: dict[str, Any]) -> str:
 
 
 def _article_fingerprint(article: dict[str, Any], law_data: dict[str, Any]) -> str:
+    """将资产版本、条号与正文绑定为指纹，供工具结果识别具体条文。"""
     metadata = law_data.get("metadata", {})
     payload = [
         metadata.get("dataset_id"),
@@ -115,12 +118,20 @@ def _article_fingerprint(article: dict[str, Any], law_data: dict[str, Any]) -> s
 class LegalToolRegistry:
     """仅开放三种固定工具；模型返回的名称与参数均不直接执行。"""
 
-    def __init__(self, facts: dict[str, Any], user_id: str | None, law_data: dict[str, Any], *,
-                 search_service: LawSearchService | None = None):
+    def __init__(
+        self,
+        facts: dict[str, Any],
+        user_id: str | None,
+        law_data: dict[str, Any],
+        *,
+        search_service: LawSearchService | None = None,
+    ):
         self.facts = facts
         self.user_id = user_id
         self.law_data = law_data
-        self.search_service = search_service if search_service is not None else build_law_search_service(law_data=law_data)
+        self.search_service = (
+            search_service if search_service is not None else build_law_search_service(law_data=law_data)
+        )
         self.searched: dict[str, dict[str, Any]] = {}
         self.observed: set[str] = set()
         self.rag_dependency_failed = False
@@ -176,7 +187,9 @@ class LegalToolRegistry:
                 {
                     "article_id": article_id,
                     "title": law.get("title") or law.get("display_title", ""),
-                    "score": law.get("rerank_score") if law.get("rerank_score") is not None else law.get("fusion_score", law.get("relevance_score")),
+                    "score": law.get("rerank_score")
+                    if law.get("rerank_score") is not None
+                    else law.get("fusion_score", law.get("relevance_score")),
                     "rank": law.get("rank"),
                     "fusion_score": law.get("fusion_score"),
                     "rerank_score": law.get("rerank_score"),
@@ -187,11 +200,14 @@ class LegalToolRegistry:
                     "coverage_eligible": law.get("coverage_eligible", False),
                     "provenance": law.get("provenance", {}),
                     "origins": [
-                        {"source_id": origin["source_id"], "candidate_id": origin["candidate_id"],
-                         "channel": origin["channel"],
-                         "source": origin.get("verification", {}).get("source", "rag_unverified"),
-                         "coverage_eligible": origin.get("verification", {}).get("coverage_eligible", False),
-                         "verified": origin.get("verification", {}).get("provenance", {}).get("verified", False)}
+                        {
+                            "source_id": origin["source_id"],
+                            "candidate_id": origin["candidate_id"],
+                            "channel": origin["channel"],
+                            "source": origin.get("verification", {}).get("source", "rag_unverified"),
+                            "coverage_eligible": origin.get("verification", {}).get("coverage_eligible", False),
+                            "verified": origin.get("verification", {}).get("provenance", {}).get("verified", False),
+                        }
                         for origin in law.get("origins", [])
                     ],
                     "source": source,
@@ -209,6 +225,7 @@ class LegalToolRegistry:
         }
 
     def _verified_article(self, article_id: str) -> tuple[str, dict[str, Any] | None]:
+        """归一化条号，只读取本轮工具搜索中已通过来源门槛的记录。"""
         normalized = _normalize_article_number(article_id.strip())
         return normalized, self.searched.get(normalized)
 
@@ -243,7 +260,9 @@ class LegalToolRegistry:
         return {
             "article_id": normalized,
             "required_elements": article.get("elements", []) if is_lawref_eligible(article) else [],
-            "review_status": article.get("annotations", {}).get("elements", {}).get("review_status", "project_regression"),
+            "review_status": article.get("annotations", {})
+            .get("elements", {})
+            .get("review_status", "project_regression"),
             "annotation_source": article.get("annotation_source", ""),
         }
 
@@ -311,12 +330,14 @@ def _final_input(registry: LegalToolRegistry, safe_facts: str) -> tuple[str, dic
     for article_id in sorted(registry.observed):
         article = registry.searched[article_id]
         eligible = is_lawref_eligible(article)
-        articles.append({
-            "article_id": article_id,
-            "content": article.get("content", ""),
-            "required_elements": [_element_name(item) for item in article.get("elements", [])] if eligible else [],
-            "coverage_eligible": eligible,
-        })
+        articles.append(
+            {
+                "article_id": article_id,
+                "content": article.get("content", ""),
+                "required_elements": [_element_name(item) for item in article.get("elements", [])] if eligible else [],
+                "coverage_eligible": eligible,
+            }
+        )
     schema = FinalAnswer.model_json_schema()
     schema["properties"]["article_ids"]["items"] = {"type": "string", "enum": [a["article_id"] for a in articles]}
     element_properties = {}
@@ -324,10 +345,13 @@ def _final_input(registry: LegalToolRegistry, safe_facts: str) -> tuple[str, dic
         names = article["required_elements"]
         element_properties[article["article_id"]] = (
             {"type": "array", "items": {"type": "string", "enum": names}}
-            if names else {"type": "array", "items": {"type": "string"}, "maxItems": 0}
+            if names
+            else {"type": "array", "items": {"type": "string"}, "maxItems": 0}
         )
     schema["properties"]["matched_elements"] = {
-        "type": "object", "properties": element_properties, "additionalProperties": False,
+        "type": "object",
+        "properties": element_properties,
+        "additionalProperties": False,
     }
     return json.dumps({"facts": json.loads(safe_facts), "read_articles": articles}, ensure_ascii=False), schema
 
@@ -393,7 +417,9 @@ async def run_legal_research(
                     decision = await asyncio.wait_for(
                         llm_gateway.generate_with_tools(
                             _FINAL_PROMPT if final_phase else _SYSTEM_PROMPT,
-                            current_prompt, [] if final_phase else registry.model_tools, is_legal=True,
+                            current_prompt,
+                            [] if final_phase else registry.model_tools,
+                            is_legal=True,
                             message_history=final_history if final_phase else message_history,
                             response_schema=response_schema,
                         ),
@@ -424,7 +450,11 @@ async def run_legal_research(
                 break
             except Exception as exc:
                 # 上下文预算拒绝与外部依赖失败分别留痕，不记录模型输入。
-                reason = "budget_exceeded" if getattr(exc, "detail", None) == "context_budget_exceeded" else "dependency_failure"
+                reason = (
+                    "budget_exceeded"
+                    if getattr(exc, "detail", None) == "context_budget_exceeded"
+                    else "dependency_failure"
+                )
                 result.termination_reason = reason
                 result.trajectory.append(
                     AgentStep(
@@ -505,7 +535,9 @@ async def run_legal_research(
                         tool_status=status,
                         tool_result_summary=summary,
                         latency_ms=round((time.monotonic() - step_started) * 1000, 3),
-                        token_usage={"total_tokens": step_token_delta} if step_token_delta > 0 else decision.get("token_usage", {"total_tokens": "unknown"}),
+                        token_usage={"total_tokens": step_token_delta}
+                        if step_token_delta > 0
+                        else decision.get("token_usage", {"total_tokens": "unknown"}),
                     )
                 )
                 # 用关联 ID 反馈真实执行结果，避免模型把新一轮事实输入当作重新检索的请求。
@@ -513,13 +545,16 @@ async def run_legal_research(
                 message_history.append(
                     AIMessage(
                         content=decision.get("content") or "",
-                        tool_calls=[{"name": name, "args": raw_args if isinstance(raw_args, dict) else {}, "id": call_id}],
+                        tool_calls=[
+                            {"name": name, "args": raw_args if isinstance(raw_args, dict) else {}, "id": call_id}
+                        ],
                     )
                 )
                 message_history.append(
                     ToolMessage(
                         content=json.dumps({"status": status, "result": observation}, ensure_ascii=False),
-                        tool_call_id=call_id, name=name,
+                        tool_call_id=call_id,
+                        name=name,
                     )
                 )
                 if status in {"timeout", "dependency_failure", "budget_exceeded"}:
@@ -565,7 +600,9 @@ async def run_legal_research(
                 if article in selected:
                     rejection = "duplicate_article"
                     break
-                required = [_element_name(item) for item in article.get("elements", [])] if is_lawref_eligible(article) else []
+                required = (
+                    [_element_name(item) for item in article.get("elements", [])] if is_lawref_eligible(article) else []
+                )
                 if not required and not article.get("text_provenance"):
                     rejection = "unverified_source"
                     break
@@ -577,8 +614,10 @@ async def run_legal_research(
                 selected.append(article)
                 matched[article_id] = [item for item in required if item in claimed]
                 missing[article_id] = [item for item in required if item not in claimed]
-            if answer is not None and rejection is None and any(
-                key not in answer.article_ids for key in answer.matched_elements
+            if (
+                answer is not None
+                and rejection is None
+                and any(key not in answer.article_ids for key in answer.matched_elements)
             ):
                 rejection = "unselected_article_elements"
             step_token_delta = session_budget.snapshot(session_id)["tokens"] - step_tokens_before if session_id else 0
@@ -587,9 +626,13 @@ async def run_legal_research(
                     step=step_number,
                     model_decision="final_answer" if answer is not None else "invalid",
                     tool_status="success" if rejection is None and selected else "invalid_final",
-                    tool_result_summary={"count": len(selected)} if rejection is None else {"count": 0, "rejection_reason": rejection},
+                    tool_result_summary={"count": len(selected)}
+                    if rejection is None
+                    else {"count": 0, "rejection_reason": rejection},
                     latency_ms=round((time.monotonic() - step_started) * 1000, 3),
-                    token_usage={"total_tokens": step_token_delta} if step_token_delta > 0 else decision.get("token_usage", {"total_tokens": "unknown"}),
+                    token_usage={"total_tokens": step_token_delta}
+                    if step_token_delta > 0
+                    else decision.get("token_usage", {"total_tokens": "unknown"}),
                 )
             )
             if selected and rejection is None:
@@ -598,18 +641,28 @@ async def run_legal_research(
                 result.matched_elements = matched
                 result.missing_elements = missing
                 result.confidence = answer.confidence
-                result.evidence_status = "verified_candidate" if all(is_lawref_eligible(a) for a in selected) else "text_only"
+                result.evidence_status = (
+                    "verified_candidate" if all(is_lawref_eligible(a) for a in selected) else "text_only"
+                )
                 result.termination_reason = "final_answer"
                 break
             # 纠偏携带原响应和错误类别；原生候选最多一次，legacy 仍受总轮数预算约束。
             feedback_history = final_history if final_phase else message_history
-            feedback_history.extend([
-                AIMessage(content=content if isinstance(content, str) else ""),
-                HumanMessage(content=json.dumps({
-                    "validation_error": rejection, "schema_error_types": error_types,
-                    "instruction": "修正最终输出；只能选择已读取条文及已有要件名称，没有事实支持的要件留缺失。",
-                }, ensure_ascii=False)),
-            ])
+            feedback_history.extend(
+                [
+                    AIMessage(content=content if isinstance(content, str) else ""),
+                    HumanMessage(
+                        content=json.dumps(
+                            {
+                                "validation_error": rejection,
+                                "schema_error_types": error_types,
+                                "instruction": "修正最终输出；只能选择已读取条文及已有要件名称，没有事实支持的要件留缺失。",
+                            },
+                            ensure_ascii=False,
+                        )
+                    ),
+                ]
+            )
             if final_phase and final_attempts >= 2:
                 result.termination_reason = "invalid_final"
                 break
@@ -620,7 +673,9 @@ async def run_legal_research(
         token_delta = current_tokens - initial_tokens
         step_tokens = [step.token_usage.get("total_tokens", "unknown") for step in result.trajectory]
         known_tokens = [value for value in step_tokens if isinstance(value, int)]
-        result.token_usage = {"total_tokens": token_delta if token_delta > 0 else (
-            sum(known_tokens) if len(known_tokens) == len(step_tokens) else "unknown"
-        )}
+        result.token_usage = {
+            "total_tokens": token_delta
+            if token_delta > 0
+            else (sum(known_tokens) if len(known_tokens) == len(step_tokens) else "unknown")
+        }
     return result

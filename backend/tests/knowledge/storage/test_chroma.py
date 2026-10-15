@@ -59,7 +59,18 @@ def test_snapshot_fingerprint_tracks_content_metadata_and_source(source):
     assert store.read_snapshot(where={"user_id": "absent"}).rows == ()
 
 
-@pytest.mark.parametrize("vectors", [[], [[1.0]], [[1.0, 0.0], [1.0]], [[float("nan"), 0.0], [1.0, 0.0]], [[float("inf"), 0.0], [1.0, 0.0]], [[True, 0.0], [1.0, 0.0]], [[1e300, 0.0], [1.0, 0.0]]])
+@pytest.mark.parametrize(
+    "vectors",
+    [
+        [],
+        [[1.0]],
+        [[1.0, 0.0], [1.0]],
+        [[float("nan"), 0.0], [1.0, 0.0]],
+        [[float("inf"), 0.0], [1.0, 0.0]],
+        [[True, 0.0], [1.0, 0.0]],
+        [[1e300, 0.0], [1.0, 0.0]],
+    ],
+)
 def test_upsert_rejects_invalid_vectors_before_writing(source, vectors):
     store = ChromaStore.create(source)
     rows = [StoredRow("a", "a", {"is_public": True}), StoredRow("b", "b", {"is_public": True})]

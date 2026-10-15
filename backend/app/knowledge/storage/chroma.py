@@ -97,8 +97,12 @@ def _where(where: Mapping[str, Any]) -> dict[str, Any]:
     return _plain(where)
 
 
-def _rows(ids: Sequence[str], documents: Sequence[str] | None, metadatas: Sequence[Any] | None,
-          distances: Sequence[float] | None = None) -> tuple[StoredRow, ...]:
+def _rows(
+    ids: Sequence[str],
+    documents: Sequence[str] | None,
+    metadatas: Sequence[Any] | None,
+    distances: Sequence[float] | None = None,
+) -> tuple[StoredRow, ...]:
     """严格按存储 ID 对齐字段，拒绝不完整响应而非静默丢行。"""
     count = len(ids)
     if documents is None or metadatas is None or len(documents) != count or len(metadatas) != count:
@@ -107,8 +111,10 @@ def _rows(ids: Sequence[str], documents: Sequence[str] | None, metadatas: Sequen
         raise ValueError("Chroma distance response is not aligned")
     if any(not isinstance(content, str) for content in documents):
         raise ValueError("Chroma document content is missing")
-    return tuple(StoredRow(row_id, documents[i], metadatas[i] or {},
-                           None if distances is None else distances[i]) for i, row_id in enumerate(ids))
+    return tuple(
+        StoredRow(row_id, documents[i], metadatas[i] or {}, None if distances is None else distances[i])
+        for i, row_id in enumerate(ids)
+    )
 
 
 class ChromaStore:
@@ -128,7 +134,8 @@ class ChromaStore:
     def create(cls, source: ChromaSource, *, metadata: Mapping[str, Any] | None = None) -> ChromaStore:
         """仅供显式构建使用，不绑定默认 Embedding 或覆盖现有 Collection。"""
         collection = source.client.create_collection(
-            name=source.collection_name, embedding_function=None,
+            name=source.collection_name,
+            embedding_function=None,
             metadata=None if metadata is None else _plain(metadata),
         )
         return cls(source, collection)
@@ -138,7 +145,9 @@ class ChromaStore:
         if type(k) is not int or k <= 0:
             raise ValueError("k must be a positive integer")
         result = self._collection.query(
-            query_embeddings=[validate_embedding(vector)], n_results=k, where=_where(where),
+            query_embeddings=[validate_embedding(vector)],
+            n_results=k,
+            where=_where(where),
             include=["documents", "metadatas", "distances"],
         )
         return _rows(result["ids"][0], result["documents"][0], result["metadatas"][0], result["distances"][0])
@@ -151,9 +160,10 @@ class ChromaStore:
     def read_snapshot(self, *, where: Mapping[str, Any]) -> CorpusSnapshot:
         """按行 ID 排序并计算指纹，读取顺序变化不触发无效缓存重建。"""
         rows = tuple(sorted(self.get_by_metadata(where=where), key=lambda row: row.row_id))
-        payload = {"source_id": self.source.source_id, "rows": [
-            {"row_id": row.row_id, "content": row.content, "metadata": _plain(row.metadata)} for row in rows
-        ]}
+        payload = {
+            "source_id": self.source.source_id,
+            "rows": [{"row_id": row.row_id, "content": row.content, "metadata": _plain(row.metadata)} for row in rows],
+        }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
         return CorpusSnapshot(self.source.source_id, rows, hashlib.sha256(raw.encode("utf-8")).hexdigest())
 
@@ -168,8 +178,10 @@ class ChromaStore:
         if any(len(vector) != len(vectors[0]) for vector in vectors):
             raise ValueError("embedding dimensions must match")
         self._collection.upsert(
-            ids=[row.row_id for row in rows], documents=[row.content for row in rows],
-            metadatas=[_plain(row.metadata) or None for row in rows], embeddings=vectors,
+            ids=[row.row_id for row in rows],
+            documents=[row.content for row in rows],
+            metadatas=[_plain(row.metadata) or None for row in rows],
+            embeddings=vectors,
         )
 
     def delete_rows(self, *, where: Mapping[str, Any]) -> None:

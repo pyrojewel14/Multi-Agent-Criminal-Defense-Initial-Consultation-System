@@ -70,9 +70,16 @@ def test_qwen_rejects_decision_word_that_encodes_to_multiple_tokens():
         QwenReranker.decision_tokens(SplitDecisionTokenizer())
 
 
-@pytest.mark.parametrize("setting,value", [("positive_token", "true"), ("negative_token", "false"),
-                                         ("prefix_template", "prefix"), ("suffix_template", "suffix"),
-                                         ("input_template", "{query}{document}")])
+@pytest.mark.parametrize(
+    "setting,value",
+    [
+        ("positive_token", "true"),
+        ("negative_token", "false"),
+        ("prefix_template", "prefix"),
+        ("suffix_template", "suffix"),
+        ("input_template", "{query}{document}"),
+    ],
+)
 def test_qwen_rejects_configuration_that_changes_official_protocol(setting, value):
     with pytest.raises(ValueError, match="protocol"):
         QwenReranker(RerankerConfig(**{setting: value}))
@@ -103,10 +110,17 @@ async def test_qwen_rejects_scores_outside_probability_range(values):
         scorer.close()
 
 
-@pytest.mark.parametrize("requested,cuda,mps,expected", [
-    ("auto", True, True, "cuda"), ("auto", False, True, "mps"), ("auto", False, False, "cpu"),
-    ("cpu", True, True, "cpu"), ("cuda", True, False, "cuda"), ("mps", True, True, "mps"),
-])
+@pytest.mark.parametrize(
+    "requested,cuda,mps,expected",
+    [
+        ("auto", True, True, "cuda"),
+        ("auto", False, True, "mps"),
+        ("auto", False, False, "cpu"),
+        ("cpu", True, True, "cpu"),
+        ("cuda", True, False, "cuda"),
+        ("mps", True, True, "mps"),
+    ],
+)
 def test_device_selection_respects_explicit_choice(monkeypatch, requested, cuda, mps, expected):
     monkeypatch.setattr(torch.cuda, "is_available", lambda: cuda)
     monkeypatch.setattr(torch.backends.mps, "is_available", lambda: mps)
@@ -217,7 +231,11 @@ def test_preparation_import_and_check_are_offline_and_download_is_explicit(tmp_p
     spec = importlib.util.spec_from_file_location("prepare_reranker_test", script)
     module = importlib.util.module_from_spec(spec)
     requests = []
-    monkeypatch.setitem(sys.modules, "modelscope", SimpleNamespace(snapshot_download=lambda **kwargs: requests.append(kwargs) or str(tmp_path)))
+    monkeypatch.setitem(
+        sys.modules,
+        "modelscope",
+        SimpleNamespace(snapshot_download=lambda **kwargs: requests.append(kwargs) or str(tmp_path)),
+    )
     spec.loader.exec_module(module)
     config = RerankerConfig(local_path=str(tmp_path / "missing"), cache_dir=str(tmp_path / "cache"))
     with pytest.raises(FileNotFoundError):
@@ -231,15 +249,21 @@ def test_preparation_import_and_check_are_offline_and_download_is_explicit(tmp_p
 
 
 def test_import_constructor_and_readiness_do_not_import_model_dependencies():
-    result = subprocess.run([
-        sys.executable, "-c",
-        "import sys; from app.knowledge.retrieval.config import RerankerConfig; "
-        "from app.knowledge.retrieval.rerankers import QwenReranker, CrossEncoderReranker; "
-        "scorers = [QwenReranker(RerankerConfig()), CrossEncoderReranker(RerankerConfig())]; "
-        "assert all(s.readiness()['status'] == 'not_loaded' for s in scorers); "
-        "assert not {'torch', 'transformers', 'sentence_transformers', 'modelscope'} & set(sys.modules); "
-        "[s.close() for s in scorers]",
-    ], capture_output=True, text=True, timeout=10)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from app.knowledge.retrieval.config import RerankerConfig; "
+            "from app.knowledge.retrieval.rerankers import QwenReranker, CrossEncoderReranker; "
+            "scorers = [QwenReranker(RerankerConfig()), CrossEncoderReranker(RerankerConfig())]; "
+            "assert all(s.readiness()['status'] == 'not_loaded' for s in scorers); "
+            "assert not {'torch', 'transformers', 'sentence_transformers', 'modelscope'} & set(sys.modules); "
+            "[s.close() for s in scorers]",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
     assert result.returncode == 0, result.stderr
 
 
@@ -276,8 +300,8 @@ def test_actual_local_tokenizer_keeps_original_query_and_official_decisions():
         assert len(tokens) == 512
         prefix = tokenizer.encode(PREFIX, add_special_tokens=False)
         suffix = tokenizer.encode(SUFFIX, add_special_tokens=False)
-        assert tokens[:len(prefix)] == prefix
-        assert tokens[-len(suffix):] == suffix
+        assert tokens[: len(prefix)] == prefix
+        assert tokens[-len(suffix) :] == suffix
         assert scorer.decision_tokens(tokenizer) == (9693, 2152)
         assert tokenizer.encode("yes", add_special_tokens=False) == [9693]
         assert tokenizer.encode("no", add_special_tokens=False) == [2152]

@@ -93,6 +93,7 @@ async def admin_app(test_app, monkeypatch):
     # Depends captured these closures when the router was imported.
     async def _noop():
         return None
+
     for route in test_app.routes:
         if not getattr(route, "path", "").startswith(KNOWLEDGE_PREFIX):
             continue
@@ -442,15 +443,25 @@ def real_document_service(tmp_path):
     import chromadb
     from app.knowledge.storage.chroma import ChromaSource
     from app.knowledge.wiring import KnowledgeResources, build_document_services
+
     resources = KnowledgeResources()
     client = chromadb.PersistentClient(path=str(tmp_path / "uploads"))
+
     async def embed_documents(texts):
-        return [[1., 0.] for _ in texts]
+        return [[1.0, 0.0] for _ in texts]
+
     async def embed_query(text):
-        return [1., 0.]
-    service = build_document_services(source=ChromaSource("api-documents", client, "api-documents"),
-        create_missing=True, md5_directory=tmp_path / "hashes", resources=resources,
-        embed_documents=embed_documents, embed_query=embed_query, env={"LAW_FULL_RERANK_ENABLED": "false"})
+        return [1.0, 0.0]
+
+    service = build_document_services(
+        source=ChromaSource("api-documents", client, "api-documents"),
+        create_missing=True,
+        md5_directory=tmp_path / "hashes",
+        resources=resources,
+        embed_documents=embed_documents,
+        embed_query=embed_query,
+        env={"LAW_FULL_RERANK_ENABLED": "false"},
+    )
     yield service
     resources.close()
 
@@ -458,11 +469,15 @@ def real_document_service(tmp_path):
 @pytest.mark.asyncio
 async def test_real_upload_management_and_delete_reupload_contract(admin_app, real_document_service):
     from app.knowledge.wiring import get_document_service
+
     admin_app.dependency_overrides[get_document_service] = lambda: real_document_service
     async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
+
         async def upload_case():
-            return await client_http.post(f"{KNOWLEDGE_PREFIX}/add/single",
-                files={"file": ("case.txt", b"real owned content", "text/plain")})
+            return await client_http.post(
+                f"{KNOWLEDGE_PREFIX}/add/single", files={"file": ("case.txt", b"real owned content", "text/plain")}
+            )
+
         assert (await upload_case()).status_code == 200
         listing = (await client_http.get(f"{KNOWLEDGE_PREFIX}/list")).json()["data"]
         assert listing["total_count"] == 1
@@ -475,7 +490,9 @@ async def test_real_upload_management_and_delete_reupload_contract(admin_app, re
         hashes = (await client_http.get(f"{KNOWLEDGE_PREFIX}/md5/list")).json()["data"]
         assert hashes["total_count"] == 1
         assert hashes["records"][0]["filename"] == "case.txt"
-        assert (await client_http.delete(f"{KNOWLEDGE_PREFIX}/delete/filename", params={"filename": "case.txt"})).status_code == 200
+        assert (
+            await client_http.delete(f"{KNOWLEDGE_PREFIX}/delete/filename", params={"filename": "case.txt"})
+        ).status_code == 200
         assert (await client_http.get(f"{KNOWLEDGE_PREFIX}/detail", params={"filename": "case.txt"})).status_code == 404
         assert (await upload_case()).status_code == 200
         assert (await client_http.get(f"{KNOWLEDGE_PREFIX}/list")).json()["data"]["total_count"] == 1
@@ -485,13 +502,17 @@ async def test_real_upload_management_and_delete_reupload_contract(admin_app, re
 async def test_real_stream_failure_preserves_sse_and_does_not_report_success(admin_app, real_document_service):
     import json
     from app.knowledge.wiring import get_document_service
+
     async def fail(texts):
         raise RuntimeError("embedding unavailable")
+
     real_document_service.embed_documents = fail
     admin_app.dependency_overrides[get_document_service] = lambda: real_document_service
     async with AsyncClient(transport=ASGITransport(app=admin_app), base_url="http://test") as client_http:
-        response = await client_http.post(f"{KNOWLEDGE_PREFIX}/add/multiple/stream",
-            files=[("files", ("case.txt", b"real owned content", "text/plain"))])
+        response = await client_http.post(
+            f"{KNOWLEDGE_PREFIX}/add/multiple/stream",
+            files=[("files", ("case.txt", b"real owned content", "text/plain"))],
+        )
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]

@@ -196,16 +196,29 @@ def test_snapshot_service_explicit_index_ignores_upload_library(tmp_path, monkey
     from app.knowledge.retrieval.config import RetrievalConfig
 
     index = tmp_path / "snapshot"
-    build_index(LAW_PATH := Path(__file__).resolve().parents[1] / "backend/data/law_knowledge/criminal_law_chapters.json",
-                index, "snapshot_collection", "test", "test-digest", lambda texts: [[1.0, float(i)] for i in range(len(texts))])
+    build_index(
+        LAW_PATH := Path(__file__).resolve().parents[1] / "backend/data/law_knowledge/criminal_law_chapters.json",
+        index,
+        "snapshot_collection",
+        "test",
+        "test-digest",
+        lambda texts: [[1.0, float(i)] for i in range(len(texts))],
+    )
     monkeypatch.setenv("CHROMA_PERSIST_DIRECTORY", str(tmp_path / "do-not-open-upload-library"))
 
     async def embed(query):
         return [1.0, 0.0]
 
-    service = build_snapshot_search_service(resources=evaluation_resources, index_dir=index, collection="snapshot_collection", law_path=LAW_PATH,
-                                          embedding_model="test", embedding_digest="test-digest", embed_query=embed,
-                                          config=RetrievalConfig(mode="hybrid", rerank=False))
+    service = build_snapshot_search_service(
+        resources=evaluation_resources,
+        index_dir=index,
+        collection="snapshot_collection",
+        law_path=LAW_PATH,
+        embedding_model="test",
+        embedding_digest="test-digest",
+        embed_query=embed,
+        config=RetrievalConfig(mode="hybrid", rerank=False),
+    )
     result = asyncio.run(service.search("殴打", user_id="evaluation"))
     assert result.search.retrieval_status["vector"] == "executed"
     assert result.search.retrieval_status["bm25"] == "executed"
@@ -223,15 +236,30 @@ def test_snapshot_service_rejects_mismatched_manifest_without_fallback(tmp_path,
     index = tmp_path / "snapshot"
     build_index(law_path, index, "snapshot_collection", "test", "test-digest", lambda texts: [[1.0] for _ in texts])
     with pytest.raises(ValueError, match="manifest"):
-        build_snapshot_search_service(resources=evaluation_resources, index_dir=index, collection="snapshot_collection", law_path=law_path,
-                                      embedding_model="wrong-model", embedding_digest="test-digest")
+        build_snapshot_search_service(
+            resources=evaluation_resources,
+            index_dir=index,
+            collection="snapshot_collection",
+            law_path=law_path,
+            embedding_model="wrong-model",
+            embedding_digest="test-digest",
+        )
     import chromadb
-    collection = chromadb.PersistentClient(path=str(index)).get_collection("snapshot_collection", embedding_function=None)
+
+    collection = chromadb.PersistentClient(path=str(index)).get_collection(
+        "snapshot_collection", embedding_function=None
+    )
     identifier = collection.get()["ids"][0]
     collection.update(ids=[identifier], metadatas=[{"article_number": "第1条"}])
     with pytest.raises(ValueError, match="metadata"):
-        build_snapshot_search_service(resources=evaluation_resources, index_dir=index, collection="snapshot_collection", law_path=law_path,
-                                      embedding_model="test", embedding_digest="test-digest")
+        build_snapshot_search_service(
+            resources=evaluation_resources,
+            index_dir=index,
+            collection="snapshot_collection",
+            law_path=law_path,
+            embedding_model="test",
+            embedding_digest="test-digest",
+        )
 
 
 def test_summary_counts_attempts_and_routes_without_claiming_accuracy():

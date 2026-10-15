@@ -13,13 +13,20 @@ async def test_ranked_results_are_bounded_ordered_and_fingerprinted(monkeypatch)
 
     store = BoundedTraceStore(max_events=50)
     monkeypatch.setattr(module, "trace_store", store)
-    vector = Vector([RetrievalCandidate(str(i), "test", "第999条 私密正文" + str(i), {"article_number": f"第{900+i}条"}) for i in range(9)])
+    vector = Vector(
+        [
+            RetrievalCandidate(str(i), "test", "第999条 私密正文" + str(i), {"article_number": f"第{900 + i}条"})
+            for i in range(9)
+        ]
+    )
     selected = service(vector=vector)
     with trace_span(store, event_type="law_tool", name="search_laws", request_id="ranked", session_id="sid"):
         result = await selected.search("私密查询", user_id="alice")
     events = store.export_tree("ranked")
     assert len([event for event in events if event["event_type"] == "rag_ranked_result_set"]) == 1
-    ranked = sorted((event for event in events if event["event_type"] == "rag_ranked_result"), key=lambda event: event["attempt"])
+    ranked = sorted(
+        (event for event in events if event["event_type"] == "rag_ranked_result"), key=lambda event: event["attempt"]
+    )
     assert [event["attempt"] for event in ranked] == [1, 2, 3, 4, 5]
     assert len(result.search.candidates) == 5
     assert all(event["metadata"]["content"]["sha256"] for event in ranked)

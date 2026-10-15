@@ -73,14 +73,14 @@ def _load(corpus_path: Path) -> tuple[dict[str, Any], str]:
 
 
 def build_full_index(
-        corpus_path: Path,
-        index_dir: Path,
-        collection: str,
-        embedding_model: str,
-        embedding_digest: str,
-        embed_documents: Callable[[list[str]], list[list[float]]],
-        *,
-        embedding_engine: str = "ollama",
+    corpus_path: Path,
+    index_dir: Path,
+    collection: str,
+    embedding_model: str,
+    embedding_digest: str,
+    embed_documents: Callable[[list[str]], list[list[float]]],
+    *,
+    embedding_engine: str = "ollama",
 ) -> dict[str, Any]:
     """构建不可覆盖的独立版本目录，只有完整读回核验后才发布 manifest。"""
     import chromadb
@@ -97,19 +97,19 @@ def build_full_index(
     documents = [r["document"] for r in rows]
     embeddings: list[list[float]] = []
     for start in range(0, len(documents), 32):
-        batch = documents[start: start + 32]
+        batch = documents[start : start + 32]
         embeddings.extend(_vectors(embed_documents(batch), len(batch)))
     embeddings = _vectors(embeddings, len(rows))
     index_dir.mkdir(parents=True)
     client = chromadb.PersistentClient(path=str(index_dir))
     target = client.create_collection(collection, embedding_function=None, metadata={"hnsw:space": "cosine"})
     for start in range(0, len(rows), 32):
-        batch = rows[start: start + 32]
+        batch = rows[start : start + 32]
         target.add(
             ids=[r["id"] for r in batch],
             documents=[r["document"] for r in batch],
             metadatas=cast(list[Metadata], [r["metadata"] for r in batch]),
-            embeddings=cast(list[Embedding], embeddings[start: start + 32]),
+            embeddings=cast(list[Embedding], embeddings[start : start + 32]),
         )
     stored = target.get(ids=[r["id"] for r in rows], include=["documents", "metadatas", "embeddings"])
     if stored["documents"] is None or stored["metadatas"] is None or stored["embeddings"] is None:
@@ -143,13 +143,13 @@ def build_full_index(
 
 
 def verify_full_index(
-        corpus_path: Path,
-        index_dir: Path,
-        collection: str,
-        embedding_model: str,
-        embedding_digest: str,
-        *,
-        allow_test_embeddings: bool = False,
+    corpus_path: Path,
+    index_dir: Path,
+    collection: str,
+    embedding_model: str,
+    embedding_digest: str,
+    *,
+    allow_test_embeddings: bool = False,
 ) -> dict[str, Any]:
     """读回全部文档、来源、向量与 manifest；任一不一致均拒绝使用。"""
     import chromadb
@@ -158,15 +158,15 @@ def verify_full_index(
     index_dir = Path(index_dir).resolve()
     manifest = json.loads((index_dir.parent / f"{index_dir.name}.manifest.json").read_text())
     if (
-            manifest.get("schema_version") != "full-index-v1"
-            or manifest.get("corpus_sha256") != corpus_hash
-            or manifest.get("corpus_version") != corpus["metadata"]["dataset_version"]
+        manifest.get("schema_version") != "full-index-v1"
+        or manifest.get("corpus_sha256") != corpus_hash
+        or manifest.get("corpus_version") != corpus["metadata"]["dataset_version"]
     ):
         raise ValueError("corpus manifest mismatch")
     if manifest.get("embedding_model") != embedding_model or manifest.get("embedding_model_digest") != embedding_digest:
         raise ValueError("embedding model/digest mismatch")
     if manifest.get("embedding_engine") != "ollama" and not (
-            allow_test_embeddings and manifest.get("embedding_engine") == "deterministic-test"
+        allow_test_embeddings and manifest.get("embedding_engine") == "deterministic-test"
     ):
         raise ValueError("test embedding cannot serve runtime")
     if manifest.get("collection") != collection or manifest.get("legal_review_completed") is not False:
@@ -180,9 +180,9 @@ def verify_full_index(
         raise ValueError("documents/embedding missing")
     by_id = {identifier: i for i, identifier in enumerate(stored["ids"])}
     if (
-            set(by_id) != {r["id"] for r in rows}
-            or target.count() != len(rows)
-            or manifest.get("document_count") != len(rows)
+        set(by_id) != {r["id"] for r in rows}
+        or target.count() != len(rows)
+        or manifest.get("document_count") != len(rows)
     ):
         raise ValueError("documents count/ids mismatch")
     for r in rows:

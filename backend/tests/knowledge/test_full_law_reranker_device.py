@@ -42,10 +42,14 @@ def test_device_setting_changes_cached_scorer_without_loading_model():
 async def test_unavailable_mps_preserves_fusion_order_and_records_failure(monkeypatch):
     monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
     scorer = QwenReranker(RerankerConfig(local_path="unused", device="mps"))
+
     class Vector:
         async def retrieve(self, request):
-            candidates = tuple(RetrievalCandidate(str(i), "law", body, {}) for i, body in enumerate(("候选一", "候选二")))
+            candidates = tuple(
+                RetrievalCandidate(str(i), "law", body, {}) for i, body in enumerate(("候选一", "候选二"))
+            )
             return ChannelResult("vector", candidates, {}, StageStatus("executed"))
+
     pipeline = RetrievalPipeline(Vector(), reranker=scorer, config=RetrievalConfig(rerank=True))
     try:
         result = await pipeline.search(RetrievalRequest("query", RetrievalScope("law", "alice", True), 20, 5))

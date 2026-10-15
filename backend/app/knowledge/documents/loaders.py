@@ -171,8 +171,6 @@ async def json_loader(file_path: str, jq_schema: str = ".[] | .content") -> list
         return []
 
 
-
-
 def pdf_loader_sync(file_path: str, password: str | None = None) -> list[Document]:
     """同步加载 PDF 文件内容（用于多线程场景，支持包含图片和文字的混合 PDF）。
 

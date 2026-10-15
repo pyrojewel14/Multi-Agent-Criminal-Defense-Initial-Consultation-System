@@ -40,6 +40,7 @@ def build_index(
 ) -> dict:
     """Validate provenance first; never overwrite an existing index directory."""
     from app.knowledge.storage.chroma import ChromaSource, ChromaStore, StoredRow, validate_embedding
+
     snapshot_path = Path(snapshot_path).resolve()
     index_dir = Path(index_dir).resolve()
     if index_dir.exists():
@@ -83,7 +84,10 @@ def build_index(
     client = chromadb.PersistentClient(path=str(index_dir))
     store = ChromaStore.create(ChromaSource("law:snapshot-evaluation", client, collection))
     store.upsert_rows(
-        [StoredRow(identifier, document, metadata) for identifier, document, metadata in zip(ids, documents, chroma_metadata)],
+        [
+            StoredRow(identifier, document, metadata)
+            for identifier, document, metadata in zip(ids, documents, chroma_metadata)
+        ],
         embeddings=embeddings,
     )
     target = client.get_collection(collection, embedding_function=None)

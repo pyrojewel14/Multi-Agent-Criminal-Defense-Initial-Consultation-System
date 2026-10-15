@@ -35,7 +35,10 @@ class LawRepository:
         self.law_data = copy.deepcopy(law_data)
         self.article_index = _build_article_index(self.law_data)
         metadata = self.law_data.get("metadata", {})
-        self.source_id = source_id or f"law:{metadata.get('dataset_id', 'criminal-law')}:{metadata.get('dataset_version', 'snapshot')}"
+        self.source_id = (
+            source_id
+            or f"law:{metadata.get('dataset_id', 'criminal-law')}:{metadata.get('dataset_version', 'snapshot')}"
+        )
 
     def get(self, article_id: str) -> Dict[str, Any] | None:
         """只返回仍有效的受控条文，不存在和删去条文返回空。"""

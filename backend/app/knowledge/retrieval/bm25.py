@@ -42,8 +42,13 @@ class BM25Retriever:
     def _index(self, request: RetrievalRequest, snapshot: CorpusSnapshot) -> BM25Okapi | None:
         """将数据源、授权范围、语料指纹和分词版本共同作为缓存身份。"""
         scope = request.scope
-        cache_key = (snapshot.source_id, scope.user_id, scope.include_public,
-                     snapshot.fingerprint, tokenization.TOKENIZER_VERSION)
+        cache_key = (
+            snapshot.source_id,
+            scope.user_id,
+            scope.include_public,
+            snapshot.fingerprint,
+            tokenization.TOKENIZER_VERSION,
+        )
         with self._lock:
             if cache_key not in self._cache:
                 tokens = [tokenization.chinese_tokens(row.content) for row in snapshot.rows]
@@ -63,14 +68,16 @@ class BM25Retriever:
         if index is None or not query_tokens:
             return ChannelResult("bm25", (), {}, StageStatus("executed"))
         scores = index.get_scores(query_tokens)
-        matches = [(row, float(score)) for row, score in zip(snapshot.rows, scores)
-                   if math.isfinite(float(score)) and score > 0]
+        matches = [
+            (row, float(score))
+            for row, score in zip(snapshot.rows, scores)
+            if math.isfinite(float(score)) and score > 0
+        ]
         matches.sort(key=lambda pair: (-pair[1], pair[0].row_id))
         candidates = []
         raw_scores = {}
-        for rank, (row, score) in enumerate(matches[:request.recall_k], 1):
+        for rank, (row, score) in enumerate(matches[: request.recall_k], 1):
             candidate = candidate_from_row(row, source_id=snapshot.source_id, channel="bm25")
-            candidates.append(replace(candidate, recall_ranks={"bm25": rank},
-                                      recall_scores={"bm25": score}))
+            candidates.append(replace(candidate, recall_ranks={"bm25": rank}, recall_scores={"bm25": score}))
             raw_scores[candidate.candidate_id] = score
         return ChannelResult("bm25", tuple(candidates), raw_scores, StageStatus("executed"))

@@ -29,8 +29,13 @@ def test_candidate_containers_are_not_shared():
     origin = models.CandidateOrigin("source", "row-1", "vector", metadata)
     origins = [origin]
     candidate = models.RetrievalCandidate(
-        "row-1", "source", "text", metadata,
-        recall_ranks=ranks, recall_scores=scores, origins=origins,
+        "row-1",
+        "source",
+        "text",
+        metadata,
+        recall_ranks=ranks,
+        recall_scores=scores,
+        origins=origins,
     )
     other = models.RetrievalCandidate("row-2", "source", "other", {})
     metadata["labels"].append("changed")
@@ -100,10 +105,21 @@ def test_request_and_ranking_updates_require_new_records():
         candidate.rank = 1
 
 
-@pytest.mark.parametrize("state", [
-    "executed", "disabled", "unconfigured", "skipped_empty", "skipped_unauthorized",
-    "skipped_exact", "failed", "timeout", "busy", "budget_exhausted",
-])
+@pytest.mark.parametrize(
+    "state",
+    [
+        "executed",
+        "disabled",
+        "unconfigured",
+        "skipped_empty",
+        "skipped_unauthorized",
+        "skipped_exact",
+        "failed",
+        "timeout",
+        "busy",
+        "budget_exhausted",
+    ],
+)
 def test_stage_status_accepts_shared_execution_states(state):
     assert models.StageStatus(state).state == state
 
@@ -113,10 +129,17 @@ def test_stage_status_rejects_unknown_execution_state():
         models.StageStatus("success-ish")
 
 
-@pytest.mark.parametrize("field,value", [
-    ("recall_k", 0), ("recall_k", True), ("recall_k", 2.5),
-    ("top_k", -1), ("top_k", False), ("top_k", 1.5),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("recall_k", 0),
+        ("recall_k", True),
+        ("recall_k", 2.5),
+        ("top_k", -1),
+        ("top_k", False),
+        ("top_k", 1.5),
+    ],
+)
 def test_request_rejects_nonpositive_or_noninteger_counts(field, value):
     settings = {"recall_k": 20, "top_k": 5, field: value}
     with pytest.raises(ValueError):

@@ -35,8 +35,6 @@ _logger = get_logger("Main")
 checkpoint_readiness = SQLiteReadiness()
 
 
-
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _logger.info("Starting up application...")
@@ -126,12 +124,20 @@ async def readiness_check():
             },
         },
         "memory": {
-            "summary": {"enabled": True, "requires_consent": True,
-                        "input_budget": settings.summary_input_budget, "output_budget": settings.summary_output_budget,
-                        "timeout_seconds": settings.summary_timeout},
+            "summary": {
+                "enabled": True,
+                "requires_consent": True,
+                "input_budget": settings.summary_input_budget,
+                "output_budget": settings.summary_output_budget,
+                "timeout_seconds": settings.summary_timeout,
+            },
             "structured_case": {"enabled": True},
-            "context": {"recent_messages": settings.recent_messages, "token_budget": settings.context_token_budget,
-                        "model_window": settings.model_window, "output_reserve": settings.output_reserve},
+            "context": {
+                "recent_messages": settings.recent_messages,
+                "token_budget": settings.context_token_budget,
+                "model_window": settings.model_window,
+                "output_reserve": settings.output_reserve,
+            },
         },
     }
 

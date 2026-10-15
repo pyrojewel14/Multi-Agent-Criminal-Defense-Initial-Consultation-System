@@ -45,8 +45,7 @@ class DashScopeEmbeddingsWrapper(Embeddings):
     使用 OpenAI 兼容接口调用阿里云百炼 embedding 服务。
     """
 
-    def __init__(self, model_name: str = "text-embedding-v4", api_key: str | None = None,
-                 base_url: str | None = None):
+    def __init__(self, model_name: str = "text-embedding-v4", api_key: str | None = None, base_url: str | None = None):
         """初始化 DashScope 嵌入模型。
 
         Args:
@@ -65,10 +64,14 @@ class DashScopeEmbeddingsWrapper(Embeddings):
         if not self.api_key:
             raise ValueError("未设置 API Key，请设置 DASHSCOPE_API_KEY 或 ALIYUN_ACCESS_KEY_SECRET 环境变量")
 
-        base_url = base_url if base_url is not None else (
-            os.getenv("DASHSCOPE_BASE_URL")
-            or os.getenv("ALIYUN_BASE_URL")
-            or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        base_url = (
+            base_url
+            if base_url is not None
+            else (
+                os.getenv("DASHSCOPE_BASE_URL")
+                or os.getenv("ALIYUN_BASE_URL")
+                or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            )
         )
 
         self.client = OpenAI(api_key=self.api_key, base_url=base_url)

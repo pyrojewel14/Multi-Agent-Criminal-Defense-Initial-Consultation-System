@@ -27,8 +27,25 @@ def test_stage_status_rejects_unknown_error_names_including_plain_identifiers(na
     assert status.state == "failed" and status.degraded is True
 
 
-@pytest.mark.parametrize("name", ["ValueError", "RuntimeError", "TimeoutError", "OSError", "FileNotFoundError", "TypeError",
-    "ConnectError", "ReadTimeout", "HTTPStatusError", "SessionBudgetExceeded", "RerankerBusyError", "RerankerClosedError", "OtherError", None])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "ValueError",
+        "RuntimeError",
+        "TimeoutError",
+        "OSError",
+        "FileNotFoundError",
+        "TypeError",
+        "ConnectError",
+        "ReadTimeout",
+        "HTTPStatusError",
+        "SessionBudgetExceeded",
+        "RerankerBusyError",
+        "RerankerClosedError",
+        "OtherError",
+        None,
+    ],
+)
 def test_stage_status_keeps_fixed_diagnostic_categories(name):
     assert StageStatus("failed", name, True).error_type == name
 
@@ -65,8 +82,13 @@ async def test_pipeline_sanitizes_each_failed_stage_without_changing_dependency_
                 raise unknown_error()
             return [0.5] * len(documents)
 
-    pipeline = RetrievalPipeline(Retriever("vector"), bm25=Retriever("bm25"), expander=Expander(), reranker=Scorer(),
-        config=RetrievalConfig(hyde=True, rerank=True))
+    pipeline = RetrievalPipeline(
+        Retriever("vector"),
+        bm25=Retriever("bm25"),
+        expander=Expander(),
+        reranker=Scorer(),
+        config=RetrievalConfig(hyde=True, rerank=True),
+    )
     result = await pipeline.search(RetrievalRequest("query", RetrievalScope("fixture", "alice", True), 20, 5))
     stage = "hyde" if phase.startswith("hyde_") else "vector" if phase == "external_status" else phase
     assert result.retrieval_status[stage] == "failed"

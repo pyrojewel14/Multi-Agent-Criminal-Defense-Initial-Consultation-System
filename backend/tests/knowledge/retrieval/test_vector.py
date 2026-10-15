@@ -20,11 +20,14 @@ def request(source_id="source", user_id="a", include_public=False, query="query"
 def store(tmp_path):
     client = chromadb.PersistentClient(path=str(tmp_path))
     store = ChromaStore.create(ChromaSource("source", client, "documents"), metadata={"hnsw:space": "cosine"})
-    store.upsert_rows([
-        StoredRow("private-a", "A private", {"user_id": "a", "is_public": False, "page": 2}),
-        StoredRow("private-b", "B private", {"user_id": "b", "is_public": False}),
-        StoredRow("public", "public", {"user_id": "b", "is_public": True}),
-    ], embeddings=[[1.0, 0.0], [0.0, 1.0], [0.6, 0.8]])
+    store.upsert_rows(
+        [
+            StoredRow("private-a", "A private", {"user_id": "a", "is_public": False, "page": 2}),
+            StoredRow("private-b", "B private", {"user_id": "b", "is_public": False}),
+            StoredRow("public", "public", {"user_id": "b", "is_public": True}),
+        ],
+        embeddings=[[1.0, 0.0], [0.0, 1.0], [0.6, 0.8]],
+    )
     return store
 
 
@@ -45,10 +48,18 @@ async def test_two_real_collections_with_same_id_are_isolated(tmp_path):
 async def test_scopes_match_snapshots_and_do_not_leak_between_concurrent_requests(store):
     embed = AsyncMock(return_value=[1.0, 0.0])
     retriever = ChromaVectorRetriever(store, embed, expected_dimension=2)
-    requests = [request(), request(user_id="b"), request(include_public=True), request(user_id=None, include_public=True)]
+    requests = [
+        request(),
+        request(user_id="b"),
+        request(include_public=True),
+        request(user_id=None, include_public=True),
+    ]
     results = await asyncio.gather(*(retriever.retrieve(r) for r in requests))
     assert [{c.content for c in result.candidates} for result in results] == [
-        {"A private"}, {"B private", "public"}, {"A private", "public"}, {"public"},
+        {"A private"},
+        {"B private", "public"},
+        {"A private", "public"},
+        {"public"},
     ]
     for req, result in zip(requests, results):
         snapshot = store.read_snapshot(where=scope_where(req.scope))
@@ -56,7 +67,9 @@ async def test_scopes_match_snapshots_and_do_not_leak_between_concurrent_request
 
 
 async def test_native_distance_metadata_and_rank_are_preserved(store):
-    result = await ChromaVectorRetriever(store, AsyncMock(return_value=[1.0, 0.0]), expected_dimension=2).retrieve(request(include_public=True))
+    result = await ChromaVectorRetriever(store, AsyncMock(return_value=[1.0, 0.0]), expected_dimension=2).retrieve(
+        request(include_public=True)
+    )
     native = store.query_by_vector([1.0, 0.0], k=10, where=scope_where(request(include_public=True).scope))
     for rank, (candidate, row) in enumerate(zip(result.candidates, native), 1):
         assert candidate.metadata == {**row.metadata, "row_id": row.row_id}
@@ -68,7 +81,9 @@ async def test_native_distance_metadata_and_rank_are_preserved(store):
     assert result.candidates[1].recall_scores["vector"] == pytest.approx(0.4)
 
 
-@pytest.mark.parametrize("req,state", [(request(user_id=None), "skipped_unauthorized"), (request(query=" \n\t "), "skipped_empty")])
+@pytest.mark.parametrize(
+    "req,state", [(request(user_id=None), "skipped_unauthorized"), (request(query=" \n\t "), "skipped_empty")]
+)
 async def test_skipped_requests_do_not_embed_or_read(req, state):
     store = Mock(source=ChromaSource("source", Mock(), "documents"))
     embed = AsyncMock()
@@ -86,7 +101,10 @@ async def test_wrong_source_fails_before_embedding_or_io(store):
     embed.assert_not_awaited()
 
 
-@pytest.mark.parametrize("vector", [[], [1.0], [float("nan"), 0.0], [float("inf"), 0.0], [True, 0.0], ["1", 0.0], [[1.0], [0.0]], [1e300, 0.0]])
+@pytest.mark.parametrize(
+    "vector",
+    [[], [1.0], [float("nan"), 0.0], [float("inf"), 0.0], [True, 0.0], ["1", 0.0], [[1.0], [0.0]], [1e300, 0.0]],
+)
 async def test_invalid_embedding_fails_before_io(vector):
     store = Mock(source=ChromaSource("source", Mock(), "documents"))
     with pytest.raises(ValueError, match="embedding"):
@@ -96,7 +114,9 @@ async def test_invalid_embedding_fails_before_io(vector):
 
 async def test_unknown_dimension_uses_native_collection_validation(store):
     with pytest.raises(Exception, match="dimension"):
-        await ChromaVectorRetriever(store, AsyncMock(return_value=[1.0, 0.0, 0.0]), expected_dimension=None).retrieve(request())
+        await ChromaVectorRetriever(store, AsyncMock(return_value=[1.0, 0.0, 0.0]), expected_dimension=None).retrieve(
+            request()
+        )
 
 
 async def test_embedding_errors_and_cancellation_propagate(store):
@@ -121,7 +141,9 @@ async def test_query_error_propagates_and_io_runs_on_worker_thread():
 
 
 async def test_empty_authorized_collection_is_executed(store):
-    result = await ChromaVectorRetriever(store, AsyncMock(return_value=[1.0, 0.0]), expected_dimension=2).retrieve(request(user_id="absent"))
+    result = await ChromaVectorRetriever(store, AsyncMock(return_value=[1.0, 0.0]), expected_dimension=2).retrieve(
+        request(user_id="absent")
+    )
     assert result.status.state == "executed"
     assert result.candidates == ()
 
@@ -133,7 +155,17 @@ def test_scope_where_refuses_no_permission():
 
 def test_candidate_identity_includes_source_row_and_text_without_paths():
     original = candidate_identity("source", "id", "text")
-    assert len({original, candidate_identity("other", "id", "text"), candidate_identity("source", "other", "text"), candidate_identity("source", "id", "changed")}) == 4
+    assert (
+        len(
+            {
+                original,
+                candidate_identity("other", "id", "text"),
+                candidate_identity("source", "other", "text"),
+                candidate_identity("source", "id", "changed"),
+            }
+        )
+        == 4
+    )
     assert original == candidate_identity("source", "id", "text")
 
 

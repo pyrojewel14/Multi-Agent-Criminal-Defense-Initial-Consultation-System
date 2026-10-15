@@ -25,7 +25,13 @@ def request(source="source", user="alice", public=False, query="盗窃", k=10):
 def store(tmp_path):
     client = chromadb.PersistentClient(path=str(tmp_path))
     store = ChromaStore.create(ChromaSource("source", client, "bm25-corpus"))
-    store.upsert_rows([StoredRow(str(i), text, {"user_id": "alice", "is_public": False, "version": 1}) for i, text in enumerate(TEXTS)], embeddings=[[1.0, 0.0]] * 5)
+    store.upsert_rows(
+        [
+            StoredRow(str(i), text, {"user_id": "alice", "is_public": False, "version": 1})
+            for i, text in enumerate(TEXTS)
+        ],
+        embeddings=[[1.0, 0.0]] * 5,
+    )
     return store
 
 
@@ -56,20 +62,33 @@ def test_tokenizer_keeps_cjk_characters_bigrams_and_english_numbers():
 
 
 async def test_same_source_user_and_public_scopes_do_not_leak(store):
-    store.upsert_rows([
-        StoredRow("bob", "盗窃privatebob", {"user_id": "bob", "is_public": False}),
-        StoredRow("pub", "盗窃public", {"user_id": "bob", "is_public": True}),
-    ], embeddings=[[1.0, 0.0]] * 2)
+    store.upsert_rows(
+        [
+            StoredRow("bob", "盗窃privatebob", {"user_id": "bob", "is_public": False}),
+            StoredRow("pub", "盗窃public", {"user_id": "bob", "is_public": True}),
+        ],
+        embeddings=[[1.0, 0.0]] * 2,
+    )
     # Keep the matching term rare within every tested scope, so positive-only BM25 applies.
-    store.upsert_rows([StoredRow(f"filler-{i}", text, {"user_id": "owner", "is_public": True})
-                       for i, text in enumerate(TEXTS[1:])], embeddings=[[1.0, 0.0]] * 4)
-    store.upsert_rows([StoredRow(f"bob-filler-{i}", text, {"user_id": "bob", "is_public": False})
-                       for i, text in enumerate(TEXTS[1:])], embeddings=[[1.0, 0.0]] * 4)
+    store.upsert_rows(
+        [StoredRow(f"filler-{i}", text, {"user_id": "owner", "is_public": True}) for i, text in enumerate(TEXTS[1:])],
+        embeddings=[[1.0, 0.0]] * 4,
+    )
+    store.upsert_rows(
+        [
+            StoredRow(f"bob-filler-{i}", text, {"user_id": "bob", "is_public": False})
+            for i, text in enumerate(TEXTS[1:])
+        ],
+        embeddings=[[1.0, 0.0]] * 4,
+    )
     retriever = BM25Retriever(store)
     requests = [request(), request(user="bob"), request(public=True), request(user=None, public=True)]
     results = await asyncio.gather(*(retriever.retrieve(req) for req in requests))
     assert [set(c.metadata["row_id"] for c in r.candidates) for r in results] == [
-        {"0"}, {"bob", "pub"}, {"0", "pub"}, {"pub"},
+        {"0"},
+        {"bob", "pub"},
+        {"0", "pub"},
+        {"pub"},
     ]
 
 
@@ -79,7 +98,10 @@ async def test_two_sources_with_same_row_id_keep_identity_separate(tmp_path):
     for index, text in enumerate(["盗窃first", "盗窃second"]):
         source = f"source-{index}"
         store = ChromaStore.create(ChromaSource(source, client, f"bm25-{index}"))
-        store.upsert_rows([StoredRow(str(i), text if i == 0 else TEXTS[i], {"is_public": True}) for i in range(5)], embeddings=[[1.0, 0.0]] * 5)
+        store.upsert_rows(
+            [StoredRow(str(i), text if i == 0 else TEXTS[i], {"is_public": True}) for i in range(5)],
+            embeddings=[[1.0, 0.0]] * 5,
+        )
         results.append(await BM25Retriever(store).retrieve(request(source, user=None, public=True)))
     assert [r.candidates[0].content for r in results] == ["盗窃first", "盗窃second"]
     assert results[0].candidates[0].candidate_id != results[1].candidates[0].candidate_id
@@ -88,12 +110,18 @@ async def test_two_sources_with_same_row_id_keep_identity_separate(tmp_path):
 async def test_content_and_metadata_changes_refresh_warm_cache(store):
     retriever = BM25Retriever(store)
     before = await retriever.retrieve(request())
-    store.upsert_rows([StoredRow("0", "侵占他人财物", {"user_id": "alice", "is_public": False, "version": 2})], embeddings=[[1.0, 0.0]])
+    store.upsert_rows(
+        [StoredRow("0", "侵占他人财物", {"user_id": "alice", "is_public": False, "version": 2})],
+        embeddings=[[1.0, 0.0]],
+    )
     after = await retriever.retrieve(request(query="侵占"))
     assert after.candidates[0].content == "侵占他人财物"
     assert after.candidates[0].metadata["version"] == 2
     assert after.candidates[0].candidate_id != before.candidates[0].candidate_id
-    store.upsert_rows([StoredRow("0", "侵占他人财物", {"user_id": "alice", "is_public": False, "version": 3})], embeddings=[[1.0, 0.0]])
+    store.upsert_rows(
+        [StoredRow("0", "侵占他人财物", {"user_id": "alice", "is_public": False, "version": 3})],
+        embeddings=[[1.0, 0.0]],
+    )
     current = await retriever.retrieve(request(query="侵占"))
     assert current.candidates[0].metadata["version"] == 3
 
@@ -147,7 +175,9 @@ async def test_cache_is_bounded_and_evicted_scope_rebuilds(store, monkeypatch):
     assert len(builds) == 3
 
 
-@pytest.mark.parametrize("req,state", [(request(query=" \n"), "skipped_empty"), (request(user=None), "skipped_unauthorized")])
+@pytest.mark.parametrize(
+    "req,state", [(request(query=" \n"), "skipped_empty"), (request(user=None), "skipped_unauthorized")]
+)
 async def test_guard_prevents_snapshot_io(req, state):
     store = Mock(source=ChromaSource("source", Mock(), "documents"))
     result = await BM25Retriever(store).retrieve(req)
@@ -186,6 +216,7 @@ async def test_all_punctuation_documents_do_not_build_invalid_index(store):
 
 async def test_concurrent_same_scope_builds_one_index(store, monkeypatch):
     import time
+
     builds = []
     real = bm25.BM25Okapi
 
@@ -202,8 +233,7 @@ async def test_concurrent_same_scope_builds_one_index(store, monkeypatch):
 
 
 async def test_punctuation_row_does_not_shift_matching_document(store):
-    store.upsert_rows([StoredRow("punctuation", "……！！！", {"user_id": "alice"})],
-                      embeddings=[[1.0, 0.0]])
+    store.upsert_rows([StoredRow("punctuation", "……！！！", {"user_id": "alice"})], embeddings=[[1.0, 0.0]])
     result = await BM25Retriever(store).retrieve(request())
     assert result.candidates[0].content == TEXTS[0]
     assert result.candidates[0].metadata["row_id"] == "0"

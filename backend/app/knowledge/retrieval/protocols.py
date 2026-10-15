@@ -27,8 +27,6 @@ class QueryExpander(Protocol):
 class Reranker(Protocol):
     """仅评分，返回与输入正文顺序一一对应的分数。"""
 
-    async def score(
-        self, query: str, documents: Sequence[str], *, timeout_s: float
-    ) -> Sequence[float]:
+    async def score(self, query: str, documents: Sequence[str], *, timeout_s: float) -> Sequence[float]:
         """保留原查询并执行评分，不在组件内重排或截断候选集合。"""
         ...

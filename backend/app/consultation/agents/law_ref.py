@@ -229,7 +229,9 @@ def _build_applied_laws_from_structured(
                 "base_sentence": law.get("base_sentence", ""),
                 "probability": law.get("probability", "medium"),
                 "data_source": data_source,
-                "annotation_usage": matched_law.get("annotation_usage", "project_regression") if matched_law else "unverified",
+                "annotation_usage": matched_law.get("annotation_usage", "project_regression")
+                if matched_law
+                else "unverified",
                 "annotation_source": matched_law.get("annotation_source", "") if matched_law else "",
             }
         )

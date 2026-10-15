@@ -29,11 +29,15 @@ async def test_application_default_keeps_candidate_protocol_disabled(monkeypatch
 
     async def respond(system, prompt, tools, **kwargs):
         captured.append((tools, kwargs))
-        return [decision("search_laws", {"query": "盗窃"}), decision("get_article", {"article_id": "第264条"}), final()][len(captured)-1]
+        return [
+            decision("search_laws", {"query": "盗窃"}),
+            decision("get_article", {"article_id": "第264条"}),
+            final(),
+        ][len(captured) - 1]
 
     with (
         patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", side_effect=respond),
-        patch_law_recall( return_value=[]),
+        patch_law_recall(return_value=[]),
     ):
         result = await run_legal_research(FACTS, "user", load_criminal_law_data())
     assert result.termination_reason == "final_answer"
@@ -50,11 +54,15 @@ async def test_model_receives_assistant_calls_and_linked_tool_results():
 
     async def respond(system, prompt, tools, **kwargs):
         histories.append(list(kwargs.get("message_history", [])))
-        return [decision("search_laws", {"query": "盗窃"}), decision("get_article", {"article_id": "第264条"}), final()][len(histories) - 1]
+        return [
+            decision("search_laws", {"query": "盗窃"}),
+            decision("get_article", {"article_id": "第264条"}),
+            final(),
+        ][len(histories) - 1]
 
     with (
         patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", side_effect=respond),
-        patch_law_recall( return_value=[]),
+        patch_law_recall(return_value=[]),
     ):
         result = await run_legal_research(FACTS, "user", load_criminal_law_data())
     assert result.termination_reason == "final_answer"
@@ -72,11 +80,15 @@ async def test_final_generation_uses_only_read_articles_and_constrained_elements
 
     async def respond(system, prompt, tools, **kwargs):
         captured.append((json.loads(prompt), tools, kwargs))
-        return [decision("search_laws", {"query": "盗窃"}), decision("get_article", {"article_id": "第264条"}), final()][len(captured)-1]
+        return [
+            decision("search_laws", {"query": "盗窃"}),
+            decision("get_article", {"article_id": "第264条"}),
+            final(),
+        ][len(captured) - 1]
 
     with (
         patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", side_effect=respond),
-        patch_law_recall( return_value=[]),
+        patch_law_recall(return_value=[]),
     ):
         result = await run_legal_research(FACTS, "user", load_criminal_law_data())
     assert result.termination_reason == "final_answer"
@@ -86,25 +98,43 @@ async def test_final_generation_uses_only_read_articles_and_constrained_elements
     schema = kwargs["response_schema"]
     assert schema["properties"]["article_ids"]["items"]["enum"] == ["第264条"]
     assert schema["properties"]["matched_elements"]["additionalProperties"] is False
-    assert schema["properties"]["matched_elements"]["properties"]["第264条"]["items"]["enum"] == ["盗窃公私财物", "数额较大或者具备法定盗窃情形之一"]
+    assert schema["properties"]["matched_elements"]["properties"]["第264条"]["items"]["enum"] == [
+        "盗窃公私财物",
+        "数额较大或者具备法定盗窃情形之一",
+    ]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("bad_content,reason", [
-    ("", "empty_output"), ("not json", "invalid_json"), ("{}", "schema_error"),
-    (json.dumps({"article_ids": ["第9999条"], "matched_elements": {}, "confidence": "low"}), "unknown_article"),
-    (json.dumps({"article_ids": ["第264条"], "matched_elements": {"第264条": ["invented"]}, "confidence": "low"}), "unknown_element"),
-])
+@pytest.mark.parametrize(
+    "bad_content,reason",
+    [
+        ("", "empty_output"),
+        ("not json", "invalid_json"),
+        ("{}", "schema_error"),
+        (json.dumps({"article_ids": ["第9999条"], "matched_elements": {}, "confidence": "low"}), "unknown_article"),
+        (
+            json.dumps(
+                {"article_ids": ["第264条"], "matched_elements": {"第264条": ["invented"]}, "confidence": "low"}
+            ),
+            "unknown_element",
+        ),
+    ],
+)
 async def test_rejected_final_has_specific_reason_and_one_contextual_retry(bad_content, reason):
     prompts = []
 
     async def respond(system, prompt, tools, **kwargs):
         prompts.append((prompt, list(kwargs.get("message_history", []))))
-        return [decision("search_laws", {"query": "盗窃"}), decision("get_article", {"article_id": "第264条"}), {"content": bad_content, "tool_calls": []}, final()][len(prompts)-1]
+        return [
+            decision("search_laws", {"query": "盗窃"}),
+            decision("get_article", {"article_id": "第264条"}),
+            {"content": bad_content, "tool_calls": []},
+            final(),
+        ][len(prompts) - 1]
 
     with (
         patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", side_effect=respond),
-        patch_law_recall( return_value=[]),
+        patch_law_recall(return_value=[]),
     ):
         result = await run_legal_research(FACTS, "user", load_criminal_law_data())
     assert result.termination_reason == "final_answer"
@@ -119,8 +149,12 @@ async def test_final_retry_is_bounded_and_never_accepts_unknown_elements():
     replies = [decision("search_laws", {"query": "盗窃"}), decision("get_article", {"article_id": "第264条"})]
     invalid = {"content": "{}", "tool_calls": []}
     with (
-        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=replies + [invalid]*6),
-        patch_law_recall( return_value=[]),
+        patch(
+            "app.consultation.agents.legal_research.llm_gateway.generate_with_tools",
+            new_callable=AsyncMock,
+            side_effect=replies + [invalid] * 6,
+        ),
+        patch_law_recall(return_value=[]),
     ):
         result = await run_legal_research(FACTS, "user", load_criminal_law_data(), max_steps=8)
     assert result.termination_reason == "invalid_final"
@@ -130,10 +164,22 @@ async def test_final_retry_is_bounded_and_never_accepts_unknown_elements():
 
 @pytest.mark.asyncio
 async def test_final_rejects_searched_but_unread_article():
-    rejected = {"content": json.dumps({"article_ids": ["第234条"], "matched_elements": {}, "confidence": "low"}), "tool_calls": []}
+    rejected = {
+        "content": json.dumps({"article_ids": ["第234条"], "matched_elements": {}, "confidence": "low"}),
+        "tool_calls": [],
+    }
     with (
-        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[decision("search_laws", {"query": "盗窃"}), decision("search_laws", {"query": "故意伤害"}), decision("get_article", {"article_id": "第264条"}), rejected]),
-        patch_law_recall( return_value=[]),
+        patch(
+            "app.consultation.agents.legal_research.llm_gateway.generate_with_tools",
+            new_callable=AsyncMock,
+            side_effect=[
+                decision("search_laws", {"query": "盗窃"}),
+                decision("search_laws", {"query": "故意伤害"}),
+                decision("get_article", {"article_id": "第264条"}),
+                rejected,
+            ],
+        ),
+        patch_law_recall(return_value=[]),
     ):
         result = await run_legal_research(FACTS, "user", load_criminal_law_data(), max_steps=4)
     assert result.candidate_laws == []
@@ -141,14 +187,32 @@ async def test_final_rejects_searched_but_unread_article():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("rejected,reason", [
-    ({"content": '{"article_ids":["第264条"],"matched_elements":{},"confidence":"low"}', "tool_calls": [], "response_metadata": {"done_reason": "length"}}, "output_truncated"),
-    ({"content": "", "tool_calls": [{"name": "search_laws", "args": {"query": "盗窃"}}]}, "unexpected_tool_call"),
-])
+@pytest.mark.parametrize(
+    "rejected,reason",
+    [
+        (
+            {
+                "content": '{"article_ids":["第264条"],"matched_elements":{},"confidence":"low"}',
+                "tool_calls": [],
+                "response_metadata": {"done_reason": "length"},
+            },
+            "output_truncated",
+        ),
+        ({"content": "", "tool_calls": [{"name": "search_laws", "args": {"query": "盗窃"}}]}, "unexpected_tool_call"),
+    ],
+)
 async def test_final_rejects_truncation_and_tool_calls_without_executing_them(rejected, reason):
     with (
-        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", new_callable=AsyncMock, side_effect=[decision("search_laws", {"query": "盗窃"}), decision("get_article", {"article_id": "第264条"}), rejected]),
-        patch_law_recall( return_value=[]),
+        patch(
+            "app.consultation.agents.legal_research.llm_gateway.generate_with_tools",
+            new_callable=AsyncMock,
+            side_effect=[
+                decision("search_laws", {"query": "盗窃"}),
+                decision("get_article", {"article_id": "第264条"}),
+                rejected,
+            ],
+        ),
+        patch_law_recall(return_value=[]),
     ):
         result = await run_legal_research(FACTS, "user", load_criminal_law_data(), max_steps=3)
     assert result.candidate_laws == []
@@ -195,7 +259,11 @@ async def test_unreviewed_full_corpus_article_cannot_enter_applied_laws():
         decision("get_article", {"article_id": "第133条之一"}),
         {
             "content": json.dumps(
-                {"article_ids": ["第133条之一"], "matched_elements": {"第133条之一": ["情节恶劣"]}, "confidence": "high"},
+                {
+                    "article_ids": ["第133条之一"],
+                    "matched_elements": {"第133条之一": ["情节恶劣"]},
+                    "confidence": "high",
+                },
                 ensure_ascii=False,
             ),
             "tool_calls": [],
@@ -209,7 +277,7 @@ async def test_unreviewed_full_corpus_article_cannot_enter_applied_laws():
             side_effect=responses,
         ),
         patch("app.consultation.agents.law_ref.load_criminal_law_data", return_value=law_data),
-        patch_law_recall( return_value=[rag_hit]),
+        patch_law_recall(return_value=[rag_hit]),
     ):
         state = make_consultation_state(facts_structured={"behavior_sequence": ["危险驾驶"]}, applied_laws=[])
         result = await law_ref_node(state)
@@ -233,7 +301,7 @@ async def test_research_search_article_final_produces_workflow_contract():
             new_callable=AsyncMock,
             side_effect=responses,
         ),
-        patch_law_recall( return_value=[]),
+        patch_law_recall(return_value=[]),
     ):
         state = make_consultation_state(facts_structured=FACTS, applied_laws=[])
         result = await law_ref_node(state)
@@ -270,7 +338,7 @@ async def test_research_search_elements_then_final():
             new_callable=AsyncMock,
             side_effect=responses,
         ),
-        patch_law_recall( return_value=[]),
+        patch_law_recall(return_value=[]),
     ):
         result = await run_legal_research(FACTS, "user-1", load_criminal_law_data())
 
@@ -313,7 +381,7 @@ async def test_research_stops_repeated_identical_call():
             new_callable=AsyncMock,
             side_effect=[decision("search_laws", {"query": "盗窃"}), repeated, repeated],
         ),
-        patch_law_recall( return_value=[]),
+        patch_law_recall(return_value=[]),
     ):
         result = await run_legal_research(FACTS, "user-1", load_criminal_law_data())
 
@@ -332,7 +400,7 @@ async def test_research_max_steps_stops_without_false_success():
             new_callable=AsyncMock,
             side_effect=responses,
         ),
-        patch_law_recall( return_value=[]),
+        patch_law_recall(return_value=[]),
     ):
         result = await run_legal_research(FACTS, "user-1", load_criminal_law_data(), max_steps=2)
 
@@ -374,7 +442,7 @@ async def test_research_tool_failure_is_controlled(failure, reason):
             new_callable=AsyncMock,
             return_value=decision("search_laws", {"query": "盗窃"}),
         ),
-        patch_law_keyword( side_effect=failure),
+        patch_law_keyword(side_effect=failure),
     ):
         result = await run_legal_research(FACTS, "user-1", load_criminal_law_data(), max_steps=2)
 
@@ -391,7 +459,7 @@ async def test_research_empty_search_is_observed_and_degraded():
             new_callable=AsyncMock,
             return_value=decision("search_laws", {"query": "不存在的罪名"}),
         ),
-        patch_law_recall( return_value=[]),
+        patch_law_recall(return_value=[]),
     ):
         result = await run_legal_research(FACTS, "user-1", load_criminal_law_data(), max_steps=1)
 

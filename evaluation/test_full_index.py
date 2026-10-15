@@ -82,9 +82,7 @@ def test_full_index_rejects_version_model_and_synthetic_runtime(tmp_path):
     other = tmp_path / "other.json"
     other.write_text(json.dumps(altered, ensure_ascii=False))
     with pytest.raises(ValueError, match="corpus"):
-        verify_full_index(
-            other, target, "full_law", "test", "test-digest", allow_test_embeddings=True
-        )
+        verify_full_index(other, target, "full_law", "test", "test-digest", allow_test_embeddings=True)
     with pytest.raises(FileExistsError):
         build_full_index(
             FULL_CORPUS_PATH,
@@ -118,9 +116,7 @@ def test_invalid_embeddings_do_not_publish_index(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_exact_id_verifies_chroma_integrity_without_embedding_recall(
-    tmp_path, monkeypatch
-):
+async def test_exact_id_verifies_chroma_integrity_without_embedding_recall(tmp_path, monkeypatch):
     import httpx
     from app.knowledge.law.corpus import FULL_CORPUS_PATH
     from app.knowledge.law.index import build_full_index

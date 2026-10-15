@@ -73,8 +73,12 @@ def test_readiness_does_not_load_and_close_is_idempotent(scorer_type):
     scorer = scorer_type(RerankerConfig(local_path="missing-model"))
     try:
         assert scorer.readiness() == {
-            "status": "not_loaded", "available": False, "model": scorer.config.model_name,
-            "error": None, "busy": False, "closed": False,
+            "status": "not_loaded",
+            "available": False,
+            "model": scorer.config.model_name,
+            "error": None,
+            "busy": False,
+            "closed": False,
         }
         assert scorer._model is None
         scorer.close()

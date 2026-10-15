@@ -11,8 +11,11 @@ from .models import CandidateOrigin, ChannelResult, RetrievalCandidate
 
 def document_key(candidate: RetrievalCandidate) -> str:
     """用来源与存储行身份去重；无行 ID 的领域候选保留其自身身份。"""
-    return json.dumps([candidate.source_id, candidate.metadata.get("row_id", candidate.candidate_id)],
-                      ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(
+        [candidate.source_id, candidate.metadata.get("row_id", candidate.candidate_id)],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
 
 
 def choose_stable_representative(candidates: Sequence[RetrievalCandidate]) -> RetrievalCandidate:
@@ -21,7 +24,8 @@ def choose_stable_representative(candidates: Sequence[RetrievalCandidate]) -> Re
 
 
 def rrf_fuse(
-    channels: Mapping[str, ChannelResult], *,
+    channels: Mapping[str, ChannelResult],
+    *,
     key: Callable[[RetrievalCandidate], str],
     choose_representative: Callable[[Sequence[RetrievalCandidate]], RetrievalCandidate],
 ) -> tuple[RetrievalCandidate, ...]:
@@ -30,13 +34,16 @@ def rrf_fuse(
     ranks: dict[str, dict[str, int]] = {}
     scores: dict[str, dict[str, float]] = {}
     origins: dict[str, list[CandidateOrigin]] = {}
+
+    # 原始证据全部保留；同一身份在同一通道重复出现时，仅首个排名贡献分数。
     for name, channel in channels.items():
         seen = set()
         for rank, candidate in enumerate(channel.candidates, 1):
             identity = key(candidate)
             groups.setdefault(identity, []).append(candidate)
-            evidence = candidate.origins or (CandidateOrigin(candidate.source_id, candidate.candidate_id,
-                                                             name, candidate.metadata),)
+            evidence = candidate.origins or (
+                CandidateOrigin(candidate.source_id, candidate.candidate_id, name, candidate.metadata),
+            )
             history = origins.setdefault(identity, [])
             for origin in evidence:
                 if origin not in history:
@@ -47,12 +54,25 @@ def rrf_fuse(
             ranks.setdefault(identity, {})[name] = rank
             if candidate.candidate_id in channel.scores:
                 scores.setdefault(identity, {})[name] = channel.scores[candidate.candidate_id]
+
+    # 正文代表由调用方选择，各通道排名独立参与 RRF，不混加距离或关键词分数。
     fused = []
     for identity, candidates in groups.items():
         representative = choose_representative(tuple(candidates))
         score = sum(1.0 / (60 + rank) for rank in ranks[identity].values())
-        fused.append((identity, replace(representative, rank=None, fusion_score=score,
-                                       recall_ranks=ranks[identity], recall_scores=scores.get(identity, {}),
-                                       origins=tuple(origins[identity]))))
+        fused.append(
+            (
+                identity,
+                replace(
+                    representative,
+                    rank=None,
+                    fusion_score=score,
+                    recall_ranks=ranks[identity],
+                    recall_scores=scores.get(identity, {}),
+                    origins=tuple(origins[identity]),
+                ),
+            )
+        )
+    # 融合分数相同时按稳定身份排序，避免结果依赖映射遍历顺序。
     fused.sort(key=lambda item: (-item[1].fusion_score, item[0]))
     return tuple(candidate for _, candidate in fused)

@@ -50,7 +50,11 @@ def scripted_law_tool_decisions():
                     "has_tool_call": True,
                 }
         if len(observations) >= 2 or payload.get("read_articles"):
-            article = payload["read_articles"][0] if payload.get("read_articles") else observations[-1]["result"].get("article")
+            article = (
+                payload["read_articles"][0]
+                if payload.get("read_articles")
+                else observations[-1]["result"].get("article")
+            )
             if article:
                 article_id = article["article_id"]
                 elements = article["required_elements"]
@@ -287,7 +291,7 @@ async def test_rag_match_does_not_promote_unreviewed_article_to_verified_candida
     }
     law_data = {"chapters": [{"chapter": "第二章", "articles": [article]}]}
     rag_hit = {"article_number": "第133条之一", "content": article["content"], "data_source": "rag_unverified"}
-    with patch_law_recall( return_value=[rag_hit]):
+    with patch_law_recall(return_value=[rag_hit]):
         registry = LegalToolRegistry({}, "user-1", law_data)
         result = await registry._search_laws("危险驾驶")
 
@@ -311,7 +315,7 @@ async def test_repealed_article_is_not_a_rag_candidate():
     }
     law_data = {"chapters": [{"chapter": "第三章", "articles": [article]}]}
     rag_hit = {"article_number": "第199条", "content": "第一百九十九条（删去）", "data_source": "rag_unverified"}
-    with patch_law_recall( return_value=[rag_hit]):
+    with patch_law_recall(return_value=[rag_hit]):
         registry = LegalToolRegistry({}, "user-1", law_data)
         result = await registry._search_laws("删去")
 
@@ -327,7 +331,10 @@ async def test_repealed_article_is_not_a_rag_candidate():
 @pytest.mark.asyncio
 async def test_search_laws_by_rag():
     from tests.knowledge.law.helpers import make_law_service
-    service, requests = make_law_service(_make_law_data(), laws=[{"article_number": "第264条", "content": "第二百六十四条 盗窃正文"}])
+
+    service, requests = make_law_service(
+        _make_law_data(), laws=[{"article_number": "第264条", "content": "第二百六十四条 盗窃正文"}]
+    )
     result = await service.search("查询", user_id="user-001")
     assert result.as_laws()[0]["data_source"] == "rag_verified"
     assert result.as_laws()[0]["content"] == _make_law_data()["chapters"][0]["articles"][0]["content"]
@@ -337,6 +344,7 @@ async def test_search_laws_by_rag():
 @pytest.mark.asyncio
 async def test_search_laws_by_rag_preserves_internal_retrieval_failure():
     from tests.knowledge.law.helpers import make_law_service
+
     service, _ = make_law_service(_make_law_data(), error=RuntimeError("retrieval unavailable"))
     result = await service.search("盗窃", user_id="user-001")
     assert result.search.candidates
@@ -347,7 +355,11 @@ async def test_search_laws_by_rag_preserves_internal_retrieval_failure():
 @pytest.mark.asyncio
 async def test_search_laws_by_rag_uses_retrieval_only_without_summary_calls():
     from tests.knowledge.law.helpers import make_law_service
-    service, requests = make_law_service(_make_law_data(), laws=[{"article_number": f"第{number}条", "content": f"第{number}条 正文"} for number in (264,265,266)])
+
+    service, requests = make_law_service(
+        _make_law_data(),
+        laws=[{"article_number": f"第{number}条", "content": f"第{number}条 正文"} for number in (264, 265, 266)],
+    )
     result = await service.search("查询", user_id="user-001")
     assert len(result.search.candidates) == 3
     assert requests[0].query == "查询"
@@ -358,7 +370,11 @@ async def test_search_laws_by_rag_uses_retrieval_only_without_summary_calls():
 async def test_search_laws_by_rag_flattens_structured_behavior_items():
     from app.knowledge.law.keyword import facts_query, facts_terms
     from tests.knowledge.law.helpers import make_law_service
-    facts = {"behavior_sequence": [{"time": "2026年6月18日", "actor": "被调查人", "action": "徒手击打面部"}], "consequence": "鼻部软组织挫伤"}
+
+    facts = {
+        "behavior_sequence": [{"time": "2026年6月18日", "actor": "被调查人", "action": "徒手击打面部"}],
+        "consequence": "鼻部软组织挫伤",
+    }
     service, requests = make_law_service(_make_law_data())
     result = await service.search(facts_query(facts), user_id="user-001", keyword_terms=facts_terms(facts))
     assert not result.search.candidates
@@ -368,6 +384,7 @@ async def test_search_laws_by_rag_flattens_structured_behavior_items():
 @pytest.mark.asyncio
 async def test_search_laws_by_rag_without_user_id_skips_retrieval():
     from tests.knowledge.law.helpers import make_law_service
+
     service, requests = make_law_service(_make_law_data())
     result = await service.search("盗窃", user_id=None)
     assert result.search.candidates and requests == []
@@ -378,6 +395,7 @@ async def test_search_laws_by_rag_without_user_id_skips_retrieval():
 @pytest.mark.asyncio
 async def test_search_laws_by_rag_failure():
     from tests.knowledge.law.helpers import make_law_service
+
     service, _ = make_law_service(_make_law_data(), error=ValueError("query dimension"))
     result = await service.search("无法识别", user_id="user-001")
     assert not result.search.candidates
@@ -443,8 +461,6 @@ def test_verify_and_enrich_with_json_no_match():
 # ---------------------------------------------------------------------------
 
 
-
-
 # ---------------------------------------------------------------------------
 # law_ref_node – with matching charge_tags
 # ---------------------------------------------------------------------------
@@ -465,7 +481,7 @@ async def test_law_ref_node_with_matching_facts():
     with (
         patch("app.consultation.agents.law_ref.llm_gateway") as mock_llm,
         patch("app.consultation.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()),
-        patch_law_recall( return_value=[]),
+        patch_law_recall(return_value=[]),
         patch_law_keyword() as mock_keyword,
         patch("app.consultation.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]),
     ):
@@ -502,8 +518,8 @@ async def test_law_ref_node_fallback_maps_real_snapshot_element_objects():
     )
     rag_result = [{"article_number": "第二百三十四条", "content": "故意伤害他人身体"}]
     with (
-        patch_law_recall( return_value=rag_result),
-        patch_law_keyword( return_value=[]),
+        patch_law_recall(return_value=rag_result),
+        patch_law_keyword(return_value=[]),
         patch("app.consultation.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]),
     ):
         result = await law_ref_node(state)
@@ -586,8 +602,8 @@ async def test_law_ref_node_no_match():
 
     with (
         patch("app.consultation.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()),
-        patch_law_recall( return_value=[]),
-        patch_law_keyword( return_value=[]),
+        patch_law_recall(return_value=[]),
+        patch_law_keyword(return_value=[]),
         patch("app.consultation.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]),
     ):
         result = await law_ref_node(state)
@@ -900,6 +916,7 @@ class _DocObj:
 @pytest.mark.asyncio
 async def test_search_laws_by_rag_retains_complete_unverified_body():
     from tests.knowledge.law.helpers import make_law_service
+
     body = "第999条 " + "未经核验的正文" * 100
     service, _ = make_law_service(_make_law_data(), laws=[{"article_number": "第999条", "content": body}])
     result = await service.search("查询", user_id="user-001")
@@ -911,7 +928,10 @@ async def test_search_laws_by_rag_retains_complete_unverified_body():
 @pytest.mark.asyncio
 async def test_search_laws_by_rag_typed_metadata_keeps_article_identity():
     from tests.knowledge.law.helpers import make_law_service
-    service, _ = make_law_service(_make_law_data(), laws=[{"article_number": "第二百三十四条", "content": "第二百三十四条 故意伤害罪规定。"}])
+
+    service, _ = make_law_service(
+        _make_law_data(), laws=[{"article_number": "第二百三十四条", "content": "第二百三十四条 故意伤害罪规定。"}]
+    )
     result = await service.search("查询", user_id="user-001")
     assert result.as_laws()[0]["data_source"] == "rag_verified"
     assert result.as_laws()[0]["article_number"] == "第二百三十四条"
@@ -920,6 +940,7 @@ async def test_search_laws_by_rag_typed_metadata_keeps_article_identity():
 @pytest.mark.asyncio
 async def test_search_laws_by_rag_malformed_channel_keeps_failure_visible():
     from tests.knowledge.law.helpers import make_law_service
+
     service, _ = make_law_service(_make_law_data(), error=TypeError("malformed stored row"))
     result = await service.search("盗窃", user_id="user-001")
     assert result.search.dependency_failed
@@ -931,6 +952,7 @@ async def test_search_laws_by_rag_malformed_channel_keeps_failure_visible():
 async def test_search_laws_by_rag_empty_query_is_explicitly_skipped():
     from app.knowledge.law.keyword import facts_query
     from tests.knowledge.law.helpers import make_law_service
+
     service, requests = make_law_service(_make_law_data())
     result = await service.search(facts_query({"behavior_sequence": [], "consequence": ""}), user_id="user-001")
     assert not result.search.candidates and requests == []
@@ -941,8 +963,11 @@ async def test_search_laws_by_rag_empty_query_is_explicitly_skipped():
 async def test_search_laws_by_rag_non_list_behavior():
     from app.knowledge.law.keyword import facts_query
     from tests.knowledge.law.helpers import make_law_service
+
     service, requests = make_law_service(_make_law_data())
-    result = await service.search(facts_query({"behavior_sequence": "string-behavior", "consequence": ""}), user_id="user-001")
+    result = await service.search(
+        facts_query({"behavior_sequence": "string-behavior", "consequence": ""}), user_id="user-001"
+    )
     assert not result.search.candidates
     assert requests[0].query == "string-behavior"
 
@@ -1195,10 +1220,6 @@ def test_build_element_to_law_mapping_structured_key():
 # ---------------------------------------------------------------------------
 
 
-
-
-
-
 # ---------------------------------------------------------------------------
 # law_ref_node – RAG verified / keyword merged path + structured branch
 # ---------------------------------------------------------------------------
@@ -1239,8 +1260,8 @@ async def test_law_ref_node_rag_verified_with_json():
 
     with (
         patch("app.consultation.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()),
-        patch_law_recall( return_value=rag_results),
-        patch_law_keyword( return_value=[]),
+        patch_law_recall(return_value=rag_results),
+        patch_law_keyword(return_value=[]),
         patch(
             "app.consultation.agents.law_ref.extract_structured_laws",
             new_callable=AsyncMock,
@@ -1284,8 +1305,8 @@ async def test_law_ref_node_rag_unverified_only():
 
     with (
         patch("app.consultation.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()),
-        patch_law_recall( return_value=rag_results),
-        patch_law_keyword( return_value=[]),
+        patch_law_recall(return_value=rag_results),
+        patch_law_keyword(return_value=[]),
         patch("app.consultation.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]),
     ):
         result = await law_ref_node(state)
@@ -1312,8 +1333,8 @@ async def test_law_ref_node_no_existing_conversation_history():
 
     with (
         patch("app.consultation.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()),
-        patch_law_recall( return_value=[]),
-        patch_law_keyword( return_value=[]),
+        patch_law_recall(return_value=[]),
+        patch_law_keyword(return_value=[]),
         patch("app.consultation.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]),
     ):
         result = await law_ref_node(state)
@@ -1333,7 +1354,7 @@ async def test_law_ref_node_uses_user_id_for_rag_filter():
 
     with (
         patch("app.consultation.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()),
-        patch_law_recall( return_value=[]) as rag_search,
+        patch_law_recall(return_value=[]) as rag_search,
         patch("app.consultation.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]),
     ):
         result = await law_ref_node(state)
@@ -1352,7 +1373,7 @@ async def test_law_ref_node_missing_user_id_does_not_use_session_id():
 
     with (
         patch("app.consultation.agents.law_ref.load_criminal_law_data", return_value=_make_law_data()),
-        patch_law_recall( return_value=[]) as rag_search,
+        patch_law_recall(return_value=[]) as rag_search,
         patch("app.consultation.agents.law_ref.extract_structured_laws", new_callable=AsyncMock, return_value=[]),
     ):
         await law_ref_node(state)

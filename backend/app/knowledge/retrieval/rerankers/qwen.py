@@ -26,8 +26,10 @@ class QwenReranker(LocalScorer):
 
     def __init__(self, config: RerankerConfig):
         if (
-            config.positive_token != "yes" or config.negative_token != "no"
-            or config.prefix_template != PREFIX or config.suffix_template != SUFFIX
+            config.positive_token != "yes"
+            or config.negative_token != "no"
+            or config.prefix_template != PREFIX
+            or config.suffix_template != SUFFIX
             or config.input_template != _INPUT_TEMPLATE
         ):
             raise ValueError("Qwen requires the fixed official yes/no protocol")
@@ -39,15 +41,17 @@ class QwenReranker(LocalScorer):
         positive = tokenizer.convert_tokens_to_ids("yes")
         negative = tokenizer.convert_tokens_to_ids("no")
         if (
-            type(positive) is not int or type(negative) is not int
-            or positive < 0 or negative < 0 or positive == negative
+            type(positive) is not int
+            or type(negative) is not int
+            or positive < 0
+            or negative < 0
+            or positive == negative
             or getattr(tokenizer, "unk_token_id", None) in {positive, negative}
         ):
             raise ValueError("Qwen yes/no token invalid")
-        if (
-            tokenizer.encode("yes", add_special_tokens=False) != [positive]
-            or tokenizer.encode("no", add_special_tokens=False) != [negative]
-        ):
+        if tokenizer.encode("yes", add_special_tokens=False) != [positive] or tokenizer.encode(
+            "no", add_special_tokens=False
+        ) != [negative]:
             raise ValueError("Qwen yes/no must each encode to one complete token")
         return positive, negative
 
@@ -78,7 +82,9 @@ class QwenReranker(LocalScorer):
             device = self.resolve_device(self.config.device)
             path = resolve_local_path(self.config.local_path)
             model_config = json.loads((path / "config.json").read_text())
-            if model_config.get("model_type") != "qwen3" or "Qwen3ForCausalLM" not in model_config.get("architectures", []):
+            if model_config.get("model_type") != "qwen3" or "Qwen3ForCausalLM" not in model_config.get(
+                "architectures", []
+            ):
                 raise ValueError("configured reranker is not Qwen3ForCausalLM")
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -103,9 +109,11 @@ class QwenReranker(LocalScorer):
         pairs = self.encode_pairs(tokenizer, query, documents)
         scores = []
         for start in range(0, len(pairs), 2):
-            inputs = tokenizer.pad({"input_ids": pairs[start:start + 2]}, padding=True, return_tensors="pt")
+            inputs = tokenizer.pad({"input_ids": pairs[start : start + 2]}, padding=True, return_tensors="pt")
             inputs = {key: value.to(model.device) for key, value in inputs.items()}
             with torch.inference_mode():
                 logits = model(**inputs, logits_to_keep=1).logits[:, -1, :]
-                scores.extend(torch.stack([logits[:, negative], logits[:, positive]], dim=1).softmax(dim=1)[:, 1].tolist())
+                scores.extend(
+                    torch.stack([logits[:, negative], logits[:, positive]], dim=1).softmax(dim=1)[:, 1].tolist()
+                )
         return scores

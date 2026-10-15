@@ -34,10 +34,13 @@ class DocumentRepository:
             filename = _filename(metadata)
             if filename not in docs_info:
                 docs_info[filename] = {
-                    "id": row.row_id, "filename": filename,
+                    "id": row.row_id,
+                    "filename": filename,
                     "original_filename": metadata.get("original_filename", filename),
-                    "user_id": metadata.get("user_id"), "chunk_count": 0,
-                    "preview": "", "created_at": metadata.get("created_at"),
+                    "user_id": metadata.get("user_id"),
+                    "chunk_count": 0,
+                    "preview": "",
+                    "created_at": metadata.get("created_at"),
                 }
             docs_info[filename]["chunk_count"] += 1
             if not docs_info[filename]["preview"] and content:
@@ -49,8 +52,14 @@ class DocumentRepository:
         chunks = []
         for row in await self._user_rows(user_id):
             if _filename(row.metadata) == filename:
-                chunks.append({"chunk_id": row.row_id, "index": len(chunks), "content": row.content,
-                               "metadata": dict(row.metadata)})
+                chunks.append(
+                    {
+                        "chunk_id": row.row_id,
+                        "index": len(chunks),
+                        "content": row.content,
+                        "metadata": dict(row.metadata),
+                    }
+                )
         return {"filename": filename, "total_chunks": len(chunks), "chunks": chunks}
 
     async def get_document_detail(self, user_id: str, filename: str):
@@ -59,10 +68,14 @@ class DocumentRepository:
         if not result["chunks"]:
             return None
         first = result["chunks"][0]
-        return {"id": first["chunk_id"], "filename": filename,
-                "user_id": first["metadata"].get("user_id"), "chunk_count": result["total_chunks"],
-                "content": "\n".join(chunk["content"] for chunk in result["chunks"]),
-                "created_at": first["metadata"].get("created_at")}
+        return {
+            "id": first["chunk_id"],
+            "filename": filename,
+            "user_id": first["metadata"].get("user_id"),
+            "chunk_count": result["total_chunks"],
+            "content": "\n".join(chunk["content"] for chunk in result["chunks"]),
+            "created_at": first["metadata"].get("created_at"),
+        }
 
     async def delete_all_documents(self):
         """仅由管理员入口调用显式全库清理能力。"""
@@ -87,8 +100,7 @@ class DocumentRepository:
         if record is None:
             return False
         if delete_documents:
-            await asyncio.to_thread(self.store.delete_rows,
-                                    where={"$and": [{"user_id": user_id}, {"md5": md5_value}]})
+            await asyncio.to_thread(self.store.delete_rows, where={"$and": [{"user_id": user_id}, {"md5": md5_value}]})
         return await self.fingerprints.delete_single_md5(user_id, md5_value)
 
     async def delete_by_filename(self, user_id: str, filename: str, delete_documents: bool = True):

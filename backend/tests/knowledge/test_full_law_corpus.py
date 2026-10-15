@@ -52,7 +52,7 @@ def test_full_profile_loads_body_without_promoting_annotations(full):
 
 @pytest.mark.asyncio
 async def test_text_search_and_read_outside_six_has_no_coverage_elements(full):
-    with patch_law_recall( return_value=[]):
+    with patch_law_recall(return_value=[]):
         registry = LegalToolRegistry({}, None, full)
         result = await registry._search_laws("第133条之一")
         assert result["candidates"][0]["article_id"] == "第133条之一"
@@ -140,7 +140,7 @@ async def test_real_lawref_text_only_final_cannot_create_coverage(full):
             new_callable=AsyncMock,
             side_effect=responses,
         ),
-        patch_law_recall( return_value=[]),
+        patch_law_recall(return_value=[]),
     ):
         state = await law_ref_node(
             make_consultation_state(facts_structured={"behavior_sequence": ["醉酒驾驶机动车"]}, applied_laws=[])
@@ -177,7 +177,7 @@ async def test_full_profile_six_fixture_keeps_real_coverage_path(full):
             new_callable=AsyncMock,
             side_effect=responses,
         ),
-        patch_law_recall( return_value=[]),
+        patch_law_recall(return_value=[]),
     ):
         state = await law_ref_node(
             make_consultation_state(facts_structured={"behavior_sequence": ["盗窃"]}, applied_laws=[])
@@ -355,8 +355,15 @@ def test_copied_public_backend_loads_without_supplier_directory(tmp_path):
 async def test_text_only_rag_keeps_retrieval_method_in_tool_observation(full):
     index = knowledge._build_article_index(full)
     a = index["第133条之一"]
-    hit = {"article_number": a["article_number"], "content": a["article_number"] + " " + a["content"], "corpus_sha256": a["corpus_sha256"], "corpus_version": a["corpus_version"], "content_sha256": a["text_provenance"]["content_sha256"], "retrieval_method": "vector_index"}
-    with patch_law_recall( return_value=[hit]), patch_law_keyword(return_value=[]):
+    hit = {
+        "article_number": a["article_number"],
+        "content": a["article_number"] + " " + a["content"],
+        "corpus_sha256": a["corpus_sha256"],
+        "corpus_version": a["corpus_version"],
+        "content_sha256": a["text_provenance"]["content_sha256"],
+        "retrieval_method": "vector_index",
+    }
+    with patch_law_recall(return_value=[hit]), patch_law_keyword(return_value=[]):
         result = await LegalToolRegistry({}, "user", full)._search_laws("醉酒驾驶机动车")
     candidate = next(c for c in result["candidates"] if c["article_id"] == "第133条之一")
     assert candidate["source"] == "text_only"

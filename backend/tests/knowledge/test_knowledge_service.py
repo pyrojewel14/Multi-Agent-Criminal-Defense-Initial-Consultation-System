@@ -15,14 +15,22 @@ from app.knowledge.wiring import KnowledgeResources, build_document_services
 def service(tmp_path):
     client = chromadb.EphemeralClient()
     store = ChromaStore.create(ChromaSource("metadata-validation", client, "metadata-validation"))
+
     async def embed_documents(texts):
-        return [[1., 0.] for _ in texts]
+        return [[1.0, 0.0] for _ in texts]
+
     async def embed_query(text):
-        return [1., 0.]
+        return [1.0, 0.0]
+
     resources = KnowledgeResources()
-    service = build_document_services(store=store, md5_directory=tmp_path,
-        embed_documents=embed_documents, embed_query=embed_query, resources=resources,
-        env={"LAW_FULL_RERANK_ENABLED": "false"})
+    service = build_document_services(
+        store=store,
+        md5_directory=tmp_path,
+        embed_documents=embed_documents,
+        embed_query=embed_query,
+        resources=resources,
+        env={"LAW_FULL_RERANK_ENABLED": "false"},
+    )
     yield service
     resources.close()
     client.delete_collection("metadata-validation")

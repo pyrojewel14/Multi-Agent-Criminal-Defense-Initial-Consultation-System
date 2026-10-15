@@ -1,3 +1,5 @@
+"""协调上传校验、切片、向量写入和进度事件，并委托统一流程检索。"""
+
 import asyncio
 import hashlib
 import os
@@ -40,6 +42,8 @@ _logger = get_logger("KnowledgeService")
 
 @dataclass
 class ProcessingState:
+    """记录一次批量上传的切片、写入及成功失败计数。"""
+
     total_files: int = 0
     total_valid: int = 0
     sliced_count: int = 0
@@ -49,6 +53,7 @@ class ProcessingState:
     slice_success_count: int = 0
 
     def current_progress(self) -> int:
+        """按切片 60%、写入 40% 估算进度，100% 留给最终完成事件。"""
         if self.total_valid == 0:
             return 0
         slice_progress = (self.sliced_count / self.total_valid) * 60
@@ -56,8 +61,15 @@ class ProcessingState:
         return int(min(99, slice_progress + write_progress))
 
 
-def _sync_slice_file(file_content: bytes, filename: str, file_index: int, user_id: str,
-                     is_public: bool, queue: TaskQueue, processor: DocumentProcessor):
+def _sync_slice_file(
+    file_content: bytes,
+    filename: str,
+    file_index: int,
+    user_id: str,
+    is_public: bool,
+    queue: TaskQueue,
+    processor: DocumentProcessor,
+):
     """在工作线程准备分块，临时文件始终由服务层清理。"""
     temp_file_path = None
     try:
@@ -65,8 +77,9 @@ def _sync_slice_file(file_content: bytes, filename: str, file_index: int, user_i
             temp_file.write(file_content)
             temp_file_path = temp_file.name
         md5_hex = get_file_md5_hex_sync(temp_file_path)
-        chunks = processor.prepare_sync(temp_file_path, filename=filename, user_id=user_id,
-                                        md5=md5_hex, is_public=is_public)
+        chunks = processor.prepare_sync(
+            temp_file_path, filename=filename, user_id=user_id, md5=md5_hex, is_public=is_public
+        )
         queue.put(SliceResult.success_result(file_index, filename, chunks, md5_hex))
     except Exception as exc:
         queue.put(SliceResult.error_result(file_index, filename, str(exc)))
@@ -78,8 +91,16 @@ def _sync_slice_file(file_content: bytes, filename: str, file_index: int, user_i
 class DocumentService:
     """协调上传生命周期，并使用统一 Pipeline 搜索用户文档。"""
 
-    def __init__(self, repository: DocumentRepository, processor: DocumentProcessor,
-                 embed_documents, pipeline, *, recall_k: int = 20, top_k: int = 5):
+    def __init__(
+        self,
+        repository: DocumentRepository,
+        processor: DocumentProcessor,
+        embed_documents,
+        pipeline,
+        *,
+        recall_k: int = 20,
+        top_k: int = 5,
+    ):
         self.repository = repository
         self.processor = processor
         self.embed_documents = embed_documents
@@ -98,8 +119,7 @@ class DocumentService:
         补偿不是跨库事务，清理失败必须报告；重试忽略本文件未完成的指纹。
         """
         fingerprints = self.repository.fingerprints
-        hashed_documents = [(doc, hashlib.md5(doc.page_content[:200].encode()).hexdigest())
-                            for doc in documents]
+        hashed_documents = [(doc, hashlib.md5(doc.page_content[:200].encode()).hexdigest()) for doc in documents]
         if await fingerprints.check_md5_hex(md5_hex, user_id):
             rows = await asyncio.to_thread(self.repository.store.get_by_metadata, where={"user_id": user_id})
             # 沿用用户范围的分块去重语义，但文件指纹必须有完整的实际分块支撑。
@@ -109,6 +129,8 @@ class DocumentService:
             # 文件记录可能先追加成功、随后补偿失败；恢复前必须清除这个完成标记。
             await fingerprints.rollback_upload(user_id, md5_hex)
         existing = await fingerprints.get_all_chunk_md5(user_id, exclude_doc_md5=md5_hex)
+
+        # 本文件尚未完成的指纹不能阻止重试；其他已记录分块继续参与用户范围去重。
         selected, chunk_hashes = [], []
         for doc, chunk_md5 in hashed_documents:
             if chunk_md5 not in existing:
@@ -117,12 +139,18 @@ class DocumentService:
                 chunk_hashes.append(chunk_md5)
         if not selected:
             return
+
+        # Embedding 完成后才写库；稳定行 ID 用于重试，本次标记限定失败补偿范围。
         embeddings = await self.embed_documents([doc.page_content for doc in selected])
         attempt = uuid.uuid4().hex
-        rows = [StoredRow(
-            hashlib.sha256(f"{len(user_id)}:{user_id}:{md5_hex}:{chunk_md5}".encode()).hexdigest(),
-            doc.page_content, {**doc.metadata, "_upload_attempt": attempt},
-        ) for doc, chunk_md5 in zip(selected, chunk_hashes)]
+        rows = [
+            StoredRow(
+                hashlib.sha256(f"{len(user_id)}:{user_id}:{md5_hex}:{chunk_md5}".encode()).hexdigest(),
+                doc.page_content,
+                {**doc.metadata, "_upload_attempt": attempt},
+            )
+            for doc, chunk_md5 in zip(selected, chunk_hashes)
+        ]
         try:
             await asyncio.to_thread(self.repository.store.upsert_rows, rows, embeddings=embeddings)
             # 上次补偿失败可能留下分块记录，重写前清理本文件残留即可避免重复行。
@@ -132,8 +160,10 @@ class DocumentService:
             await fingerprints.save_md5_hex(md5_hex, filename, filename, user_id)
         except Exception as exc:
             results = await asyncio.gather(
-                asyncio.to_thread(self.repository.store.delete_rows,
-                                  where={"$and": [{"user_id": user_id}, {"_upload_attempt": attempt}]}),
+                asyncio.to_thread(
+                    self.repository.store.delete_rows,
+                    where={"$and": [{"user_id": user_id}, {"_upload_attempt": attempt}]},
+                ),
                 fingerprints.rollback_upload(user_id, md5_hex),
                 return_exceptions=True,
             )
@@ -150,16 +180,16 @@ class DocumentService:
             with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as temp:
                 temp.write(content)
                 path = temp.name
-            documents = await asyncio.to_thread(self.processor.prepare_sync, path, filename=filename,
-                                               user_id=user_id, md5=md5_hex, is_public=is_public)
+            documents = await asyncio.to_thread(
+                self.processor.prepare_sync, path, filename=filename, user_id=user_id, md5=md5_hex, is_public=is_public
+            )
             await self._write_documents(documents, md5_hex, filename, user_id)
         finally:
             if path and os.path.exists(path):
                 os.unlink(path)
 
-
     async def handle_add_vector_single(self, file: UploadFile, user_id: str, is_public: bool = False) -> str:
-        """处理添加单个向量逻辑。
+        """校验单个上传文件，加载切片后写入向量与指纹记录。
 
         Args:
             file: 上传的文件。
@@ -198,7 +228,7 @@ class DocumentService:
     async def handle_add_vector_multiple(
         self, files: List[UploadFile], user_id: str, is_public: bool = False
     ) -> List[str]:
-        """处理添加多个向量逻辑。
+        """检查批量大小后逐个上传，任一文件失败时向调用方传播异常。
 
         Args:
             files: 上传的文件列表。

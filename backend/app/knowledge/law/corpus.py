@@ -42,7 +42,11 @@ def load_criminal_law_data(*, profile: str | None = None, env: Mapping[str, str]
         if demo_mode == "on":
             from app.knowledge.law.annotations import apply_demo_annotations
 
-            demo_path = Path(values.get("LAW_DEMO_ANNOTATIONS_PATH", str(LAW_KNOWLEDGE_PATH.with_name("criminal_law_demo_annotations.json"))))
+            demo_path = Path(
+                values.get(
+                    "LAW_DEMO_ANNOTATIONS_PATH", str(LAW_KNOWLEDGE_PATH.with_name("criminal_law_demo_annotations.json"))
+                )
+            )
             return apply_demo_annotations(data, demo_path)
     return data
 

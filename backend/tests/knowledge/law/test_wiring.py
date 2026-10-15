@@ -14,20 +14,36 @@ def full_runtime(tmp_path, monkeypatch):
     from app.knowledge.law.index import build_full_index
 
     directory = tmp_path / "public-index"
-    build_full_index(FULL_CORPUS_PATH, directory, "public", "fixture", "fixture-digest",
-                     lambda docs: [[1.0, 0.0] if "醉酒驾驶机动车" in doc else [0.0, 1.0] for doc in docs])
-    for key, value in {"LAW_KNOWLEDGE_PROFILE": "full", "LAW_FULL_INDEX_DIRECTORY": str(directory),
-                       "LAW_FULL_INDEX_COLLECTION": "public", "LAW_FULL_EMBEDDING_DIGEST": "fixture-digest",
-                       "TEXT_EMBEDDING_MODEL_NAME": "fixture", "EMBED_MODEL_TYPE": "OLLAMA",
-                       "LAW_FULL_RERANK_ENABLED": "false", "LAW_FULL_HYDE_ENABLED": "false",
-                       "LAW_FULL_DEMO_ANNOTATIONS": "off"}.items():
+    build_full_index(
+        FULL_CORPUS_PATH,
+        directory,
+        "public",
+        "fixture",
+        "fixture-digest",
+        lambda docs: [[1.0, 0.0] if "醉酒驾驶机动车" in doc else [0.0, 1.0] for doc in docs],
+    )
+    for key, value in {
+        "LAW_KNOWLEDGE_PROFILE": "full",
+        "LAW_FULL_INDEX_DIRECTORY": str(directory),
+        "LAW_FULL_INDEX_COLLECTION": "public",
+        "LAW_FULL_EMBEDDING_DIGEST": "fixture-digest",
+        "TEXT_EMBEDDING_MODEL_NAME": "fixture",
+        "EMBED_MODEL_TYPE": "OLLAMA",
+        "LAW_FULL_RERANK_ENABLED": "false",
+        "LAW_FULL_HYDE_ENABLED": "false",
+        "LAW_FULL_DEMO_ANNOTATIONS": "off",
+    }.items():
         monkeypatch.setenv(key, value)
     requests = []
     actual = httpx.AsyncClient
 
     def response(request):
         requests.append((request.url.path, json.loads(request.content) if request.content else None))
-        data = {"models": [{"name": "fixture", "digest": "fixture-digest"}]} if request.url.path == "/api/tags" else {"embeddings": [[1.0, 0.0]]}
+        data = (
+            {"models": [{"name": "fixture", "digest": "fixture-digest"}]}
+            if request.url.path == "/api/tags"
+            else {"embeddings": [[1.0, 0.0]]}
+        )
         return httpx.Response(200, json=data)
 
     def client(**kwargs):
@@ -113,7 +129,9 @@ def test_explicit_environment_snapshot_selects_matching_assets(monkeypatch):
     from app.knowledge.law.verification import is_lawref_eligible
 
     monkeypatch.setenv("LAW_FULL_DEMO_ANNOTATIONS", "on")
-    selected = build_law_search_service(env={"LAW_KNOWLEDGE_PROFILE": "full", "LAW_FULL_DEMO_ANNOTATIONS": "off", "LAW_FULL_RERANK_ENABLED": "false"})
+    selected = build_law_search_service(
+        env={"LAW_KNOWLEDGE_PROFILE": "full", "LAW_FULL_DEMO_ANNOTATIONS": "off", "LAW_FULL_RERANK_ENABLED": "false"}
+    )
     assert not is_lawref_eligible(selected.repository.article_index["第133条之一"])
 
 

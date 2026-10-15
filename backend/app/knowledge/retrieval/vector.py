@@ -35,7 +35,10 @@ def candidate_from_row(row: StoredRow, *, source_id: str, channel: str) -> Retri
     """统一各通道候选身份；存储行 ID 用于融合，原始 metadata 保留在来源中。"""
     cid = candidate_identity(source_id, row.row_id, row.content)
     return RetrievalCandidate(
-        cid, source_id, row.content, {**row.metadata, "row_id": row.row_id},
+        cid,
+        source_id,
+        row.content,
+        {**row.metadata, "row_id": row.row_id},
         origins=(CandidateOrigin(source_id, cid, channel, row.metadata),),
     )
 
@@ -43,8 +46,12 @@ def candidate_from_row(row: StoredRow, *, source_id: str, channel: str) -> Retri
 class ChromaVectorRetriever:
     """只处理一个显式数据源；依赖失败和取消向调用方传播。"""
 
-    def __init__(self, store: ChromaStore, embed_query: Callable[[str], Awaitable[Sequence[float]]],
-                 expected_dimension: int | None):
+    def __init__(
+        self,
+        store: ChromaStore,
+        embed_query: Callable[[str], Awaitable[Sequence[float]]],
+        expected_dimension: int | None,
+    ):
         if expected_dimension is not None and (type(expected_dimension) is not int or expected_dimension <= 0):
             raise ValueError("expected embedding dimension must be a positive integer or None")
         self.store = store
@@ -68,9 +75,12 @@ class ChromaVectorRetriever:
             if row.distance is None:
                 raise ValueError("vector recall requires a native Chroma distance")
             candidate = candidate_from_row(row, source_id=self.store.source.source_id, channel="vector")
-            candidates.append(replace(
-                candidate,
-                recall_ranks={"vector": rank}, recall_scores={"vector": row.distance},
-            ))
+            candidates.append(
+                replace(
+                    candidate,
+                    recall_ranks={"vector": rank},
+                    recall_scores={"vector": row.distance},
+                )
+            )
             scores[candidate.candidate_id] = row.distance
         return ChannelResult("vector", tuple(candidates), scores, StageStatus("executed"))

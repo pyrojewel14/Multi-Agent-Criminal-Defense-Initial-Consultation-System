@@ -21,7 +21,9 @@ def test_public_six_cases_remain_jsonl_and_match_published_replay_hash():
     cases = root / "lawref_cloud_cases.jsonl"
     rows = [json.loads(line) for line in cases.read_text().splitlines() if line.strip()]
     assert len(rows) == 6
-    evidence = json.loads((root / "evidence" / "lawref_cloud_gptoss120_facts_v1_capture_v2_six_run1_2026-10-01.json").read_text())
+    evidence = json.loads(
+        (root / "evidence" / "lawref_cloud_gptoss120_facts_v1_capture_v2_six_run1_2026-10-01.json").read_text()
+    )
     assert "sha256:" + hashlib.sha256(cases.read_bytes()).hexdigest() == evidence["cases_sha256"]
 
 
@@ -32,12 +34,21 @@ def model_and_wire(status=200, returned_model="gpt-oss:120b"):
         requests.append(json.loads(request.content))
         if status != 200:
             return httpx.Response(status, json={"error": "access denied"})
-        body = {"model": returned_model, "message": {"role": "assistant", "content": "{}"},
-                "done": True, "done_reason": "stop", "prompt_eval_count": 10, "eval_count": 5}
+        body = {
+            "model": returned_model,
+            "message": {"role": "assistant", "content": "{}"},
+            "done": True,
+            "done_reason": "stop",
+            "prompt_eval_count": 10,
+            "eval_count": 5,
+        }
         return httpx.Response(200, text=json.dumps(body) + "\n")
 
-    model = ChatOllama(model="gpt-oss:120b-cloud", base_url="http://127.0.0.1:11434",
-                       client_kwargs={"transport": httpx.MockTransport(respond), "trust_env": False})
+    model = ChatOllama(
+        model="gpt-oss:120b-cloud",
+        base_url="http://127.0.0.1:11434",
+        client_kwargs={"transport": httpx.MockTransport(respond), "trust_env": False},
+    )
     return model, requests
 
 
@@ -51,12 +62,14 @@ async def test_cloud_copy_sends_low_and_restores_factory_after_use(tmp_path, mon
     from evaluation.run_cloud_lawref import CloudCapture, masked_case_facts
 
     model, wire = model_and_wire()
+
     def original(temperature):
         return model
 
     monkeypatch.setattr(chat_model_factory, "create_precise_model", original)
-    with CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json",
-                      masked_case_facts([{"query": QUERY}], "article"), {}) as capture:
+    with CloudCapture(
+        "gpt-oss:120b-cloud", "low", tmp_path / "raw.json", masked_case_facts([{"query": QUERY}], "article"), {}
+    ) as capture:
         copied = chat_model_factory.create_precise_model(0)
         response = await copied.ainvoke(messages())
         assert response.content == "{}"
@@ -71,11 +84,17 @@ async def test_cloud_copy_sends_low_and_restores_factory_after_use(tmp_path, mon
 def test_payload_accepts_approved_facts_but_rejects_other_facts(tmp_path):
     from evaluation.run_cloud_lawref import CloudCapture, masked_case_facts
 
-    capture = CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json",
-                           masked_case_facts([{"query": QUERY}], "article"), {})
-    request = {"model": "gpt-oss:120b-cloud", "think": "low", "messages": [
-        {"role": "system", "content": "公开测试"},
-        {"role": "user", "content": json.dumps({"facts": SAFE_FACTS})}]}
+    capture = CloudCapture(
+        "gpt-oss:120b-cloud", "low", tmp_path / "raw.json", masked_case_facts([{"query": QUERY}], "article"), {}
+    )
+    request = {
+        "model": "gpt-oss:120b-cloud",
+        "think": "low",
+        "messages": [
+            {"role": "system", "content": "公开测试"},
+            {"role": "user", "content": json.dumps({"facts": SAFE_FACTS})},
+        ],
+    }
     capture.verify_payload(request)
     request["messages"][1]["content"] = json.dumps({"facts": '{"private_case":"unapproved"}'})
     with pytest.raises(ValueError, match="案例"):
@@ -169,14 +188,23 @@ def evaluation_setup(tmp_path, monkeypatch):
             return httpx.Response(200, json={"thinking": {"values": ["low"]}, "capabilities": ["tools"]})
         return httpx.Response(200, json={"models": []})
 
-    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original_client(
-        **kwargs, transport=httpx.MockTransport(preflight)))
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kwargs: original_client(**kwargs, transport=httpx.MockTransport(preflight))
+    )
     cases = tmp_path / "cases.jsonl"
-    cases.write_text(json.dumps({"id": "control", "query": QUERY, "article_id": "第264条",
-                                 "coverage_eligible": True}) + "\n")
-    args = Namespace(model="gpt-oss:120b-cloud", thinking="low", output=tmp_path / "result.json",
-                     raw_output=tmp_path / "raw.json", cases=cases, case=None, query_mode="article",
-                     base_url="http://127.0.0.1:11434")
+    cases.write_text(
+        json.dumps({"id": "control", "query": QUERY, "article_id": "第264条", "coverage_eligible": True}) + "\n"
+    )
+    args = Namespace(
+        model="gpt-oss:120b-cloud",
+        thinking="low",
+        output=tmp_path / "result.json",
+        raw_output=tmp_path / "raw.json",
+        cases=cases,
+        case=None,
+        query_mode="article",
+        base_url="http://127.0.0.1:11434",
+    )
     return args, calls, wire
 
 

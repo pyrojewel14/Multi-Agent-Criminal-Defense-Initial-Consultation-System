@@ -22,11 +22,17 @@ class RetrievalPipeline:
     """同一流程支持向量、混合召回和显式未配置向量的领域候选池。"""
 
     def __init__(
-        self, vector: Retriever | None, *, bm25: Retriever | None = None,
-        expander: QueryExpander | None = None, reranker: Reranker | None = None,
+        self,
+        vector: Retriever | None,
+        *,
+        bm25: Retriever | None = None,
+        expander: QueryExpander | None = None,
+        reranker: Reranker | None = None,
         config: RetrievalConfig | None = None,
         key: Callable[[RetrievalCandidate], str] = document_key,
-        choose_representative: Callable[[Sequence[RetrievalCandidate]], RetrievalCandidate] = choose_stable_representative,
+        choose_representative: Callable[
+            [Sequence[RetrievalCandidate]], RetrievalCandidate
+        ] = choose_stable_representative,
     ):
         self.vector = vector
         self.bm25 = bm25
@@ -52,12 +58,10 @@ class RetrievalPipeline:
         if stage.error_type:
             status[f"{name}_error"] = stage.error_type
         status["degraded"] = (
-            status.get("degraded", False) or stage.degraded
-            or stage.state in {"failed", "timeout", "busy"}
+            status.get("degraded", False) or stage.degraded or stage.state in {"failed", "timeout", "busy"}
         )
 
-    async def _retrieve(self, name: str, retriever: Retriever | None,
-                        request: RetrievalRequest) -> ChannelResult:
+    async def _retrieve(self, name: str, retriever: Retriever | None, request: RetrievalRequest) -> ChannelResult:
         """保留通道异常类别；外层取消不转换成降级结果。"""
         if retriever is None:
             return ChannelResult(name, (), {}, StageStatus("unconfigured"))
@@ -83,23 +87,32 @@ class RetrievalPipeline:
             return ChannelResult("hyde", (), {}, StageStatus("budget_exhausted", degraded=True)), 0
 
         async def expand_and_retrieve() -> ChannelResult:
+            """将生成、额外 Embedding 和向量召回纳入同一个阶段预算。"""
             text = await self.expander.expand(request.query, timeout_s=self.config.hyde_timeout)
             if not isinstance(text, str) or not text.strip():
                 raise ValueError("empty HyDE output")
-            result = await self._retrieve("vector", self.vector,
-                                          replace(request, query=text, recall_k=self.config.hyde_k))
+            result = await self._retrieve(
+                "vector", self.vector, replace(request, query=text, recall_k=self.config.hyde_k)
+            )
             if result.status.state in {"failed", "timeout", "busy", "budget_exhausted"}:
                 return ChannelResult("hyde", (), {}, replace(result.status, degraded=True))
             # 复用同一向量实现时，将候选历史中的通道身份一起改写，防止距离串线。
-            candidates = tuple(replace(
-                candidate,
-                recall_ranks={"hyde" if name == "vector" else name: value
-                              for name, value in candidate.recall_ranks.items()},
-                recall_scores={"hyde" if name == "vector" else name: value
-                               for name, value in candidate.recall_scores.items()},
-                origins=tuple(replace(origin, channel="hyde") if origin.channel == "vector" else origin
-                              for origin in candidate.origins),
-            ) for candidate in result.candidates)
+            candidates = tuple(
+                replace(
+                    candidate,
+                    recall_ranks={
+                        "hyde" if name == "vector" else name: value for name, value in candidate.recall_ranks.items()
+                    },
+                    recall_scores={
+                        "hyde" if name == "vector" else name: value for name, value in candidate.recall_scores.items()
+                    },
+                    origins=tuple(
+                        replace(origin, channel="hyde") if origin.channel == "vector" else origin
+                        for origin in candidate.origins
+                    ),
+                )
+                for candidate in result.candidates
+            )
             return ChannelResult("hyde", candidates, result.scores, result.status)
 
         try:
@@ -113,26 +126,43 @@ class RetrievalPipeline:
         return ChannelResult("hyde", (), {}, stage), 1
 
     async def recall(
-        self, request: RetrievalRequest, *, extra_channels: Mapping[str, ChannelResult] | None = None,
+        self,
+        request: RetrievalRequest,
+        *,
+        extra_channels: Mapping[str, ChannelResult] | None = None,
     ) -> RecallPool:
         """收集完整召回池，允许领域服务在最终排序前核验和补充候选。"""
         guard = self._guard(request)
         if guard:
             return RecallPool({}, {name: guard for name in ("vector", "bm25", "hyde", "rerank")}, False)
         channels = dict(extra_channels or {})
-        reserved = {"vector", "bm25", "hyde", "rerank", "degraded", "recall_counts",
-                    "mode", "method", "candidate_count"}
+        reserved = {
+            "vector",
+            "bm25",
+            "hyde",
+            "rerank",
+            "degraded",
+            "recall_counts",
+            "mode",
+            "method",
+            "candidate_count",
+        }
         # 阶段状态、阶段元数据和自动生成的错误字段不能由补充通道覆盖。
-        if any(name in reserved or name.endswith("_error")
-               or name.startswith(("vector_", "bm25_", "hyde_", "rerank_")) for name in channels):
+        if any(
+            name in reserved or name.endswith("_error") or name.startswith(("vector_", "bm25_", "hyde_", "rerank_"))
+            for name in channels
+        ):
             raise ValueError("extra channel conflicts with a pipeline stage or status field")
         if any(name != channel.name for name, channel in channels.items()):
             raise ValueError("extra channel name does not match its mapping key")
         status: dict[str, Any] = {"degraded": False}
+
+        # 仅向量模式直接召回 top_k；混合模式保留较大的候选池供后续融合。
         vector_request = replace(request, recall_k=request.top_k) if self.config.mode == "vector" else request
         channels["vector"] = await self._retrieve("vector", self.vector, vector_request)
         channels["bm25"] = (
-            ChannelResult("bm25", (), {}, StageStatus("disabled")) if self.config.mode == "vector"
+            ChannelResult("bm25", (), {}, StageStatus("disabled"))
+            if self.config.mode == "vector"
             else await self._retrieve("bm25", self.bm25, request)
         )
         channels["hyde"], status["hyde_attempt_count"] = await self._hyde(request)
@@ -140,6 +170,7 @@ class RetrievalPipeline:
             self._record(status, name, channel.status)
         status["rerank"] = "unconfigured" if self.config.rerank else "disabled"
         status["recall_counts"] = {name: len(channel.candidates) for name, channel in channels.items()}
+        # 向量是必需依赖；BM25、HyDE 和重排失败通过阶段状态记录降级。
         failed = channels["vector"].status.state in {"failed", "timeout", "busy"}
         return RecallPool(channels, status, failed)
 
@@ -147,6 +178,8 @@ class RetrievalPipeline:
         """完整融合后仅重排一次，失败保留融合顺序，最后截断并赋排名。"""
         if self._guard(request):
             return SearchResult((), pool.retrieval_status, pool.dependency_failed)
+
+        # 先融合完整候选池，不能提前取 Top K 而让重排遗漏其他通道的候选。
         candidates = rrf_fuse(pool.channels, key=self.key, choose_representative=self.choose_representative)
         status = dict(pool.retrieval_status)
         status["candidate_count"] = len(candidates)
@@ -162,11 +195,17 @@ class RetrievalPipeline:
             try:
                 with trace_span(trace_store, event_type="retrieval", name="full_rerank") as event:
                     try:
-                        values = await asyncio.wait_for(self.reranker.score(
-                            request.query, [candidate.content for candidate in candidates],
-                            timeout_s=self.config.rerank_timeout), timeout=self.config.rerank_timeout)
+                        values = await asyncio.wait_for(
+                            self.reranker.score(
+                                request.query,
+                                [candidate.content for candidate in candidates],
+                                timeout_s=self.config.rerank_timeout,
+                            ),
+                            timeout=self.config.rerank_timeout,
+                        )
                         if len(values) != len(candidates) or any(
-                            not isinstance(value, (int, float)) or not math.isfinite(value)
+                            not isinstance(value, (int, float))
+                            or not math.isfinite(value)
                             or (getattr(self.reranker, "probability_scores", False) and not 0 <= value <= 1)
                             for value in values
                         ):
@@ -174,10 +213,12 @@ class RetrievalPipeline:
                     except Exception:
                         event.outcome = "degraded"
                         raise
-                candidates = tuple(sorted(
-                    (replace(candidate, rerank_score=float(score)) for candidate, score in zip(candidates, values)),
-                    key=lambda candidate: -candidate.rerank_score,
-                ))
+                candidates = tuple(
+                    sorted(
+                        (replace(candidate, rerank_score=float(score)) for candidate, score in zip(candidates, values)),
+                        key=lambda candidate: -candidate.rerank_score,
+                    )
+                )
                 stage = StageStatus("executed")
             except SessionBudgetExceeded:
                 raise
@@ -188,8 +229,9 @@ class RetrievalPipeline:
             except Exception as exc:
                 stage = StageStatus("failed", safe_error_type(exc), True)
         self._record(status, "rerank", stage)
-        final = tuple(replace(candidate, rank=rank)
-                      for rank, candidate in enumerate(candidates[:request.top_k], 1))
+
+        # 失败分支不修改候选顺序，因此此处自然保留融合排名。
+        final = tuple(replace(candidate, rank=rank) for rank, candidate in enumerate(candidates[: request.top_k], 1))
         return SearchResult(final, status, pool.dependency_failed)
 
     async def search(self, request: RetrievalRequest) -> SearchResult:

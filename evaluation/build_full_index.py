@@ -48,9 +48,7 @@ def main():
 
     from app.knowledge.law.index import build_full_index
 
-    manifest = build_full_index(
-        args.corpus, args.index_dir, args.collection, model, digest, embed
-    )
+    manifest = build_full_index(args.corpus, args.index_dir, args.collection, model, digest, embed)
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
 
 

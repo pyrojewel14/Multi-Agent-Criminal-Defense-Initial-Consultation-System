@@ -70,6 +70,5 @@ def _extract_article_number_from_text(text: str | None) -> str:
     return match.group(0) if match else ""
 
 
-
 normalize_article_number = _normalize_article_number
 extract_article_number = _extract_article_number_from_text

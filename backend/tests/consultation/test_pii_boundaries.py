@@ -58,19 +58,32 @@ def assert_raw_messages(messages):
 @pytest.mark.asyncio
 async def test_lawref_tool_loop_and_extract_receive_original_facts(monkeypatch):
     monkeypatch.setenv("LAW_AGENT_FINAL_PROTOCOL", "legacy")
-    provider = SyntheticProvider([
-        AIMessage(content="", tool_calls=[{"name": "search_laws", "args": {"query": "盗窃"}, "id": "search-synthetic"}]),
-        AIMessage(content="", tool_calls=[{"name": "get_article", "args": {"article_id": "第264条"}, "id": "read-synthetic"}]),
-        AIMessage(content=json.dumps({"article_ids": ["第264条"], "matched_elements": {"第264条": []}, "confidence": "low"})),
-        AIMessage(content='{"charges": []}'),
-    ])
+    provider = SyntheticProvider(
+        [
+            AIMessage(
+                content="", tool_calls=[{"name": "search_laws", "args": {"query": "盗窃"}, "id": "search-synthetic"}]
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "get_article", "args": {"article_id": "第264条"}, "id": "read-synthetic"}],
+            ),
+            AIMessage(
+                content=json.dumps(
+                    {"article_ids": ["第264条"], "matched_elements": {"第264条": []}, "confidence": "low"}
+                )
+            ),
+            AIMessage(content='{"charges": []}'),
+        ]
+    )
     monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda *_: provider)
     facts = {"behavior_sequence": [*INPUT_FACTS, PII], "consequence": None}
     result = await legal_research.run_legal_research(facts, None, load_criminal_law_data())
     assert result.termination_reason == "final_answer"
     for messages in provider.messages:
         # legacy 首次事实是 JSON 字符串内嵌 JSON，需要还原外层转义再检查。
-        human = next(message for message in messages if message.type == "human" and message.content.startswith('{"facts"'))
+        human = next(
+            message for message in messages if message.type == "human" and message.content.startswith('{"facts"')
+        )
         content = json.loads(human.content)
         received = content["facts"]
         received = json.loads(received) if isinstance(received, str) else received
@@ -82,21 +95,40 @@ async def test_lawref_tool_loop_and_extract_receive_original_facts(monkeypatch):
 @pytest.mark.asyncio
 async def test_memory_intake_and_gateway_context_preserve_denial_and_evidence(monkeypatch):
     monkeypatch.setenv("LLM_TYPE", "ALIYUN")
-    candidate = {"incident_time": None, "incident_location": None, "parties": [],
-                 "behavior_sequence": [{"action": fact} for fact in INPUT_FACTS], "consequence": None,
-                 "evidence_mentioned": [{"type": "记录", "description": FACTS[-1]}],
-                 "arrest_status": None, "surrender": None, "victim_forgiveness": None, "prior_record": None}
-    provider = SyntheticProvider([AIMessage(content=json.dumps(candidate, ensure_ascii=False)), AIMessage(content="合成回忆")])
+    candidate = {
+        "incident_time": None,
+        "incident_location": None,
+        "parties": [],
+        "behavior_sequence": [{"action": fact} for fact in INPUT_FACTS],
+        "consequence": None,
+        "evidence_mentioned": [{"type": "记录", "description": FACTS[-1]}],
+        "arrest_status": None,
+        "surrender": None,
+        "victim_forgiveness": None,
+        "prior_record": None,
+    }
+    provider = SyntheticProvider(
+        [AIMessage(content=json.dumps(candidate, ensure_ascii=False)), AIMessage(content="合成回忆")]
+    )
     monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda *_: provider)
     content = "；".join([*INPUT_FACTS, PII])
-    state = await fact_digger.fact_intake_node({"session_id": "synthetic-pii", "current_input": content,
-        "facts_raw": [], "facts_structured": {}, "conversation_history": []})
+    state = await fact_digger.fact_intake_node(
+        {
+            "session_id": "synthetic-pii",
+            "current_input": content,
+            "facts_raw": [],
+            "facts_structured": {},
+            "conversation_history": [],
+        }
+    )
     assert state["facts_raw"] == ["；".join([*INPUT_FACTS, PII])]
     assert state["facts_structured"]["behavior_sequence"] == [{"action": fact} for fact in INPUT_FACTS]
     assert_raw_messages(provider.messages[0])
-    memory = {"summary": {"text": content},
+    memory = {
+        "summary": {"text": content},
         "case": merge_case_memory({}, {"behavior_sequence": [*INPUT_FACTS, PII]}, "source-1"),
-        "recent": [{"id": "source-1", "sequence": 1, "content": content, "sender_type": "user"}]}
+        "recent": [{"id": "source-1", "sequence": 1, "content": content, "sender_type": "user"}],
+    }
     with node_context("law_ref", {"memory": memory}):
         assert await LLMGateway().generate("合成回忆任务", "请回忆") == "合成回忆"
     assert_raw_messages(provider.messages[1])

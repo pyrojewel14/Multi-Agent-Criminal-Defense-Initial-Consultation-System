@@ -44,10 +44,15 @@ async def test_preflight_detects_missing_and_cloud_models_without_pulling():
     def respond(request):
         calls.append(request.url.path)
         if request.url.path == "/api/tags":
-            return httpx.Response(200, json={"models": [
-                {"name": "qwen3.5:9b", "digest": "digest9"},
-                {"name": "qwen3.5:4b", "digest": "proxy", "remote_host": "https://ollama.com"},
-            ]})
+            return httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {"name": "qwen3.5:9b", "digest": "digest9"},
+                        {"name": "qwen3.5:4b", "digest": "proxy", "remote_host": "https://ollama.com"},
+                    ]
+                },
+            )
         if request.url.path == "/api/show":
             return httpx.Response(200, json={"capabilities": ["tools", "thinking"]})
         return httpx.Response(200, json={})
@@ -72,8 +77,9 @@ def test_invalid_budget_and_existing_outputs_fail_before_network(tmp_path):
 def capture(tmp_path, max_requests=48):
     cases = [{"query": "我没有拿走任何物品。"}]
     articles = {"第264条": {"content": "公开正文", "elements": [{"name": "公开要件"}]}}
-    return runner.LocalCapture("qwen3.5:9b", "http://ollama.invalid:11434", tmp_path / "raw.json",
-                               cases, articles, max_requests=max_requests)
+    return runner.LocalCapture(
+        "qwen3.5:9b", "http://ollama.invalid:11434", tmp_path / "raw.json", cases, articles, max_requests=max_requests
+    )
 
 
 def test_current_read_prompt_accepts_facts_object_but_rejects_snapshot_changes(tmp_path):
@@ -81,11 +87,25 @@ def test_current_read_prompt_accepts_facts_object_but_rejects_snapshot_changes(t
     from app.consultation.agents.legal_research import _SYSTEM_PROMPT
 
     facts = {"behavior_sequence": ["我没有拿走任何物品。"], "consequence": ""}
-    payload = {"model": "qwen3.5:9b", "think": False, "options": runner.OPTIONS,
-               "messages": [{"role": "system", "content": _SYSTEM_PROMPT},
-                            {"role": "user", "content": json.dumps({"facts": facts, "read_articles": [
-                                {"article_id": "第264条", "content": "公开正文", "required_elements": ["公开要件"]}
-                            ]})}]}
+    payload = {
+        "model": "qwen3.5:9b",
+        "think": False,
+        "options": runner.OPTIONS,
+        "messages": [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "facts": facts,
+                        "read_articles": [
+                            {"article_id": "第264条", "content": "公开正文", "required_elements": ["公开要件"]}
+                        ],
+                    }
+                ),
+            },
+        ],
+    }
     cap.verify_payload(payload)
     altered = json.loads(payload["messages"][1]["content"])
     altered["read_articles"][0]["content"] = "不属于快照的正文"
@@ -106,16 +126,37 @@ async def test_capture_forces_direct_client_and_restores_factory_on_budget_exhau
 
     def respond(request):
         sent.append(json.loads(request.content))
-        return httpx.Response(200, text=json.dumps({"model": "qwen3.5:9b", "message": {
-            "role": "assistant", "content": "{}"}, "done": True, "eval_count": 2}) + "\n")
+        return httpx.Response(
+            200,
+            text=json.dumps(
+                {
+                    "model": "qwen3.5:9b",
+                    "message": {"role": "assistant", "content": "{}"},
+                    "done": True,
+                    "eval_count": 2,
+                }
+            )
+            + "\n",
+        )
 
     cap = capture(tmp_path, max_requests=1)
     cap.client_kwargs["transport"] = httpx.MockTransport(respond)
     original = chat_model_factory.create_precise_model
     from app.infrastructure.llm.gateway import LLMCallPolicy, llm_gateway
+
     monkeypatch.setattr(llm_gateway, "_policy", LLMCallPolicy(total_timeout_seconds=7, attempt_timeout_seconds=3))
-    messages = [SystemMessage(content=_SYSTEM_PROMPT), HumanMessage(content=json.dumps({
-        "facts": json.dumps({"behavior_sequence": ["我没有拿走任何物品。"], "consequence": ""}, ensure_ascii=False)}))]
+    messages = [
+        SystemMessage(content=_SYSTEM_PROMPT),
+        HumanMessage(
+            content=json.dumps(
+                {
+                    "facts": json.dumps(
+                        {"behavior_sequence": ["我没有拿走任何物品。"], "consequence": ""}, ensure_ascii=False
+                    )
+                }
+            )
+        ),
+    ]
     with cap:
         model = chat_model_factory.create_precise_model(0)
         assert llm_gateway._policy == LLMCallPolicy()
@@ -142,14 +183,26 @@ async def test_raw_failure_and_thinking_channels_remain_distinct(tmp_path, mode)
     def respond(request):
         if mode == "refusal":
             return httpx.Response(502, text="proxy upstream unavailable")
-        return httpx.Response(200, text=json.dumps({
-            "model": "other" if mode == "wrong_model" else "qwen3.5:9b",
-            "message": {"role": "assistant", "content": "", "thinking": "原始思考片段"},
-            "done": True, "done_reason": "length", "eval_count": 1024}) + "\n")
+        return httpx.Response(
+            200,
+            text=json.dumps(
+                {
+                    "model": "other" if mode == "wrong_model" else "qwen3.5:9b",
+                    "message": {"role": "assistant", "content": "", "thinking": "原始思考片段"},
+                    "done": True,
+                    "done_reason": "length",
+                    "eval_count": 1024,
+                }
+            )
+            + "\n",
+        )
+
     cap = capture(tmp_path)
     cap.client_kwargs["transport"] = httpx.MockTransport(respond)
-    messages = [SystemMessage(content=_SYSTEM_PROMPT), HumanMessage(content=json.dumps({
-        "facts": {"behavior_sequence": ["我没有拿走任何物品。"], "consequence": ""}}))]
+    messages = [
+        SystemMessage(content=_SYSTEM_PROMPT),
+        HumanMessage(content=json.dumps({"facts": {"behavior_sequence": ["我没有拿走任何物品。"], "consequence": ""}})),
+    ]
     with cap:
         if mode in {"refusal", "wrong_model"}:
             with pytest.raises(ResponseError if mode == "refusal" else ValueError):
@@ -171,8 +224,11 @@ async def test_raw_failure_and_thinking_channels_remain_distinct(tmp_path, mode)
 @pytest.mark.asyncio
 async def test_residency_failure_does_not_discard_completed_inference(monkeypatch):
     original = httpx.AsyncClient
-    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original(
-        **kwargs, transport=httpx.MockTransport(lambda request: httpx.Response(503))))
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original(**kwargs, transport=httpx.MockTransport(lambda request: httpx.Response(503))),
+    )
     assert await runner.residency("http://ollama.invalid:11434") == {"error_type": "HTTPStatusError"}
 
 
@@ -182,8 +238,13 @@ async def test_unavailable_run_writes_diagnosis_without_importing_real_evaluatio
         return {"available_models": [], "models": {}, "llm_executed": False}
 
     monkeypatch.setattr(runner, "probe", unavailable)
-    args = Namespace(output_dir=tmp_path / "new", models=["qwen3.5:9b"], rounds=1,
-                     base_url="http://ollama.invalid:11434", index_directory=tmp_path / "missing")
+    args = Namespace(
+        output_dir=tmp_path / "new",
+        models=["qwen3.5:9b"],
+        rounds=1,
+        base_url="http://ollama.invalid:11434",
+        index_directory=tmp_path / "missing",
+    )
     result = await runner.run(args)
     assert result["status"] == "blocked_service_or_models"
     assert result["runs"] == []
@@ -204,29 +265,53 @@ async def test_available_run_uses_isolated_dotted_index_and_fixed_gateway_budget
     (index / "public-only.txt").write_text("public snapshot")
     manifest = {"embedding_model": "embedding", "embedding_model_digest": "emb-digest", "collection": "public"}
     index.parent.joinpath(index.name + ".manifest.json").write_text(json.dumps(manifest))
+
     async def available(*_):
-        return {"available_models": ["qwen3.5:9b"], "models": {
-            "qwen3.5:9b": {"catalog_entry": {"digest": "nine"}}}, "requests": [
+        return {
+            "available_models": ["qwen3.5:9b"],
+            "models": {"qwen3.5:9b": {"catalog_entry": {"digest": "nine"}}},
+            "requests": [
                 {"endpoint": "/api/tags", "body": {"models": [{"name": "embedding", "digest": "emb-digest"}]}}
-            ]}
+            ],
+        }
+
     monkeypatch.setattr(runner, "probe", available)
     sent = []
+
     def respond(request):
         if request.url.path == "/api/ps":
             return httpx.Response(200, json={"models": [{"name": "qwen3.5:9b", "size_vram": 999}]})
         sent.append(json.loads(request.content))
-        return httpx.Response(200, text=json.dumps({"model": "qwen3.5:9b", "message": {
-            "role": "assistant", "content": '{"article_ids":[],"matched_elements":{},"confidence":"low"}'},
-            "done": True, "prompt_eval_count": 20, "eval_count": 4}) + "\n")
+        return httpx.Response(
+            200,
+            text=json.dumps(
+                {
+                    "model": "qwen3.5:9b",
+                    "message": {
+                        "role": "assistant",
+                        "content": '{"article_ids":[],"matched_elements":{},"confidence":"low"}',
+                    },
+                    "done": True,
+                    "prompt_eval_count": 20,
+                    "eval_count": 4,
+                }
+            )
+            + "\n",
+        )
+
     original_client = httpx.AsyncClient
-    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original_client(
-        **{**kwargs, "transport": httpx.MockTransport(respond)}))
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kwargs: original_client(**{**kwargs, "transport": httpx.MockTransport(respond)})
+    )
     original_init = runner.LocalCapture.__init__
+
     def init(cap, *args, **kwargs):
         original_init(cap, *args, **kwargs)
         cap.client_kwargs["transport"] = httpx.MockTransport(respond)
+
     monkeypatch.setattr(runner.LocalCapture, "__init__", init)
     inspected = []
+
     async def evaluate(mode, output, **kwargs):
         assert kwargs["cases_path"] == runner.CASES and kwargs["query_mode"] == "article"
         assert os.environ["DATABASE_PATH"].startswith(str(tmp_path / "output" / "state"))
@@ -239,15 +324,25 @@ async def test_available_run_uses_isolated_dotted_index_and_fixed_gateway_budget
             raise TimeoutError("bounded round")
         facts = {"behavior_sequence": [runner.load_cases(runner.CASES)[0]["query"]], "consequence": ""}
         if outcome in {"response", "partial_then_interrupted"}:
-            decision = await llm_gateway.generate_with_tools(_SYSTEM_PROMPT, json.dumps({
-                "facts": json.dumps(facts, ensure_ascii=False)}, ensure_ascii=False), [], is_legal=True)
+            decision = await llm_gateway.generate_with_tools(
+                _SYSTEM_PROMPT,
+                json.dumps({"facts": json.dumps(facts, ensure_ascii=False)}, ensure_ascii=False),
+                [],
+                is_legal=True,
+            )
             assert decision["content"]
             if outcome == "partial_then_interrupted":
                 raise TimeoutError("after one real captured response")
         return {"passed": 0, "total": 6, "cases": [{"trajectory": []}] * 6}
+
     monkeypatch.setattr(run_full_eval, "run_evaluation", evaluate)
-    args = Namespace(output_dir=tmp_path / "output", models=["qwen3.5:9b"], rounds=1,
-                     base_url="http://ollama.invalid:11434", index_directory=index)
+    args = Namespace(
+        output_dir=tmp_path / "output",
+        models=["qwen3.5:9b"],
+        rounds=1,
+        base_url="http://ollama.invalid:11434",
+        index_directory=index,
+    )
     old_model = os.environ.get("OLLAMA_MODEL_NAME")
     result = await runner.run(args)
     assert inspected == [True]
@@ -265,8 +360,10 @@ async def test_available_run_uses_isolated_dotted_index_and_fixed_gateway_budget
         assert summary["llm_executed"] is (outcome == "partial_then_interrupted")
         assert summary["passed"] is None and summary["total"] is None
         assert summary["rag_executed"] is None
-        assert summary["actual_execution"]["raw_sha256"] == runner.hashlib.sha256(
-            (args.output_dir / row["raw"]).read_bytes()).hexdigest()
+        assert (
+            summary["actual_execution"]["raw_sha256"]
+            == runner.hashlib.sha256((args.output_dir / row["raw"]).read_bytes()).hexdigest()
+        )
         assert json.loads((args.output_dir / "comparison.json").read_text())["status"] == "runner_interrupted"
         return
     summary = json.loads((args.output_dir / "qwen3.5-9b-run1.json").read_text())
@@ -294,18 +391,30 @@ async def test_fixed_six_replay_through_real_lawref_and_original_scorer(tmp_path
 
     index = tmp_path / "public.index"
     index.mkdir()
-    (index.parent / (index.name + ".manifest.json")).write_text(json.dumps({
-        "embedding_model": "embedding", "embedding_model_digest": "emb", "collection": "public"}))
+    (index.parent / (index.name + ".manifest.json")).write_text(
+        json.dumps({"embedding_model": "embedding", "embedding_model_digest": "emb", "collection": "public"})
+    )
+
     async def available(*_):
-        return {"available_models": ["qwen3.5:9b"], "models": {
-            "qwen3.5:9b": {"catalog_entry": {"digest": "nine"}}}, "requests": [
-                {"endpoint": "/api/tags", "body": {"models": [{"name": "embedding", "digest": "emb"}]}}
-            ]}
+        return {
+            "available_models": ["qwen3.5:9b"],
+            "models": {"qwen3.5:9b": {"catalog_entry": {"digest": "nine"}}},
+            "requests": [{"endpoint": "/api/tags", "body": {"models": [{"name": "embedding", "digest": "emb"}]}}],
+        }
+
     monkeypatch.setattr(runner, "probe", available)
-    monkeypatch.setattr(wiring, "build_law_search_service", lambda *, law_data, profile, resources: build_law_search_service(
-        law_data=law_data, profile=profile, resources=resources,
-        pipeline=RetrievalPipeline(None, config=RetrievalConfig(rerank=False))))
+    monkeypatch.setattr(
+        wiring,
+        "build_law_search_service",
+        lambda *, law_data, profile, resources: build_law_search_service(
+            law_data=law_data,
+            profile=profile,
+            resources=resources,
+            pipeline=RetrievalPipeline(None, config=RetrievalConfig(rerank=False)),
+        ),
+    )
     sent = []
+
     def respond(request):
         if request.url.path == "/api/ps":
             return httpx.Response(200, json={"models": []})
@@ -318,20 +427,43 @@ async def test_fixed_six_replay_through_real_lawref_and_original_scorer(tmp_path
         article = "第133条之一" if "车" in query or "133" in query else "第264条"
         tool_messages = [message for message in payload["messages"] if message["role"] == "tool"]
         if prompt.get("read_articles"):
-            message = {"role": "assistant", "content": json.dumps({
-                "article_ids": [article], "matched_elements": {article: []}, "confidence": "low"})}
+            message = {
+                "role": "assistant",
+                "content": json.dumps(
+                    {"article_ids": [article], "matched_elements": {article: []}, "confidence": "low"}
+                ),
+            }
         else:
-            function = {"name": "get_article", "arguments": {"article_id": article}} if tool_messages else {
-                "name": "search_laws", "arguments": {"query": article}}
+            function = (
+                {"name": "get_article", "arguments": {"article_id": article}}
+                if tool_messages
+                else {"name": "search_laws", "arguments": {"query": article}}
+            )
             message = {"role": "assistant", "content": "", "tool_calls": [{"function": function}]}
-        actual_model = ("qwen3.5:9b" if len(sent) == 1 else "unrequested-model") if returned_model == "mixed-models" else returned_model
-        return httpx.Response(200, text=json.dumps({"model": actual_model, "message": message,
-            "done": True, "eval_count": 10, "prompt_eval_count": 20}) + "\n")
+        actual_model = (
+            ("qwen3.5:9b" if len(sent) == 1 else "unrequested-model")
+            if returned_model == "mixed-models"
+            else returned_model
+        )
+        return httpx.Response(
+            200,
+            text=json.dumps(
+                {"model": actual_model, "message": message, "done": True, "eval_count": 10, "prompt_eval_count": 20}
+            )
+            + "\n",
+        )
+
     original = httpx.AsyncClient
-    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original(
-        **{**kwargs, "transport": httpx.MockTransport(respond)}))
-    args = Namespace(output_dir=tmp_path / "output", models=["qwen3.5:9b"], rounds=1,
-                     base_url="http://ollama.invalid:11434", index_directory=index)
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kwargs: original(**{**kwargs, "transport": httpx.MockTransport(respond)})
+    )
+    args = Namespace(
+        output_dir=tmp_path / "output",
+        models=["qwen3.5:9b"],
+        rounds=1,
+        base_url="http://ollama.invalid:11434",
+        index_directory=index,
+    )
     result = await runner.run(args)
     if returned_model != "qwen3.5:9b":
         assert result["status"] == "blocked_identity_mismatch"
@@ -343,7 +475,8 @@ async def test_fixed_six_replay_through_real_lawref_and_original_scorer(tmp_path
         summary = json.loads((args.output_dir / row["summary"]).read_text())
         assert summary["actual_execution"]["identity_verified"] is False
         assert summary["actual_execution"]["returned_models"] == (
-            ["qwen3.5:9b", "unrequested-model"] if returned_model == "mixed-models" else ["unrequested-model"])
+            ["qwen3.5:9b", "unrequested-model"] if returned_model == "mixed-models" else ["unrequested-model"]
+        )
         assert summary["passed"] is None and summary["total"] is None
         return
     assert result["status"] == "evaluated"
@@ -358,10 +491,22 @@ async def test_fixed_six_replay_through_real_lawref_and_original_scorer(tmp_path
 @pytest.mark.parametrize("status", ["runner_interrupted", "blocked_identity_mismatch"])
 def test_cli_keeps_exit_two_for_incomplete_or_invalid_rounds(tmp_path, monkeypatch, status):
     async def evaluate(args):
-        return {"status": status, "runs": [{"model": "qwen3.5:9b", "round": 1,
-                                            "passed": None, "total": None}]}
+        return {"status": status, "runs": [{"model": "qwen3.5:9b", "round": 1, "passed": None, "total": None}]}
+
     monkeypatch.setattr(runner, "run", evaluate)
-    monkeypatch.setattr(runner.sys, "argv", ["run_local_lawref.py", "--base-url", "http://ollama.invalid:11434",
-        "--models", "qwen3.5:9b", "--index-directory", str(tmp_path / "index"),
-        "--output-dir", str(tmp_path / "output")])
+    monkeypatch.setattr(
+        runner.sys,
+        "argv",
+        [
+            "run_local_lawref.py",
+            "--base-url",
+            "http://ollama.invalid:11434",
+            "--models",
+            "qwen3.5:9b",
+            "--index-directory",
+            str(tmp_path / "index"),
+            "--output-dir",
+            str(tmp_path / "output"),
+        ],
+    )
     assert runner.main() == 2

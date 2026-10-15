@@ -10,11 +10,7 @@ from dataclasses import dataclass
 
 def _bounded(name: str, value: float, lower: float, upper: float) -> None:
     """拒绝非数值、非有限值及超出阶段预算的配置。"""
-    if (
-        type(value) not in (int, float)
-        or not math.isfinite(value)
-        or not lower <= value <= upper
-    ):
+    if type(value) not in (int, float) or not math.isfinite(value) or not lower <= value <= upper:
         raise ValueError(f"invalid bounded setting: {name}")
 
 
@@ -107,8 +103,14 @@ class RerankerConfig:
         if self.device not in {"auto", "cpu", "cuda", "mps"}:
             raise ValueError("invalid reranker device")
         for name in (
-            "model_name", "local_path", "cache_dir", "positive_token", "negative_token",
-            "prefix_template", "suffix_template", "input_template",
+            "model_name",
+            "local_path",
+            "cache_dir",
+            "positive_token",
+            "negative_token",
+            "prefix_template",
+            "suffix_template",
+            "input_template",
         ):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():

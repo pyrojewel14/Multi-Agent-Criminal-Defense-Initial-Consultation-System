@@ -240,13 +240,19 @@ async def test_resumed_fact_refreshes_law_query_and_risk_laws(monkeypatch):
         from app.knowledge.retrieval.config import RetrievalConfig
         from app.knowledge.retrieval.models import ChannelResult, RetrievalCandidate, StageStatus
         from app.knowledge.retrieval.pipeline import RetrievalPipeline
+
         class Vector:
             async def retrieve(self, request):
                 rag_queries.append(request.query)
                 article = "第二百六十三条" if "持刀" in request.query else "第二百九十三条"
-                candidate = RetrievalCandidate(article, request.scope.source_id, f"中华人民共和国刑法{article}", {"article_number": article})
+                candidate = RetrievalCandidate(
+                    article, request.scope.source_id, f"中华人民共和国刑法{article}", {"article_number": article}
+                )
                 return ChannelResult("vector", (candidate,), {}, StageStatus("executed"))
-        return LawSearchService(LawRepository(law_data), RetrievalPipeline(Vector(), config=RetrievalConfig(rerank=False)))
+
+        return LawSearchService(
+            LawRepository(law_data), RetrievalPipeline(Vector(), config=RetrievalConfig(rerank=False))
+        )
 
     law_data = {
         "chapters": [

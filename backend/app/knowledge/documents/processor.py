@@ -1,4 +1,4 @@
-"""仅加载、切片及准备 metadata，不持有存储或模型。"""
+"""负责文件加载、切片和 metadata 准备，不直接创建模型或写入存储。"""
 
 import asyncio
 from pathlib import Path
@@ -17,9 +17,12 @@ class DocumentProcessor:
     def get_file_document_sync(self, read_path: str) -> list[Document]:
         """按文件扩展名选择现有加载能力。"""
         loader = {
-            ".txt": loaders.txt_loader_sync, ".pdf": loaders.pdf_loader_sync,
-            ".md": loaders.markdown_loader_sync, ".pptx": loaders.ppt_loader_sync,
-            ".docx": loaders.word_loader_sync, ".json": loaders.json_loader_sync,
+            ".txt": loaders.txt_loader_sync,
+            ".pdf": loaders.pdf_loader_sync,
+            ".md": loaders.markdown_loader_sync,
+            ".pptx": loaders.ppt_loader_sync,
+            ".docx": loaders.word_loader_sync,
+            ".json": loaders.json_loader_sync,
         }.get(Path(read_path).suffix.lower())
         return [] if loader is None else loader(read_path)
 
@@ -31,8 +34,9 @@ class DocumentProcessor:
         """保留注入切片器的既有切片行为。"""
         return self.splitter.split_documents_sync(documents)
 
-    def prepare_sync(self, read_path: str, *, filename: str, user_id: str, md5: str,
-                     is_public: bool = False) -> list[Document]:
+    def prepare_sync(
+        self, read_path: str, *, filename: str, user_id: str, md5: str, is_public: bool = False
+    ) -> list[Document]:
         """准备独立分块并覆盖上传身份字段，不执行去重或写入。"""
         documents = self.get_file_document_sync(read_path)
         if not documents:
@@ -40,7 +44,19 @@ class DocumentProcessor:
         chunks = self.split_documents_sync(documents)
         if not chunks:
             raise ValueError("切片结果为空")
-        return [Document(page_content=doc.page_content, metadata={
-            **doc.metadata, "source": filename, "user_id": user_id, "original_filename": filename,
-            "md5": md5, "is_public": is_public,
-        }) for doc in chunks]
+
+        # 身份字段以服务端参数为准，覆盖加载器或原文自带的同名 metadata。
+        return [
+            Document(
+                page_content=doc.page_content,
+                metadata={
+                    **doc.metadata,
+                    "source": filename,
+                    "user_id": user_id,
+                    "original_filename": filename,
+                    "md5": md5,
+                    "is_public": is_public,
+                },
+            )
+            for doc in chunks
+        ]

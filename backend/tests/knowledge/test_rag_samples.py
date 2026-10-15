@@ -107,10 +107,18 @@ async def test_snapshot_without_injected_index_keeps_keyword_hits_separate_from_
     monkeypatch.setenv("LAW_KNOWLEDGE_PROFILE", "snapshot")
     monkeypatch.setenv("LAW_FULL_RERANK_ENABLED", "false")
     monkeypatch.setenv("LAW_FULL_HYDE_ENABLED", "false")
-    monkeypatch.setattr("examples.rag_samples.load_queries", lambda: [{
-        "id": "theft", "query": "盗窃", "facts_structured": {"behavior_sequence": ["盗窃"]},
-        "expected_article_number": "第二百六十四条", "expected_law_title": "盗窃罪",
-    }])
+    monkeypatch.setattr(
+        "examples.rag_samples.load_queries",
+        lambda: [
+            {
+                "id": "theft",
+                "query": "盗窃",
+                "facts_structured": {"behavior_sequence": ["盗窃"]},
+                "expected_article_number": "第二百六十四条",
+                "expected_law_title": "盗窃罪",
+            }
+        ],
+    )
     result = await run_samples(live_rag=True)
     assert any(sample["live_rag_top_k"] for sample in result["samples"])
     assert result["dependencies"]["vector_search"]["status"] == "unconfigured"

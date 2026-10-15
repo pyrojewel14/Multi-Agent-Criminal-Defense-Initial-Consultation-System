@@ -108,10 +108,15 @@ async def probe_dependencies(probe_live: bool) -> dict[str, Any]:
     """离线只加载受控资产；显式在线探针通过同一法律服务报告实际阶段。"""
     law_data = load_criminal_law_data()
     result = {
-        "json_knowledge": {"status": "available", "article_count": sum(len(c["articles"]) for c in law_data["chapters"])},
+        "json_knowledge": {
+            "status": "available",
+            "article_count": sum(len(c["articles"]) for c in law_data["chapters"]),
+        },
         "chroma": {"status": "not_probed", "document_count": None},
-        "bm25": {"status": "not_probed"}, "hyde": {"status": "not_probed"},
-        "embedding": {"status": "not_probed"}, "vector_search": {"status": "not_run"},
+        "bm25": {"status": "not_probed"},
+        "hyde": {"status": "not_probed"},
+        "embedding": {"status": "not_probed"},
+        "vector_search": {"status": "not_run"},
     }
     if not probe_live:
         return result
@@ -124,9 +129,11 @@ async def probe_dependencies(probe_live: bool) -> dict[str, Any]:
             result[name] = {"status": status.get(name, "unconfigured")}
         result["chroma"]["status"] = status.get("vector", "unconfigured")
         result["embedding"] = {"status": status.get("vector", "unconfigured")}
-        result["vector_search"] = {"status": status.get("vector", "unconfigured"),
-                                   "dependency_failed": searched.search.dependency_failed,
-                                   "retrieval_status": status}
+        result["vector_search"] = {
+            "status": status.get("vector", "unconfigured"),
+            "dependency_failed": searched.search.dependency_failed,
+            "retrieval_status": status,
+        }
     except Exception as exc:
         result["vector_search"] = _error_result(exc)
     finally:
@@ -134,8 +141,9 @@ async def probe_dependencies(probe_live: bool) -> dict[str, Any]:
     return result
 
 
-async def _run_live_rag_sample(query: str, law_data: dict[str, Any], top_k: int,
-                               resources: KnowledgeResources) -> dict[str, Any]:
+async def _run_live_rag_sample(
+    query: str, law_data: dict[str, Any], top_k: int, resources: KnowledgeResources
+) -> dict[str, Any]:
     """调用统一法律服务，保留关键词、向量及核验的独立来源状态。"""
     service = build_law_search_service(law_data=law_data, resources=resources)
     searched = await service.search(query, user_id=LIVE_VALIDATION_USER_ID)
@@ -144,21 +152,34 @@ async def _run_live_rag_sample(query: str, law_data: dict[str, Any], top_k: int,
     for law in searched.as_laws()[:top_k]:
         origins = law.get("origins", [])
         metadata = next((origin["metadata"] for origin in origins if origin["channel"] == "vector"), {})
-        results.append({
-            "rank": law.get("rank"), "article_number": law.get("article_number", ""),
-            "title": law.get("title", ""), "data_source": law["data_source"],
-            "rerank_score": law.get("rerank_score"), "fusion_score": law.get("fusion_score"),
-            "json_verified": law["data_source"] in {"rag_verified", "json_keyword", "text_only"},
-            "content_preview": law.get("content", "")[:240], "source": metadata.get("source"),
-            "metadata_user_id": metadata.get("user_id"), "metadata_is_public": metadata.get("is_public"),
-            "recall_ranks": law.get("recall_ranks", {}),
-        })
-    return {"hypothetical_document": None, "live_rag_top_k": results,
-            "dependency_failed": searched.search.dependency_failed,
-            "layers": {"retrieval_status": status,
-                       "retriever": {"status": status.get("vector"), "type": "RetrievalPipeline", "uses_ensemble": False},
-                       "hyde": {"status": status.get("hyde")}, "reranker": {"status": status.get("rerank")},
-                       "json_verification": {"status": "executed", "verified_count": sum(r["json_verified"] for r in results)}}}
+        results.append(
+            {
+                "rank": law.get("rank"),
+                "article_number": law.get("article_number", ""),
+                "title": law.get("title", ""),
+                "data_source": law["data_source"],
+                "rerank_score": law.get("rerank_score"),
+                "fusion_score": law.get("fusion_score"),
+                "json_verified": law["data_source"] in {"rag_verified", "json_keyword", "text_only"},
+                "content_preview": law.get("content", "")[:240],
+                "source": metadata.get("source"),
+                "metadata_user_id": metadata.get("user_id"),
+                "metadata_is_public": metadata.get("is_public"),
+                "recall_ranks": law.get("recall_ranks", {}),
+            }
+        )
+    return {
+        "hypothetical_document": None,
+        "live_rag_top_k": results,
+        "dependency_failed": searched.search.dependency_failed,
+        "layers": {
+            "retrieval_status": status,
+            "retriever": {"status": status.get("vector"), "type": "RetrievalPipeline", "uses_ensemble": False},
+            "hyde": {"status": status.get("hyde")},
+            "reranker": {"status": status.get("rerank")},
+            "json_verification": {"status": "executed", "verified_count": sum(r["json_verified"] for r in results)},
+        },
+    }
 
 
 async def run_samples(
@@ -176,13 +197,20 @@ async def run_samples(
     reranker_statuses = []
     resources = KnowledgeResources()
     try:
-        offline_service = build_law_search_service(law_data=law_data, resources=resources, env={
-            **os.environ, "LAW_FULL_RERANK_ENABLED": str(with_reranker and not live_rag).lower(),
-            "LAW_FULL_HYDE_ENABLED": "false"})
+        offline_service = build_law_search_service(
+            law_data=law_data,
+            resources=resources,
+            env={
+                **os.environ,
+                "LAW_FULL_RERANK_ENABLED": str(with_reranker and not live_rag).lower(),
+                "LAW_FULL_HYDE_ENABLED": "false",
+            },
+        )
 
         for sample in queries:
-            searched = await offline_service.search(sample["query"], user_id=None,
-                                                     keyword_terms=facts_terms(sample["facts_structured"]))
+            searched = await offline_service.search(
+                sample["query"], user_id=None, keyword_terms=facts_terms(sample["facts_structured"])
+            )
             ranked_results = searched.as_laws()
             reranker = {"status": searched.search.retrieval_status.get("rerank", "disabled")}
             reranker_statuses.append(reranker["status"])

@@ -55,7 +55,9 @@ def resource_owners(monkeypatch):
 
 
 @pytest.mark.parametrize("outcome", ["normal", "error", "cancel"])
-def test_snapshot_runtime_reuses_owned_scorer_and_restores_factory_on_exit(tmp_path, monkeypatch, resource_owners, outcome):
+def test_snapshot_runtime_reuses_owned_scorer_and_restores_factory_on_exit(
+    tmp_path, monkeypatch, resource_owners, outcome
+):
     law = run_live_eval.LAW
     index = tmp_path / "snapshot"
     build_index(law, index, "snapshot_collection", "test", "digest", lambda texts: [[1.0] for _ in texts])
@@ -66,8 +68,9 @@ def test_snapshot_runtime_reuses_owned_scorer_and_restores_factory_on_exit(tmp_p
     created, application = resource_owners
 
     def run():
-        with run_live_eval.snapshot_search_runtime(index_dir=index, preflight_result={
-                "index_collection": "snapshot_collection", "embedding_digest": "digest"}):
+        with run_live_eval.snapshot_search_runtime(
+            index_dir=index, preflight_result={"index_collection": "snapshot_collection", "embedding_digest": "digest"}
+        ):
             first = legal_research.build_law_search_service()
             second = legal_research.build_law_search_service()
             assert first.pipeline.reranker is second.pipeline.reranker
@@ -92,7 +95,9 @@ def test_snapshot_runtime_reuses_owned_scorer_and_restores_factory_on_exit(tmp_p
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["live-rag", "live-lawref"])
 @pytest.mark.parametrize("outcome", ["normal", "error", "cancel"])
-async def test_full_evaluation_closes_only_owned_resources_and_restores_factory(tmp_path, monkeypatch, resource_owners, mode, outcome):
+async def test_full_evaluation_closes_only_owned_resources_and_restores_factory(
+    tmp_path, monkeypatch, resource_owners, mode, outcome
+):
     from app.knowledge.retrieval.config import RerankerConfig, RetrievalConfig
     from app.knowledge.retrieval.pipeline import RetrievalPipeline
 
@@ -105,8 +110,9 @@ async def test_full_evaluation_closes_only_owned_resources_and_restores_factory(
     def builder(**kwargs):
         owner = kwargs.get("resources", application)
         used.append(owner)
-        kwargs["pipeline"] = RetrievalPipeline(None, reranker=owner.scorer(RerankerConfig()),
-                                               config=RetrievalConfig(rerank=False))
+        kwargs["pipeline"] = RetrievalPipeline(
+            None, reranker=owner.scorer(RerankerConfig()), config=RetrievalConfig(rerank=False)
+        )
         return original_builder(**kwargs)
 
     monkeypatch.setattr(wiring, "build_law_search_service", builder)
@@ -120,18 +126,33 @@ async def test_full_evaluation_closes_only_owned_resources_and_restores_factory(
 
     def run_full_eval_corpus():
         from app.knowledge.law.corpus import load_criminal_law_data
+
         return load_criminal_law_data(profile="full")
 
     monkeypatch.setattr("app.consultation.agents.law_ref.law_ref_node", law_node)
     if mode == "live-rag" and outcome == "cancel":
+
         async def cancelled(*args, **kwargs):
             cancellation_ready.set()
             await asyncio.Future()
+
         monkeypatch.setattr("app.knowledge.law.service.LawSearchService.search", cancelled)
     cases = tmp_path / "cases.jsonl"
-    cases.write_text("".join(json.dumps({"id": identifier, "query": "第264条", "article_id": "第264条",
-                                        "contains": "盗窃", "coverage_eligible": True}) + "\n"
-                             for identifier in ("theft", "theft-again")))
+    cases.write_text(
+        "".join(
+            json.dumps(
+                {
+                    "id": identifier,
+                    "query": "第264条",
+                    "article_id": "第264条",
+                    "contains": "盗窃",
+                    "coverage_eligible": True,
+                }
+            )
+            + "\n"
+            for identifier in ("theft", "theft-again")
+        )
+    )
     output = tmp_path if outcome == "error" else tmp_path / "result.json"
 
     async def run():

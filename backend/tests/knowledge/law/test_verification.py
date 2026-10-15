@@ -20,7 +20,12 @@ def fixture_repository():
 
 def raw(repository, number, *, cid="rag", content=None, **metadata):
     article = repository.article_index[number]
-    return RetrievalCandidate(cid, repository.source_id, content or f"{article['article_number']} {article['content']}", {**article, "content_sha256": article["text_provenance"]["content_sha256"], **metadata})
+    return RetrievalCandidate(
+        cid,
+        repository.source_id,
+        content or f"{article['article_number']} {article['content']}",
+        {**article, "content_sha256": article["text_provenance"]["content_sha256"], **metadata},
+    )
 
 
 def test_failed_rag_origin_survives_trusted_keyword_representative():
@@ -30,7 +35,9 @@ def test_failed_rag_origin_survives_trusted_keyword_representative():
     repo = fixture_repository()
     bad = raw(repo, "第264条", content="第264条 不一致正文")
     keyword = LawKeywordRetriever(repo).recall("盗窃", 20)
-    pool = RecallPool({"vector": ChannelResult("vector", (bad,), {}, StageStatus("executed")), "keyword": keyword}, {}, False)
+    pool = RecallPool(
+        {"vector": ChannelResult("vector", (bad,), {}, StageStatus("executed")), "keyword": keyword}, {}, False
+    )
     verified = LawVerifier(repo).verify_pool(pool)
     assert verified.verifications["rag"].source == "rag_unverified"
     assert verified.verifications["rag"].coverage_eligible is False
@@ -47,16 +54,25 @@ async def test_service_dedupe_does_not_wash_failed_origin_or_choose_by_source_ra
     repo = fixture_repository()
     bad = raw(repo, "第264条", content="第264条 不一致正文")
     vector = Vector([bad])
-    result = await LawSearchService(repo, RetrievalPipeline(vector, config=RetrievalConfig(rerank=False))).search("盗窃", user_id="alice")
+    result = await LawSearchService(repo, RetrievalPipeline(vector, config=RetrievalConfig(rerank=False))).search(
+        "盗窃", user_id="alice"
+    )
     assert result.as_laws()[0]["data_source"] == "json_keyword"
     assert result.as_laws()[0]["required_elements"]
     assert result.verifications["rag"].source == "rag_unverified"
     assert any(origin.candidate_id == "rag" for origin in result.search.candidates[0].origins)
-    assert next(origin for origin in result.as_laws()[0]["origins"] if origin["candidate_id"] == "rag")["verification"]["source"] == "rag_unverified"
+    assert (
+        next(origin for origin in result.as_laws()[0]["origins"] if origin["candidate_id"] == "rag")["verification"][
+            "source"
+        ]
+        == "rag_unverified"
+    )
     json.dumps(result.as_laws(), ensure_ascii=False)
 
 
-@pytest.mark.parametrize("field,value", [("corpus_version", "wrong"), ("corpus_sha256", "wrong"), ("content_sha256", "wrong")])
+@pytest.mark.parametrize(
+    "field,value", [("corpus_version", "wrong"), ("corpus_sha256", "wrong"), ("content_sha256", "wrong")]
+)
 def test_full_candidate_binding_failure_never_supplies_elements(field, value):
     from app.knowledge.law.verification import LawVerifier
 

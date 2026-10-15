@@ -42,8 +42,10 @@ async def test_ready_real_sqlite_startup_shutdown_and_no_model_call(tmp_path, mo
     monkeypatch.setattr(main, "init_redis", AsyncMock())
     monkeypatch.setattr(main, "close_redis", AsyncMock())
     monkeypatch.setattr(main.knowledge_resources, "readiness", lambda: {"available": True})
+
     async def forbidden(*args, **kwargs):
         pytest.fail("readiness must never call models")
+
     monkeypatch.setattr(LLMGateway, "generate", forbidden)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         assert (await client.get("/ready")).json()["status"] == "not_ready"
@@ -70,6 +72,7 @@ async def test_ready_real_sqlite_startup_shutdown_and_no_model_call(tmp_path, mo
                 assert timed_out["status"] == "not_ready"
                 assert timed_out["dependencies"]["checkpoint"]["error_code"] == "timeout"
                 import asyncio
+
                 cancelled = asyncio.create_task(client.get("/ready"))
                 await asyncio.sleep(0.005)
                 cancelled.cancel()
@@ -142,7 +145,9 @@ async def test_lifespan_awaits_real_document_client_shutdown(tmp_path, monkeypat
     from app.knowledge.wiring import KnowledgeResources
 
     resources = KnowledgeResources()
-    proxy = resources.document_embeddings(values={"EMBED_MODEL_TYPE": "OLLAMA", "OLLAMA_BASE_URL": "http://127.0.0.1:1"})
+    proxy = resources.document_embeddings(
+        values={"EMBED_MODEL_TYPE": "OLLAMA", "OLLAMA_BASE_URL": "http://127.0.0.1:1"}
+    )
     model = proxy._get_model()
     monkeypatch.setattr(main, "knowledge_resources", resources)
     monkeypatch.setattr(main, "preflight_law_knowledge", lambda: None)

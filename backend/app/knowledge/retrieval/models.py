@@ -86,10 +86,20 @@ class RetrievalCandidate:
         object.__setattr__(self, "origins", tuple(self.origins))
 
 
-_STAGE_STATES = frozenset({
-    "executed", "disabled", "unconfigured", "skipped_empty", "skipped_unauthorized",
-    "skipped_exact", "failed", "timeout", "busy", "budget_exhausted",
-})
+_STAGE_STATES = frozenset(
+    {
+        "executed",
+        "disabled",
+        "unconfigured",
+        "skipped_empty",
+        "skipped_unauthorized",
+        "skipped_exact",
+        "failed",
+        "timeout",
+        "busy",
+        "budget_exhausted",
+    }
+)
 
 
 @dataclass(frozen=True)

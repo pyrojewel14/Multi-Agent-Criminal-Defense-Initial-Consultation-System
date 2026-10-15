@@ -19,27 +19,34 @@ from tests.knowledge.law.helpers import verified_laws
 async def _search_result(facts, user_id="alice", *, keyword_terms=None):
     from app.knowledge.law.keyword import facts_query
     from app.knowledge.wiring import build_law_search_service
+
     return await build_law_search_service().search(facts_query(facts), user_id=user_id, keyword_terms=keyword_terms)
 
 
 async def _search(facts):
     from app.knowledge.law.keyword import facts_terms
+
     return (await _search_result(facts, keyword_terms=facts_terms(facts))).as_laws()
 
 
 def _set_scorer(monkeypatch, callback):
     from app.knowledge.wiring import knowledge_resources
+
     class Scorer:
         probability_scores = True
+
         async def score(self, query, documents, *, timeout_s):
             return await callback(query, documents, timeout_s)
+
     monkeypatch.setattr(knowledge_resources, "scorer", lambda config: Scorer())
 
 
 def _set_expander(monkeypatch, callback):
     from app.knowledge.retrieval.hyde import HyDEExpander
+
     async def expand(self, query, *, timeout_s):
         return await callback(query)
+
     monkeypatch.setattr(HyDEExpander, "expand", expand)
 
 
@@ -47,7 +54,10 @@ async def _generate_hyde(query):
     from functools import partial
 
     from app.knowledge.retrieval.hyde import HyDEExpander, ollama_generate
-    return await HyDEExpander(partial(ollama_generate, base_url="http://127.0.0.1:11434", model_name="fixture"), model_name="fixture").expand(query, timeout_s=10)
+
+    return await HyDEExpander(
+        partial(ollama_generate, base_url="http://127.0.0.1:11434", model_name="fixture"), model_name="fixture"
+    ).expand(query, timeout_s=10)
 
 
 @pytest.fixture(scope="module")
@@ -131,7 +141,11 @@ async def test_identity_isolation_exact_paths(runtime, monkeypatch):
 @pytest.mark.asyncio
 async def test_json_keeps_rank_status_source_without_promoting_elements(runtime):
     corpus = lk.load_criminal_law_data()
-    row = next(row for row in fi._rows(corpus, corpus["metadata"]["corpus_sha256"]) if row["metadata"]["article_id"] == "第133条之一")
+    row = next(
+        row
+        for row in fi._rows(corpus, corpus["metadata"]["corpus_sha256"])
+        if row["metadata"]["article_id"] == "第133条之一"
+    )
     hits = [{**row["metadata"], "content": row["document"]}]
     hits[0].update(rank=1, fusion_score=0.03, retrieval_status={"rerank": "timeout"})
     enriched = verified_laws(hits, _build_article_index(lk.load_criminal_law_data()))
@@ -348,11 +362,16 @@ async def test_bm25_cache_changes_with_public_content_and_tokenizer_version(monk
     from app.knowledge.retrieval.bm25 import BM25Retriever
     from app.knowledge.retrieval.models import RetrievalRequest, RetrievalScope
     from app.knowledge.storage.chroma import ChromaSource, CorpusSnapshot, StoredRow
+
     class Store:
         source = ChromaSource("public", None, "public")
         fingerprint = "one"
+
         def read_snapshot(self, *, where):
-            return CorpusSnapshot("public", (StoredRow("a", "醉酒驾驶", {}), StoredRow("b", "偷钱", {})), self.fingerprint)
+            return CorpusSnapshot(
+                "public", (StoredRow("a", "醉酒驾驶", {}), StoredRow("b", "偷钱", {})), self.fingerprint
+            )
+
     store = Store()
     retriever = BM25Retriever(store)
     request = RetrievalRequest("醉酒", RetrievalScope("public", "alice", True), 20, 5)
@@ -374,17 +393,28 @@ async def test_vector_registry_uses_shared_fusion_without_source_priority(runtim
     from app.knowledge.retrieval.models import ChannelResult, RetrievalCandidate, StageStatus
     from app.knowledge.retrieval.pipeline import RetrievalPipeline
     from app.knowledge.wiring import build_law_search_service
+
     corpus = lk.load_criminal_law_data()
     index = _build_article_index(corpus)
+
     class Vector:
         async def retrieve(self, request):
             candidates = []
             for number in ["第133条之一", "第264条"]:
                 article = index[number]
-                candidates.append(RetrievalCandidate(number, request.scope.source_id, article["article_number"]+" "+article["content"],
-                                  {**article, "content_sha256": article["text_provenance"]["content_sha256"]}))
+                candidates.append(
+                    RetrievalCandidate(
+                        number,
+                        request.scope.source_id,
+                        article["article_number"] + " " + article["content"],
+                        {**article, "content_sha256": article["text_provenance"]["content_sha256"]},
+                    )
+                )
             return ChannelResult("vector", tuple(candidates), {}, StageStatus("executed"))
-    service = build_law_search_service(law_data=corpus, pipeline=RetrievalPipeline(Vector(), config=RetrievalConfig(mode="vector", rerank=False)))
+
+    service = build_law_search_service(
+        law_data=corpus, pipeline=RetrievalPipeline(Vector(), config=RetrievalConfig(mode="vector", rerank=False))
+    )
     result = await LegalToolRegistry({}, "alice", corpus, search_service=service)._search_laws("查询")
     assert result["candidates"][0]["article_id"] == "第133条之一"
     assert result["candidates"][0]["source"] == "text_only"

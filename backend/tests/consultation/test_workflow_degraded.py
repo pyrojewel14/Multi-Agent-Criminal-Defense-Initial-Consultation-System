@@ -53,8 +53,8 @@ async def test_law_ref_distinguishes_no_match_from_dependency_failure():
             "app.consultation.agents.law_ref.load_criminal_law_data",
             return_value={"chapters": [{"chapter": "测试", "articles": []}]},
         ),
-        patch_law_recall( return_value=[]),
-        patch_law_keyword( return_value=[]),
+        patch_law_recall(return_value=[]),
+        patch_law_keyword(return_value=[]),
         patch(
             "app.consultation.agents.legal_research.llm_gateway.generate_with_tools",
             new_callable=AsyncMock,
@@ -65,8 +65,8 @@ async def test_law_ref_distinguishes_no_match_from_dependency_failure():
 
     with (
         patch("app.consultation.agents.law_ref.load_criminal_law_data", return_value={"chapters": []}),
-        patch_law_recall( return_value=[]),
-        patch_law_keyword( return_value=[]),
+        patch_law_recall(return_value=[]),
+        patch_law_keyword(return_value=[]),
         patch(
             "app.consultation.agents.legal_research.llm_gateway.generate_with_tools",
             new_callable=AsyncMock,
@@ -83,7 +83,7 @@ async def test_law_ref_distinguishes_no_match_from_dependency_failure():
         patch_law_recall(
             dependency_failed=True,
         ),
-        patch_law_keyword( return_value=[]),
+        patch_law_keyword(return_value=[]),
         patch(
             "app.consultation.agents.legal_research.llm_gateway.generate_with_tools",
             new_callable=AsyncMock,
@@ -198,8 +198,8 @@ async def test_eleven_resumes_exit_wait_for_user_with_auditable_degraded_state()
         patch("app.consultation.workflow.receptionist_node", receptionist),
         patch("app.consultation.agents.fact_digger._extract_structured_facts", side_effect=_fixed_facts),
         patch("app.consultation.agents.law_ref.load_criminal_law_data", return_value={"chapters": []}),
-        patch_law_recall( return_value=[]),
-        patch_law_keyword( return_value=[]),
+        patch_law_recall(return_value=[]),
+        patch_law_keyword(return_value=[]),
     ):
         orchestrator = ConsultationOrchestrator()
         await orchestrator.start_workflow(initial_state)

@@ -53,10 +53,18 @@ async def traced_http(memory_db, monkeypatch, tmp_path):
             await asyncio.sleep(0)
             responses = [
                 AIMessage(content="", tool_calls=[{"name": "search_laws", "args": {"query": "盗窃"}, "id": "search"}]),
-                AIMessage(content="", tool_calls=[{"name": "get_article", "args": {"article_id": "第264条"}, "id": "read"}]),
-                AIMessage(content=json.dumps({"article_ids": ["第264条"], "matched_elements": {"第264条": []}, "confidence": "low"})),
+                AIMessage(
+                    content="", tool_calls=[{"name": "get_article", "args": {"article_id": "第264条"}, "id": "read"}]
+                ),
+                AIMessage(
+                    content=json.dumps(
+                        {"article_ids": ["第264条"], "matched_elements": {"第264条": []}, "confidence": "low"}
+                    )
+                ),
             ]
-            return responses[index].model_copy(update={"usage_metadata": {"input_tokens": 5, "output_tokens": 2, "total_tokens": 7}})
+            return responses[index].model_copy(
+                update={"usage_metadata": {"input_tokens": 5, "output_tokens": 2, "total_tokens": 7}}
+            )
 
     law_provider = SyntheticLawProvider()
     monkeypatch.setattr(gateway.chat_model_factory, "create_precise_model", lambda *_: law_provider)
@@ -71,25 +79,46 @@ async def traced_http(memory_db, monkeypatch, tmp_path):
 
     source = ChromaSource("trace-law-snapshot", chromadb.PersistentClient(path=str(tmp_path / "law")), "law")
     law_store = ChromaStore.create(source)
-    law_store.upsert_rows([StoredRow("theft", "第二百六十四条 盗窃公私财物", {"article_number": "第二百六十四条", "is_public": True})], embeddings=[[1.0, 0.0]])
+    law_store.upsert_rows(
+        [StoredRow("theft", "第二百六十四条 盗窃公私财物", {"article_number": "第二百六十四条", "is_public": True})],
+        embeddings=[[1.0, 0.0]],
+    )
 
     async def embed_query(query):
         await asyncio.sleep(0)
         return [1.0, 0.0]
 
-    pipeline = RetrievalPipeline(ChromaVectorRetriever(law_store, embed_query, 2), bm25=BM25Retriever(law_store), config=RetrievalConfig(rerank=False))
-    monkeypatch.setattr(legal_research, "build_law_search_service", lambda *, law_data: build_law_search_service(
-        law_data=law_data, profile="snapshot", source_id=source.source_id, pipeline=pipeline))
+    pipeline = RetrievalPipeline(
+        ChromaVectorRetriever(law_store, embed_query, 2),
+        bm25=BM25Retriever(law_store),
+        config=RetrievalConfig(rerank=False),
+    )
+    monkeypatch.setattr(
+        legal_research,
+        "build_law_search_service",
+        lambda *, law_data: build_law_search_service(
+            law_data=law_data, profile="snapshot", source_id=source.source_id, pipeline=pipeline
+        ),
+    )
 
     async def receptionist(state):
         return dict(state, consent_given=True, current_agent="FactDigger", final_output="欢迎")
 
     async def extract(_facts):
         from app.consultation.schemas.artifacts import ArtifactSource
-        return {"incident_time": None, "incident_location": None, "parties": [],
-                "behavior_sequence": [{"action": "我没有拿走任何物品"}], "consequence": None,
-                "evidence_mentioned": [], "arrest_status": None, "surrender": None,
-                "victim_forgiveness": None, "prior_record": None}, ArtifactSource.CONTENT_JSON
+
+        return {
+            "incident_time": None,
+            "incident_location": None,
+            "parties": [],
+            "behavior_sequence": [{"action": "我没有拿走任何物品"}],
+            "consequence": None,
+            "evidence_mentioned": [],
+            "arrest_status": None,
+            "surrender": None,
+            "victim_forgiveness": None,
+            "prior_record": None,
+        }, ArtifactSource.CONTENT_JSON
 
     async def coverage(state):
         return dict(state, facts_coverage_rate=0.0, final_output="请继续补充")
@@ -156,8 +185,14 @@ async def test_fixed_http_request_exports_workflow_node_llm_rag_tree(traced_http
     await start(graph, memory_db, sid)
     request_id = "33333333-3333-4333-8333-333333333333"
     content = "我叫张三，电话13800138000，住在青禾市明月区长宁路18号。我没有拿走任何物品"
-    response = await client.post(f"/api/v1/sessions/{sid}/message", json={"session_id": sid, "content": content},
-        headers={"Authorization": f"Bearer {create_access_token('synthetic-owner', 'client')}", "X-Request-ID": request_id})
+    response = await client.post(
+        f"/api/v1/sessions/{sid}/message",
+        json={"session_id": sid, "content": content},
+        headers={
+            "Authorization": f"Bearer {create_access_token('synthetic-owner', 'client')}",
+            "X-Request-ID": request_id,
+        },
+    )
     assert response.status_code == 200, response.text
     assert response.headers["X-Request-ID"] == request_id
     assert (await graph.get_snapshot(sid)).values["law_research"]["termination_reason"] == "final_answer"
@@ -176,8 +211,14 @@ async def test_concurrent_mounted_http_requests_keep_separate_trees(traced_http,
         await start(graph, memory_db, sid)
 
     async def send(sid, request_id):
-        return await client.post(f"/api/v1/sessions/{sid}/message", json={"session_id": sid, "content": "我叫张三，电话13800138000。我没有拿走任何物品"},
-            headers={"Authorization": f"Bearer {create_access_token('synthetic-owner', 'client')}", "X-Request-ID": request_id})
+        return await client.post(
+            f"/api/v1/sessions/{sid}/message",
+            json={"session_id": sid, "content": "我叫张三，电话13800138000。我没有拿走任何物品"},
+            headers={
+                "Authorization": f"Bearer {create_access_token('synthetic-owner', 'client')}",
+                "X-Request-ID": request_id,
+            },
+        )
 
     responses = await asyncio.gather(*(send(sid, rid) for sid, rid in zip(sessions, ids)))
     assert [response.status_code for response in responses] == [200, 200]
