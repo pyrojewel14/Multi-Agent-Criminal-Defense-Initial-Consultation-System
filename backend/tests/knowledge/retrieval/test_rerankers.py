@@ -246,9 +246,26 @@ def test_import_constructor_and_readiness_do_not_import_model_dependencies():
 def test_actual_local_tokenizer_keeps_original_query_and_official_decisions():
     from transformers import AutoTokenizer
 
-    path = Path(__file__).resolve().parents[3] / "data/models/Qwen/Qwen3-Reranker-0___6B"
-    if not (path / "tokenizer.json").is_file():
-        pytest.skip("local tokenizer unavailable; download forbidden")
+    from app.knowledge.retrieval.rerankers._execution import resolve_local_path
+
+    backend = Path(__file__).resolve().parents[3]
+    config = RerankerConfig.from_env()
+    candidates = [
+        Path(config.local_path),
+        Path(config.cache_dir) / "Qwen/Qwen3-Reranker-0.6B",
+        Path(config.cache_dir) / "Qwen/Qwen3-Reranker-0___6B",
+    ]
+    # 测试复用已有缓存；生产评分器仍只接受显式配置的模型目录。
+    for candidate in dict.fromkeys(candidates):
+        candidate = candidate if candidate.is_absolute() else backend / candidate
+        try:
+            path = resolve_local_path(str(candidate))
+        except FileNotFoundError:
+            continue
+        if (path / "tokenizer.json").is_file():
+            break
+    else:
+        pytest.skip("local Qwen tokenizer not present in configured path or cache; download forbidden")
     tokenizer = AutoTokenizer.from_pretrained(str(path), padding_side="left", local_files_only=True)
     scorer = QwenReranker(RerankerConfig(local_path=str(path)))
     try:
@@ -257,7 +274,13 @@ def test_actual_local_tokenizer_keeps_original_query_and_official_decisions():
         decoded = tokenizer.decode(tokens, skip_special_tokens=False)
         assert query in decoded and "<think>\n\n</think>" in decoded
         assert len(tokens) == 512
+        prefix = tokenizer.encode(PREFIX, add_special_tokens=False)
+        suffix = tokenizer.encode(SUFFIX, add_special_tokens=False)
+        assert tokens[:len(prefix)] == prefix
+        assert tokens[-len(suffix):] == suffix
         assert scorer.decision_tokens(tokenizer) == (9693, 2152)
+        assert tokenizer.encode("yes", add_special_tokens=False) == [9693]
+        assert tokenizer.encode("no", add_special_tokens=False) == [2152]
         with pytest.raises(ValueError, match="query"):
             scorer.encode_pairs(tokenizer, "前文" * 600 + "最后否认：没有偷钱", ["正文"])
     finally:

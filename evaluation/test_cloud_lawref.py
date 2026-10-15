@@ -13,7 +13,7 @@ from langchain_ollama import ChatOllama
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 QUERY = "我没有拿走任何物品。"
-SAFE_FACTS = '{"behavior_sequence": ["我没有拿走任[NAME-MASKED]。"], "consequence": ""}'
+SAFE_FACTS = '{"behavior_sequence": ["我没有拿走任何物品。"], "consequence": ""}'
 
 
 def test_public_six_cases_remain_jsonl_and_match_published_replay_hash():
@@ -68,7 +68,7 @@ async def test_cloud_copy_sends_low_and_restores_factory_after_use(tmp_path, mon
     assert capture.records[0]["last_response"]["model"] == "gpt-oss:120b"
 
 
-def test_payload_accepts_existing_mask_transform_but_rejects_other_facts(tmp_path):
+def test_payload_accepts_approved_facts_but_rejects_other_facts(tmp_path):
     from evaluation.run_cloud_lawref import CloudCapture, masked_case_facts
 
     capture = CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json",
@@ -80,6 +80,42 @@ def test_payload_accepts_existing_mask_transform_but_rejects_other_facts(tmp_pat
     request["messages"][1]["content"] = json.dumps({"facts": '{"private_case":"unapproved"}'})
     with pytest.raises(ValueError, match="案例"):
         capture.verify_payload(request)
+
+
+@pytest.mark.asyncio
+async def test_cloud_capture_omits_gateway_local_limits_without_mutating_model(tmp_path, monkeypatch):
+    from app.infrastructure.llm.factory import chat_model_factory
+    from app.infrastructure.llm.gateway import _bounded_model
+    from evaluation.run_cloud_lawref import CloudCapture
+
+    model, wire = model_and_wire()
+    monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda temperature: model)
+    with CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json", {SAFE_FACTS}, {}):
+        bounded = _bounded_model(chat_model_factory.create_precise_model(0), output_limit=128)
+        original_window = bounded.num_ctx
+        assert original_window is not None
+        await bounded.ainvoke(messages())
+        assert bounded.num_predict == 128 and bounded.num_ctx == original_window
+    assert len(wire) == 1 and wire[0]["think"] == "low"
+    assert "num_predict" not in wire[0]["options"] and "num_ctx" not in wire[0]["options"]
+    assert model.num_predict is None and model.num_ctx is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kwargs", [{"format": {"type": "object"}}, {"options": {"num_predict": 128}}])
+async def test_cloud_capture_rejects_explicit_unapproved_parameters(tmp_path, monkeypatch, kwargs):
+    from app.infrastructure.llm.factory import chat_model_factory
+    from evaluation.run_cloud_lawref import CloudCapture
+
+    model, wire = model_and_wire()
+    monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda temperature: model)
+    with (
+        CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json", {SAFE_FACTS}, {}) as capture,
+        pytest.raises(ValueError, match="本地输出参数"),
+    ):
+        await chat_model_factory.create_precise_model(0).ainvoke(messages(), **kwargs)
+    assert wire == []
+    assert capture.records[0]["exception_type"] == "ValueError"
 
 
 @pytest.mark.asyncio

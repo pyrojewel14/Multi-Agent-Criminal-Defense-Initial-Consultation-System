@@ -451,43 +451,6 @@ async def test_hyde_session_budget_exhaustion_makes_no_http_request(runtime, mon
     assert runtime == []
 
 
-def test_actual_local_qwen_tokenizer_retains_special_tokens_and_negation():
-    import os
-    from pathlib import Path
-
-    from transformers import AutoTokenizer
-
-    from app.knowledge.retrieval.config import RerankerConfig
-    from app.knowledge.retrieval.rerankers.qwen import PREFIX, SUFFIX, QwenReranker
-
-    path = Path(os.getenv("RERANKER_MODEL_PATH", "data/models/Qwen/Qwen3-Reranker-0.6B"))
-    if not path.is_absolute():
-        path = Path(__file__).resolve().parents[2] / path
-    if not (path / "tokenizer.json").is_file():
-        pytest.skip("configured local tokenizer not present; no download allowed")
-    tokenizer = AutoTokenizer.from_pretrained(str(path), padding_side="left", local_files_only=True)
-    scorer = QwenReranker(RerankerConfig(local_path=str(path), max_length=512, instruction="instruction"))
-    try:
-        query = "指控我偷了钱，但我否认，没有拿钱"
-        tokens = scorer.encode_pairs(tokenizer, query, ["完整正文" * 300])[0]
-        assert len(tokens) == 512
-        assert tokens[: len(tokenizer.encode(PREFIX, add_special_tokens=False))] == tokenizer.encode(
-            PREFIX, add_special_tokens=False
-        )
-        assert tokens[-len(tokenizer.encode(SUFFIX, add_special_tokens=False)) :] == tokenizer.encode(
-            SUFFIX, add_special_tokens=False
-        )
-        decoded = tokenizer.decode(tokens, skip_special_tokens=False)
-        assert query in decoded and "<think>\n\n</think>" in decoded
-        assert scorer.decision_tokens(tokenizer) == (9693, 2152)
-        assert tokenizer.encode("yes", add_special_tokens=False) == [9693]
-        assert tokenizer.encode("no", add_special_tokens=False) == [2152]
-        with pytest.raises(ValueError, match="query"):
-            scorer.encode_pairs(tokenizer, "前文" * 600 + "最后否认：没有偷钱", ["正文"])
-    finally:
-        scorer.close()
-
-
 @pytest.mark.asyncio
 async def test_hyde_records_actual_session_usage_without_saving_generated_facts(monkeypatch):
     from app.infrastructure.observability.tracing import SessionBudget

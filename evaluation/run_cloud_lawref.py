@@ -92,6 +92,8 @@ class CloudCapture:
 
     async def capture(self, model, messages, stop=None, **kwargs):
         """保存无请求头的实际HTTP载荷与原始公开案例响应，部分流不伪填token。"""
+        # Gateway 的本地预算不作为云请求参数；仅调整本次副本，显式 options 仍接受原校验。
+        model = model.model_copy(update={"num_predict": None, "num_ctx": None})
         started = time.monotonic()
         row = {"requested_model": model.model, "request_url": None, "wire_request": None,
                "http_status": None, "content": "", "thinking": "", "tool_calls": [],

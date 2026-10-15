@@ -4,6 +4,14 @@
 读完可以分别检查工作流、法条数据、模型调用契约和前端构建。
 要检查实际模型效果，读 [评估](evaluation.md)；测试证据范围见 [边界说明](limitations.md)。
 
+## 本地配置与模型资产
+
+模型工厂测试显式指定本机和远程 Ollama 端点，分别核对代理参数，不依赖运行机器的默认端点。云端评测测试使用批准的公开合成事实，保留未批准事实、模型回落与原生输出参数的拒绝检查；当前 `mask_pii()` 原样返回文本，测试不假设它执行了脱敏。
+
+真实 tokenizer 协议检查集中在 `tests/knowledge/retrieval/test_rerankers.py`：先检查 `RERANKER_MODEL_PATH`，再检查 `MODEL_CACHE_DIR` 下的 Qwen 标准目录和 ModelScope 缓存目录，只读取已有文件。没有可用 tokenizer 时明确跳过，不自动下载。测试中的缓存查找只用于验证评分协议，生产评分器仍严格使用配置目录。该检查验证特殊 token、原查询及否认保留和正文截断，不加载评分权重，也不证明真实检索质量。
+
+2026-10-15 后续修复了工厂测试的环境依赖、两项过时脱敏文本断言，以及修正文本后暴露的云端适配与 Gateway 本地预算参数冲突。使用独立临时 Redis、SQLite 与上传库复跑：在 `backend/` 执行 `python -m pytest -q --tb=short --disable-warnings -rs`，1801 项通过；在根目录执行 `python -m pytest -q evaluation --tb=short --disable-warnings -rs`，149 项通过，均退出 0、无失败或跳过。后端仍有 621 项既有弃用及资源警告，未把警告消除计入本次修复。真实 tokenizer 检查已执行；云端 HTTP 为替身，不证明真实云服务可用。此前检索实测原始 JSON 及当次失败记录保留原字节。
+
 ## 如何选分组
 
 | 改了什么 | 先跑什么 |

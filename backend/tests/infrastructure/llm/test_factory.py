@@ -321,9 +321,16 @@ class TestEmbedModelFactory:
     def _make_factory(self):
         return EmbedModelFactory()
 
-    def test_create_embedding_model_ollama(self, monkeypatch):
-        """create_embedding_model with EMBED_MODEL_TYPE=OLLAMA creates OllamaEmbeddings."""
+    @pytest.mark.parametrize("base_url,client_kwargs", [
+        ("http://localhost:11434", {"trust_env": False}),
+        ("http://127.0.0.1:11434", {"trust_env": False}),
+        ("http://[::1]:11434", {"trust_env": False}),
+        ("https://ollama.example.test:11434", {}),
+    ])
+    def test_create_embedding_model_ollama(self, monkeypatch, base_url, client_kwargs):
+        """Ollama Embedding 显式使用配置端点，仅回环地址禁用环境代理。"""
         monkeypatch.setenv("EMBED_MODEL_TYPE", "OLLAMA")
+        monkeypatch.setenv("OLLAMA_BASE_URL", base_url)
         factory = self._make_factory()
         factory._model_cache.clear()
 
@@ -332,7 +339,8 @@ class TestEmbedModelFactory:
             result = factory.create_embedding_model()
 
         assert result == "m"
-        assert mock_emb.call_args.kwargs["client_kwargs"] == {"trust_env": False}
+        assert mock_emb.call_args.kwargs["base_url"] == base_url
+        assert mock_emb.call_args.kwargs["client_kwargs"] == client_kwargs
         factory.close()
 
     def test_create_embedding_model_aliyun(self, monkeypatch):

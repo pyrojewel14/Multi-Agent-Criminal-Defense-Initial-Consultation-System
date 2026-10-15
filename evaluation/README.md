@@ -30,6 +30,8 @@ backend/.venv/bin/python evaluation/run_live_eval.py run
 
 snapshot 真实检索使用专用 `LAW_SNAPSHOT_INDEX_DIRECTORY`（默认 `evaluation/live_index`）和 `LAW_SNAPSHOT_INDEX_COLLECTION`，不再借用或改写 `CHROMA_*` 上传库配置。评测显式校验已有六条索引及 manifest，并把匹配的向量/BM25 Pipeline 注入法律服务；仅选择 `snapshot` 资产不会自动连接向量库。Memory 离线重启评测的法律节点仍是替身，不据此声称执行过法条 RAG。
 
+云端对照适配器会在每次模型副本上移除 Gateway 注入的本地 `num_ctx`、`num_predict`，再构造实际 HTTP 请求，不改变共享工厂或本地模型预算。显式传入的未经核验 `options.num_predict`、原生 `format`、未批准事实和模型回落仍会被拒绝；单元测试使用 HTTP 替身，不代表真实云服务调用成功。
+
 ## 全量正文与检索消融
 
 `run_full_eval.py` 的三种模式分别调用离线关键词与读取工具、实际 RAG、实际 LawRef 节点；`--query-mode semantic` 使用样例中的自然语言查询，默认 `article` 使用条号查询。准备好 [全量资产与索引](../docs/knowledge/full_criminal_law.md) 后，从仓库根目录选择模式运行：
