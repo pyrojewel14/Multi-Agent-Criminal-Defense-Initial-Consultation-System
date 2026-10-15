@@ -160,29 +160,26 @@ class KnowledgeResources:
         self._law_config_error: str | None = None
         self._bm25: OrderedDict[tuple[Any, ...], BM25Retriever] = OrderedDict()
 
-    def scorer(self, config: RerankerConfig) -> QwenReranker:
-        """只创建轻量评分器；权重和设备等待首次真实评分。"""
+    def scorer(
+        self, config: RerankerConfig, *, kind: str = "causal_lm"
+    ) -> QwenReranker | CrossEncoderReranker:
+        """按类型和配置复用轻量评分器；未知类型报错，权重等待首次真实评分。"""
+        if kind == "causal_lm":
+            cache, scorer_type = self._scorers, QwenReranker
+        elif kind == "cross_encoder":
+            cache, scorer_type = self._cross_encoders, CrossEncoderReranker
+        else:
+            raise ValueError("unknown reranker type")
         with self._lock:
-            if config not in self._scorers:
-                self._scorers[config] = QwenReranker(config)
-            return self._scorers[config]
+            if config not in cache:
+                cache[config] = scorer_type(config)
+            return cache[config]
 
     def reject_law_scorer(self, config: RerankerConfig) -> _RejectedLawScorer:
         """记录配置错误供 readiness 展示，拒绝工作只在可选评分阶段发生。"""
         with self._lock:
             self._law_config_error = config.model_name
         return _RejectedLawScorer()
-
-    def document_scorer(self, config: RerankerConfig, *, kind: str = "causal_lm"):
-        """文档默认复用唯一 Qwen，Cross-Encoder 只接受显式构造选项。"""
-        if kind == "causal_lm":
-            return self.scorer(config)
-        if kind != "cross_encoder":
-            raise ValueError("unknown document reranker type")
-        with self._lock:
-            if config not in self._cross_encoders:
-                self._cross_encoders[config] = CrossEncoderReranker(config)
-            return self._cross_encoders[config]
 
     def document_embeddings(self, factory=None, *, values: Mapping[str, str]):
         """按模型配置快照复用代理；显式工厂自行负责配置与实例创建。"""
@@ -391,7 +388,7 @@ def build_document_services(
         scorer = (
             reranker
             if reranker is not None
-            else (owned.document_scorer(RerankerConfig.from_env(values), kind=reranker_type) if config.rerank else None)
+            else (owned.scorer(RerankerConfig.from_env(values), kind=reranker_type) if config.rerank else None)
         )
         expander = None
         if config.hyde:

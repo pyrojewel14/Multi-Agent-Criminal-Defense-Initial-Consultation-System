@@ -10,7 +10,7 @@ from langchain_core.runnables import RunnableLambda
 
 from app.knowledge import wiring
 from app.knowledge.retrieval.config import RerankerConfig
-from app.knowledge.retrieval.rerankers import CrossEncoderReranker
+from app.knowledge.retrieval.rerankers import CrossEncoderReranker, QwenReranker
 from app.knowledge.storage.chroma import ChromaSource, ChromaStore
 
 
@@ -114,7 +114,8 @@ def test_existing_collection_is_never_recreated_and_nonmissing_errors_propagate(
     assert len(source.client.list_collections()) == 1
 
 
-def test_document_cross_encoder_is_explicit_and_does_not_replace_law_qwen(source, tmp_path):
+@pytest.mark.parametrize("kind,expected", [("causal_lm", QwenReranker), ("cross_encoder", CrossEncoderReranker)])
+def test_document_reranker_uses_shared_entry_and_keeps_types_separate(source, tmp_path, kind, expected):
     resources = wiring.KnowledgeResources()
     config = RerankerConfig()
     law_scorer = resources.scorer(config)
@@ -123,12 +124,13 @@ def test_document_cross_encoder_is_explicit_and_does_not_replace_law_qwen(source
         create_missing=True,
         md5_directory=tmp_path,
         resources=resources,
-        reranker_type="cross_encoder",
+        reranker_type=kind,
         env={},
     )
-    assert isinstance(service.pipeline.reranker, CrossEncoderReranker)
+    assert isinstance(service.pipeline.reranker, expected)
     assert resources.scorer(config) is law_scorer
-    assert service.pipeline.reranker is not law_scorer
+    assert service.pipeline.reranker is resources.scorer(config, kind=kind)
+    assert (service.pipeline.reranker is law_scorer) == (kind == "causal_lm")
     assert service.pipeline.reranker.readiness()["status"] == "not_loaded"
     resources.close()
 
