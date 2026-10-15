@@ -123,7 +123,7 @@ export function AdminWorkspace({ user }: { user: User }) {
   }
 
   return (
-    <main className="admin-workspace">
+    <div className="admin-workspace">
       <header className="admin-heading">
         <div>
           <p className="eyebrow">Admin workspace</p>
@@ -255,6 +255,6 @@ export function AdminWorkspace({ user }: { user: User }) {
           )}
         </div>
       )}
-    </main>
+    </div>
   )
 }
