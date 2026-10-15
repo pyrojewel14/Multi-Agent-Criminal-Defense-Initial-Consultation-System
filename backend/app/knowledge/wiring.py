@@ -152,8 +152,7 @@ class KnowledgeResources:
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._scorers: dict[RerankerConfig, QwenReranker] = {}
-        self._cross_encoders: dict[RerankerConfig, CrossEncoderReranker] = {}
+        self._scorers: dict[tuple[str, RerankerConfig], QwenReranker | CrossEncoderReranker] = {}
         self._document_embeddings: dict[Any, _LazyDocumentEmbeddings] = {}
         self._document_lock = threading.Lock()
         self._document_service = None
@@ -165,15 +164,16 @@ class KnowledgeResources:
     ) -> QwenReranker | CrossEncoderReranker:
         """按类型和配置复用轻量评分器；未知类型报错，权重等待首次真实评分。"""
         if kind == "causal_lm":
-            cache, scorer_type = self._scorers, QwenReranker
+            scorer_type = QwenReranker
         elif kind == "cross_encoder":
-            cache, scorer_type = self._cross_encoders, CrossEncoderReranker
+            scorer_type = CrossEncoderReranker
         else:
             raise ValueError("unknown reranker type")
+        key = (kind, config)
         with self._lock:
-            if config not in cache:
-                cache[config] = scorer_type(config)
-            return cache[config]
+            if key not in self._scorers:
+                self._scorers[key] = scorer_type(config)
+            return self._scorers[key]
 
     def reject_law_scorer(self, config: RerankerConfig) -> _RejectedLawScorer:
         """记录配置错误供 readiness 展示，拒绝工作只在可选评分阶段发生。"""
@@ -220,8 +220,9 @@ class KnowledgeResources:
     def readiness(self) -> dict[str, Any]:
         """仅读取当前资源状态，不能借健康检查创建模型或访问外部服务。"""
         with self._lock:
-            scorers = tuple((scorer, "causal_lm") for scorer in self._scorers.values())
-            scorers += tuple((scorer, "cross_encoder") for scorer in self._cross_encoders.values())
+            # 稳定按类型分组，保持 Qwen 在前、Cross-Encoder 在后的原有检查顺序。
+            entries = sorted(self._scorers.items(), key=lambda item: item[0][0])
+            scorers = tuple((scorer, kind) for (kind, _), scorer in entries)
             law_error = self._law_config_error
         if law_error:
             return {
@@ -262,9 +263,9 @@ class KnowledgeResources:
     def _close_scorers(self):
         """在锁内取出并清空评分器和缓存，再在锁外关闭评分器。"""
         with self._lock:
-            scorers = tuple(self._scorers.values()) + tuple(self._cross_encoders.values())
+            # 与原来两个缓存的遍历顺序一致，类型内保留创建顺序。
+            scorers = tuple(scorer for _, scorer in sorted(self._scorers.items(), key=lambda item: item[0][0]))
             self._scorers.clear()
-            self._cross_encoders.clear()
             self._law_config_error = None
             self._bm25.clear()
         for scorer in scorers:

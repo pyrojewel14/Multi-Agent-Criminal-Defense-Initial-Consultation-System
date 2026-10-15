@@ -80,7 +80,7 @@ knowledge/
 
 `pipeline.py` 只决定阶段如何组合；评分算法具体在 `rerankers/qwen.py` 和 `cross_encoder.py`。评分器不去重、不融合、不截断，Pipeline 收到完整候选池的分数后才决定最终顺序。`HyDEExpander` 只生成额外召回文本，`BM25Retriever` 与 `ChromaVectorRetriever` 只返回各自通道结果。
 
-组装层统一通过 `KnowledgeResources.scorer(config, kind=...)` 获取评分器：默认 `causal_lm` 使用 Qwen，`cross_encoder` 使用 Cross-Encoder。两类实例分别按配置缓存，在同一锁内复用；获取实例时不加载模型权重。
+组装层统一通过 `KnowledgeResources.scorer(config, kind=...)` 获取评分器：默认 `causal_lm` 使用 Qwen，`cross_encoder` 使用 Cross-Encoder。两类实例以 `(kind, config)` 为键存入同一个缓存，在同一锁内复用；获取实例时不加载模型权重。
 
 法条服务先 `recall()`，把关键词放进同一池并核验每个原始候选，再 `finalize()` 一次完成融合、重排和截断。领域服务可选择可信的同条代表，但失败来源的核验结果仍保留在 `origins`，相关性分数不能提升覆盖资格。普通文档直接调用 `search()`；摘要复用该结果，不重新检索或重排。
 

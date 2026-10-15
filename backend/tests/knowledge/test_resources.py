@@ -64,6 +64,75 @@ def test_default_and_explicit_qwen_share_cache_but_cross_encoder_is_independent(
     assert qwen.readiness()["closed"] and cross_encoder.readiness()["closed"]
 
 
+def test_single_cache_tracks_every_scorer_for_resource_cleanup():
+    resources = wiring.KnowledgeResources()
+    config = RerankerConfig(local_path="missing-model")
+    try:
+        qwen = resources.scorer(config)
+        cross_encoder = resources.scorer(config, kind="cross_encoder")
+        assert set(resources._scorers.values()) == {qwen, cross_encoder}
+    finally:
+        resources.close()
+    assert resources._scorers == {}
+
+
+@pytest.mark.parametrize(
+    "qwen_ready,cross_ready,expected_kind",
+    [
+        (False, False, "causal_lm"),
+        (False, True, "causal_lm"),
+        (True, False, "cross_encoder"),
+        (True, True, "cross_encoder"),
+    ],
+)
+def test_readiness_preserves_type_priority_when_cross_encoder_is_created_first(qwen_ready, cross_ready, expected_kind):
+    resources = wiring.KnowledgeResources()
+    config = RerankerConfig(local_path="missing-model")
+    try:
+        cross_encoder = resources.scorer(config, kind="cross_encoder")
+        qwen = resources.scorer(config)
+        if qwen_ready:
+            qwen._set_load_status("ready")
+        if cross_ready:
+            cross_encoder._set_load_status("ready")
+        assert resources.readiness()["type"] == expected_kind
+    finally:
+        resources.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("async_close", [False, True])
+async def test_both_close_paths_clear_cache_and_close_once_outside_lock_in_original_order(monkeypatch, async_close):
+    resources = wiring.KnowledgeResources()
+    config = RerankerConfig(local_path="missing-model")
+    cross_encoder = resources.scorer(config, kind="cross_encoder")
+    qwen = resources.scorer(config)
+    closed = []
+
+    def tracked_close(kind, original):
+        def close():
+            assert resources._scorers == {}
+            assert resources._lock.acquire(blocking=False)
+            resources._lock.release()
+            closed.append(kind)
+            original()
+
+        return close
+
+    monkeypatch.setattr(qwen, "close", tracked_close("causal_lm", qwen.close))
+    monkeypatch.setattr(cross_encoder, "close", tracked_close("cross_encoder", cross_encoder.close))
+    try:
+        for _ in range(2):
+            if async_close:
+                await resources.aclose()
+            else:
+                resources.close()
+        assert closed == ["causal_lm", "cross_encoder"]
+        assert qwen.readiness()["closed"] and cross_encoder.readiness()["closed"]
+    finally:
+        resources.close()
+
+
 @pytest.mark.parametrize("kind", ["unknown", "", "CAUSAL_LM"])
 def test_unknown_scorer_kind_is_rejected_without_creating_resources(monkeypatch, kind):
     def no_create(config):
