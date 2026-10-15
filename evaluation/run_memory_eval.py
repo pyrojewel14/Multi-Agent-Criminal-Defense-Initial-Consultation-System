@@ -387,25 +387,27 @@ async def compare_context(mode, state, raw, question, recent=8):
     from dataclasses import replace
 
     from app.consultation.memory.context import MemorySettings
-    from app.infrastructure.llm.factory import chat_model_factory
+    from app.infrastructure.llm.config import ChatConfig
+
+    from evaluation.model_runtime import evaluation_runtime
     full, active = context_pair(state, raw, question, replace(MemorySettings.from_env(), recent_messages=recent))
     system = full.messages[0].content
     result = []
-    for name, built in [('full_history', full), ('active_context', active)]:
-        start = time.monotonic()
-        usage = None
-        answer = None
-        if mode == 'live':
-            from app.infrastructure.llm.gateway import _bounded_model
-            model = _bounded_model(chat_model_factory.create_precise_model(0), 333, False)
-            response = await model.ainvoke(built.messages)
-            usage = response.usage_metadata
-            answer = response.content
-        result.append({'kind': name, 'estimated_input_tokens': built.estimated_input_tokens,
-            'utf8_bytes': sum(len(msg.content.encode()) for msg in built.messages), 'actual_usage': usage,
-            'seconds': round(time.monotonic() - start, 4), 'messages_fingerprint': fingerprint([m.content for m in built.messages]),
-            'system_fingerprint': fingerprint(system), 'question_fingerprint': fingerprint(question), 'answer': answer})
-    chat_model_factory.close()
+    async with evaluation_runtime() as (manager, _resources):
+        for name, built in [('full_history', full), ('active_context', active)]:
+            start = time.monotonic()
+            usage = None
+            answer = None
+            if mode == 'live':
+                from app.infrastructure.llm.gateway import _bounded_model
+                model = _bounded_model(manager.get_chat(ChatConfig.from_env(temperature=0)), 333, False)
+                response = await model.ainvoke(built.messages)
+                usage = response.usage_metadata
+                answer = response.content
+            result.append({'kind': name, 'estimated_input_tokens': built.estimated_input_tokens,
+                'utf8_bytes': sum(len(msg.content.encode()) for msg in built.messages), 'actual_usage': usage,
+                'seconds': round(time.monotonic() - start, 4), 'messages_fingerprint': fingerprint([m.content for m in built.messages]),
+                'system_fingerprint': fingerprint(system), 'question_fingerprint': fingerprint(question), 'answer': answer})
     return result
 
 

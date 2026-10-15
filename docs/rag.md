@@ -25,6 +25,8 @@
 
 `LegalToolRegistry` 把模型的搜索查询交给 `LawSearchService`。服务收集原查询向量、BM25、可选 HyDE 和受控关键词通道，核验完整候选池后，交 `RetrievalPipeline.finalize()` 统一融合、可选重排并取最终 top5。Registry 只维护工具协议和已搜索/已读取约束，检索算法不会在工具层再执行一次。
 
+`knowledge/wiring.py` 从 `ModelManager` 获取模型并组装服务，领域缓存由 `KnowledgeResources` 管理；法律模型限制和每请求完整性预检由 `law/binding.py` 执行。模型缓存与关闭职责见[架构说明](architecture.md#模型配置与资源所有权)。
+
 `LAW_KNOWLEDGE_PROFILE` 选择 `full` 或六条 `snapshot` 资产。两种资产共用同一服务与 Pipeline；区别在资产、数据源和核验要求：
 
 | 绑定 | 行为 |

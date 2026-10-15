@@ -58,7 +58,9 @@ def messages():
 
 @pytest.mark.asyncio
 async def test_cloud_copy_sends_low_and_restores_factory_after_use(tmp_path, monkeypatch):
-    from app.infrastructure.llm.factory import chat_model_factory
+    from app.infrastructure.llm.config import ChatConfig
+    from app.infrastructure.llm.factory import ChatModelFactory
+
     from evaluation.run_cloud_lawref import CloudCapture, masked_case_facts
 
     model, wire = model_and_wire()
@@ -66,17 +68,26 @@ async def test_cloud_copy_sends_low_and_restores_factory_after_use(tmp_path, mon
     def original(temperature):
         return model
 
-    monkeypatch.setattr(chat_model_factory, "create_precise_model", original)
-    with CloudCapture(
-        "gpt-oss:120b-cloud", "low", tmp_path / "raw.json", masked_case_facts([{"query": QUERY}], "article"), {}
+    monkeypatch.setattr(ChatModelFactory, "create", staticmethod(original))
+    async with CloudCapture(
+        "gpt-oss:120b-cloud",
+        "low",
+        tmp_path / "raw.json",
+        masked_case_facts([{"query": QUERY}], "article"),
+        {},
     ) as capture:
-        copied = chat_model_factory.create_precise_model(0)
+        copied = capture.model_manager.get_chat(
+            ChatConfig(provider="OLLAMA", model_name="gpt-oss:120b-cloud", temperature=0)
+        )
         response = await copied.ainvoke(messages())
         assert response.content == "{}"
     assert wire[0]["think"] == "low"
     assert "format" not in wire[0]
     assert model.reasoning is None
-    assert chat_model_factory.create_precise_model is original
+    assert ChatModelFactory.create is original
+    assert capture.model_manager.closed
+    assert model._client._client.is_closed
+    assert model._async_client._client.is_closed
     assert capture.records[0]["http_status"] == 200
     assert capture.records[0]["last_response"]["model"] == "gpt-oss:120b"
 
@@ -103,14 +114,21 @@ def test_payload_accepts_approved_facts_but_rejects_other_facts(tmp_path):
 
 @pytest.mark.asyncio
 async def test_cloud_capture_omits_gateway_local_limits_without_mutating_model(tmp_path, monkeypatch):
-    from app.infrastructure.llm.factory import chat_model_factory
+    from app.infrastructure.llm.config import ChatConfig
+    from app.infrastructure.llm.factory import ChatModelFactory
     from app.infrastructure.llm.gateway import _bounded_model
+
     from evaluation.run_cloud_lawref import CloudCapture
 
     model, wire = model_and_wire()
-    monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda temperature: model)
-    with CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json", {SAFE_FACTS}, {}):
-        bounded = _bounded_model(chat_model_factory.create_precise_model(0), output_limit=128)
+    monkeypatch.setattr(ChatModelFactory, "create", staticmethod(lambda config: model))
+    async with CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json", {SAFE_FACTS}, {}) as capture:
+        bounded = _bounded_model(
+            capture.model_manager.get_chat(
+                ChatConfig(provider="OLLAMA", model_name="gpt-oss:120b-cloud", temperature=0)
+            ),
+            output_limit=128,
+        )
         original_window = bounded.num_ctx
         assert original_window is not None
         await bounded.ainvoke(messages())
@@ -123,16 +141,18 @@ async def test_cloud_capture_omits_gateway_local_limits_without_mutating_model(t
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kwargs", [{"format": {"type": "object"}}, {"options": {"num_predict": 128}}])
 async def test_cloud_capture_rejects_explicit_unapproved_parameters(tmp_path, monkeypatch, kwargs):
-    from app.infrastructure.llm.factory import chat_model_factory
+    from app.infrastructure.llm.config import ChatConfig
+    from app.infrastructure.llm.factory import ChatModelFactory
+
     from evaluation.run_cloud_lawref import CloudCapture
 
     model, wire = model_and_wire()
-    monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda temperature: model)
-    with (
-        CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json", {SAFE_FACTS}, {}) as capture,
-        pytest.raises(ValueError, match="本地输出参数"),
-    ):
-        await chat_model_factory.create_precise_model(0).ainvoke(messages(), **kwargs)
+    monkeypatch.setattr(ChatModelFactory, "create", staticmethod(lambda config: model))
+    async with CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json", {SAFE_FACTS}, {}) as capture:
+        with pytest.raises(ValueError, match="本地输出参数"):
+            await capture.model_manager.get_chat(
+                ChatConfig(provider="OLLAMA", model_name="gpt-oss:120b-cloud", temperature=0)
+            ).ainvoke(messages(), **kwargs)
     assert wire == []
     assert capture.records[0]["exception_type"] == "ValueError"
 
@@ -140,16 +160,18 @@ async def test_cloud_capture_rejects_explicit_unapproved_parameters(tmp_path, mo
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [402, 410])
 async def test_service_refusal_records_actual_status_without_model_fallback(tmp_path, monkeypatch, status):
-    from app.infrastructure.llm.factory import chat_model_factory
+    from app.infrastructure.llm.config import ChatConfig
+    from app.infrastructure.llm.factory import ChatModelFactory
+
     from evaluation.run_cloud_lawref import CloudCapture
 
     model, wire = model_and_wire(status=status)
-    monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda temperature: model)
-    with (
-        CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json", {SAFE_FACTS}, {}) as capture,
-        pytest.raises(Exception, match="access denied"),
-    ):
-        await chat_model_factory.create_precise_model(0).ainvoke(messages())
+    monkeypatch.setattr(ChatModelFactory, "create", staticmethod(lambda config: model))
+    async with CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json", {SAFE_FACTS}, {}) as capture:
+        with pytest.raises(Exception, match="access denied"):
+            await capture.model_manager.get_chat(
+                ChatConfig(provider="OLLAMA", model_name="gpt-oss:120b-cloud", temperature=0)
+            ).ainvoke(messages())
     assert len(wire) == 1
     assert wire[0]["model"] == "gpt-oss:120b-cloud"
     assert capture.records[0]["http_status"] == status
@@ -158,16 +180,18 @@ async def test_service_refusal_records_actual_status_without_model_fallback(tmp_
 
 @pytest.mark.asyncio
 async def test_returned_unrequested_model_is_rejected_and_preserved(tmp_path, monkeypatch):
-    from app.infrastructure.llm.factory import chat_model_factory
+    from app.infrastructure.llm.config import ChatConfig
+    from app.infrastructure.llm.factory import ChatModelFactory
+
     from evaluation.run_cloud_lawref import CloudCapture
 
     model, _ = model_and_wire(returned_model="qwen3.5:0.8b")
-    monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda temperature: model)
-    with (
-        CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json", {SAFE_FACTS}, {}) as capture,
-        pytest.raises(ValueError, match="返回模型"),
-    ):
-        await chat_model_factory.create_precise_model(0).ainvoke(messages())
+    monkeypatch.setattr(ChatModelFactory, "create", staticmethod(lambda config: model))
+    async with CloudCapture("gpt-oss:120b-cloud", "low", tmp_path / "raw.json", {SAFE_FACTS}, {}) as capture:
+        with pytest.raises(ValueError, match="返回模型"):
+            await capture.model_manager.get_chat(
+                ChatConfig(provider="OLLAMA", model_name="gpt-oss:120b-cloud", temperature=0)
+            ).ainvoke(messages())
     assert capture.records[0]["last_response"]["model"] == "qwen3.5:0.8b"
 
 
@@ -175,10 +199,12 @@ async def test_returned_unrequested_model_is_rejected_and_preserved(tmp_path, mo
 def evaluation_setup(tmp_path, monkeypatch):
     from argparse import Namespace
 
-    from app.infrastructure.llm.factory import chat_model_factory
+    from app.infrastructure.llm.factory import ChatModelFactory
 
     model, wire = model_and_wire(status=402)
-    monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda temperature: model)
+    monkeypatch.setenv("LLM_TYPE", "OLLAMA")
+    monkeypatch.setenv("OLLAMA_MODEL_NAME", "gpt-oss:120b-cloud")
+    monkeypatch.setattr(ChatModelFactory, "create", staticmethod(lambda config: model))
     calls = []
     original_client = httpx.AsyncClient
 
@@ -189,11 +215,21 @@ def evaluation_setup(tmp_path, monkeypatch):
         return httpx.Response(200, json={"models": []})
 
     monkeypatch.setattr(
-        httpx, "AsyncClient", lambda **kwargs: original_client(**kwargs, transport=httpx.MockTransport(preflight))
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original_client(**kwargs, transport=httpx.MockTransport(preflight)),
     )
     cases = tmp_path / "cases.jsonl"
     cases.write_text(
-        json.dumps({"id": "control", "query": QUERY, "article_id": "第264条", "coverage_eligible": True}) + "\n"
+        json.dumps(
+            {
+                "id": "control",
+                "query": QUERY,
+                "article_id": "第264条",
+                "coverage_eligible": True,
+            }
+        )
+        + "\n"
     )
     args = Namespace(
         model="gpt-oss:120b-cloud",

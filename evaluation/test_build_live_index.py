@@ -87,3 +87,48 @@ def test_direct_script_entrypoint_resolves_sibling_runner(tmp_path):
     assert result.returncode != 0
     assert "ModuleNotFoundError" not in result.stderr
     assert "URLError" in result.stderr
+
+
+@pytest.mark.parametrize("outcome", ["normal", "error"])
+def test_cli_owns_embedding_manager_on_success_and_build_failure(tmp_path, monkeypatch, outcome):
+    import app.infrastructure.llm.manager as manager_module
+    from app.infrastructure.llm.manager import ModelManager
+
+    from evaluation import build_live_index, run_live_eval
+
+    class Embedding:
+        def __init__(self):
+            self.closed = False
+
+        def embed_documents(self, texts):
+            if outcome == "error":
+                raise ValueError("embedding failed")
+            return [[float(index), 1.0] for index, _ in enumerate(texts)]
+
+        async def aclose(self):
+            self.closed = True
+
+    embedding = Embedding()
+
+    class Factory:
+        def create(self, config):
+            assert config.model_name == "test-model"
+            return embedding
+
+    manager = ModelManager(embedding_factory=Factory())
+    monkeypatch.setattr(manager_module, "ModelManager", lambda: manager)
+    monkeypatch.setitem(sys.modules, "run_live_eval", run_live_eval)
+    monkeypatch.setattr(run_live_eval, "configure_runtime", lambda: None)
+    monkeypatch.setattr(
+        run_live_eval, "_ollama_tags", lambda base_url: {"models": [{"name": "test-model", "digest": "test-digest"}]}
+    )
+    monkeypatch.setenv("TEXT_EMBEDDING_MODEL_NAME", "test-model")
+    monkeypatch.setenv("EMBED_MODEL_TYPE", "OLLAMA")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.invalid")
+    monkeypatch.setattr(sys, "argv", ["build_live_index.py", "--index-dir", str(tmp_path / "index")])
+    if outcome == "error":
+        with pytest.raises(ValueError, match="embedding failed"):
+            build_live_index.main()
+    else:
+        assert build_live_index.main() == 0
+    assert manager.closed and embedding.closed

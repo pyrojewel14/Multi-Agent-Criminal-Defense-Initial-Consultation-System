@@ -159,42 +159,45 @@ class LocalCapture:
             ):
                 raise ValueError("工具要件超出公开快照")
 
-    def __enter__(self):
-        from app.infrastructure.llm.factory import chat_model_factory
+    async def __aenter__(self):
         from app.infrastructure.llm.gateway import LLMCallPolicy, llm_gateway
+        from app.infrastructure.llm.manager import ModelManager
         from langchain_ollama import ChatOllama
 
-        self.original_factory = chat_model_factory.create_precise_model
         self.original_stream = ChatOllama._acreate_chat_stream
         self.original_policy = llm_gateway._policy
+        self.original_manager = llm_gateway._model_manager
         owner = self
 
-        def factory(temperature=0):
-            return ChatOllama(
-                model=owner.model,
-                base_url=owner.base_url,
-                reasoning=False,
-                client_kwargs=owner.client_kwargs,
-                **OPTIONS,
-            )
+        class CaptureFactory:
+            def create(self, config):
+                return ChatOllama(
+                    model=owner.model,
+                    base_url=owner.base_url,
+                    reasoning=False,
+                    client_kwargs=owner.client_kwargs,
+                    **OPTIONS,
+                )
+
+        self.model_manager = ModelManager(chat_factory=CaptureFactory())
 
         async def stream(model, messages, stop=None, **kwargs):
             async for chunk in owner.capture(model, messages, stop, **kwargs):
                 yield chunk
 
-        chat_model_factory.create_precise_model = factory
+        llm_gateway._model_manager = self.model_manager
         ChatOllama._acreate_chat_stream = stream
         llm_gateway._policy = LLMCallPolicy()
         return self
 
-    def __exit__(self, *_):
-        from app.infrastructure.llm.factory import chat_model_factory
+    async def __aexit__(self, *_):
         from app.infrastructure.llm.gateway import llm_gateway
         from langchain_ollama import ChatOllama
 
-        chat_model_factory.create_precise_model = self.original_factory
+        llm_gateway._model_manager = self.original_manager
         ChatOllama._acreate_chat_stream = self.original_stream
         llm_gateway._policy = self.original_policy
+        await self.model_manager.aclose()
 
     async def capture(self, model, messages, stop=None, **kwargs):
         """流取消时保留原始片段；不把未完成请求的token或结束原因伪填为零。"""
@@ -335,8 +338,8 @@ async def run(args) -> dict:
     }
     with environment(config):
         from app.consultation.agents.legal_research import _SYSTEM_PROMPT
-        from app.knowledge.law.repository import _build_article_index
         from app.knowledge.law.corpus import load_criminal_law_data
+        from app.knowledge.law.repository import _build_article_index
 
         from evaluation.run_full_eval import run_evaluation
 
@@ -348,26 +351,31 @@ async def run(args) -> dict:
                 raw_output = args.output_dir / f"{name}-raw.json"
                 before = await residency(args.base_url)
                 interruption = None
-                with (
-                    environment({"OLLAMA_MODEL_NAME": model}),
-                    LocalCapture(model, args.base_url, raw_output, cases, articles) as capture,
-                ):
-                    # 六例每例240秒，另留60秒给评分/索引核验；HTTP尝试上限为6*4*2。
-                    try:
-                        summary = await asyncio.wait_for(
-                            run_evaluation("live-lawref", output, query_mode="article", cases_path=CASES), timeout=1500
-                        )
-                    except Exception as exc:  # noqa: BLE001 — 评测中断必须落盘且恢复进程配置
-                        interruption = type(exc).__name__
-                        summary = {
-                            "evidence_kind": "local-lawref-interrupted",
-                            "cases": [],
-                            "passed": None,
-                            "total": None,
-                            "error_type": interruption,
-                            "legal_review_completed": False,
-                            "production_deployment_verified": False,
-                        }
+                with environment({"OLLAMA_MODEL_NAME": model}):
+                    async with LocalCapture(model, args.base_url, raw_output, cases, articles) as capture:
+                        # 六例每例240秒，另留60秒给评分/索引核验；HTTP尝试上限为6*4*2。
+                        try:
+                            summary = await asyncio.wait_for(
+                                run_evaluation(
+                                    "live-lawref",
+                                    output,
+                                    query_mode="article",
+                                    cases_path=CASES,
+                                    model_manager=capture.model_manager,
+                                ),
+                                timeout=1500,
+                            )
+                        except Exception as exc:  # noqa: BLE001 — 评测中断必须落盘且恢复进程配置
+                            interruption = type(exc).__name__
+                            summary = {
+                                "evidence_kind": "local-lawref-interrupted",
+                                "cases": [],
+                                "passed": None,
+                                "total": None,
+                                "error_type": interruption,
+                                "legal_review_completed": False,
+                                "production_deployment_verified": False,
+                            }
                 if not raw_output.exists():
                     write_json(raw_output, capture.records)
                 after = await residency(args.base_url)
@@ -411,7 +419,13 @@ async def run(args) -> dict:
                 summary["rag_executed"] = any(
                     step["tool_name"] == "search_laws"
                     and step["tool_status"]
-                    in {"success", "empty", "partial_dependency_failure", "dependency_failure", "timeout"}
+                    in {
+                        "success",
+                        "empty",
+                        "partial_dependency_failure",
+                        "dependency_failure",
+                        "timeout",
+                    }
                     for case in summary["cases"]
                     for step in case.get("trajectory", [])
                 )

@@ -8,8 +8,15 @@ from langchain_core.messages import AIMessage
 from app.consultation.agents import fact_digger, law_ref, legal_research
 from app.consultation.memory.case import merge_case_memory
 from app.consultation.memory.context import node_context
-from app.infrastructure.llm.gateway import LLMGateway, chat_model_factory
+from app.infrastructure.llm.gateway import LLMGateway
+from app.infrastructure.llm.manager import get_model_manager
 from app.knowledge.law.corpus import load_criminal_law_data
+
+
+@pytest.fixture(autouse=True)
+def ollama_config(monkeypatch):
+    monkeypatch.setenv("LLM_TYPE", "OLLAMA")
+
 
 FACTS = [
     "昨晚我喝了酒，在城市道路上驾驶小汽车……",
@@ -75,7 +82,7 @@ async def test_lawref_tool_loop_and_extract_receive_original_facts(monkeypatch):
             AIMessage(content='{"charges": []}'),
         ]
     )
-    monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda *_: provider)
+    monkeypatch.setattr(get_model_manager(), "get_chat", lambda *_: provider)
     facts = {"behavior_sequence": [*INPUT_FACTS, PII], "consequence": None}
     result = await legal_research.run_legal_research(facts, None, load_criminal_law_data())
     assert result.termination_reason == "final_answer"
@@ -110,7 +117,7 @@ async def test_memory_intake_and_gateway_context_preserve_denial_and_evidence(mo
     provider = SyntheticProvider(
         [AIMessage(content=json.dumps(candidate, ensure_ascii=False)), AIMessage(content="合成回忆")]
     )
-    monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda *_: provider)
+    monkeypatch.setattr(get_model_manager(), "get_chat", lambda *_: provider)
     content = "；".join([*INPUT_FACTS, PII])
     state = await fact_digger.fact_intake_node(
         {
@@ -142,7 +149,7 @@ async def test_incremental_summary_receives_original_content_from_raw_audit(memo
 
     monkeypatch.setenv("MEMORY_RECENT_MESSAGES", "2")
     provider = SyntheticProvider([AIMessage(content="合成摘要")])
-    monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda *_: provider)
+    monkeypatch.setattr(get_model_manager(), "get_chat", lambda *_: provider)
     sid = "synthetic-pii-summary"
     await start(memory_graph, memory_db, sid)
     content = "；".join([*INPUT_FACTS, PII])

@@ -13,7 +13,7 @@ import sys
 import time
 import urllib.request
 import uuid
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
@@ -387,6 +387,7 @@ def _metadata(pre: dict[str, Any], cases: list[dict[str, str]]) -> dict[str, Any
 def build_snapshot_search_service(
     *,
     resources,
+    model_manager,
     index_dir: Path,
     collection: str,
     embedding_model: str,
@@ -398,12 +399,17 @@ def build_snapshot_search_service(
 ):
     """显式绑定已构建的六条隔离索引，拒绝读取上传库或回退到其他数据源。"""
     import chromadb
+    from app.infrastructure.llm.config import RerankerConfig
     from app.knowledge.law.corpus import load_criminal_law_data
     from app.knowledge.retrieval.bm25 import BM25Retriever
-    from app.knowledge.retrieval.config import RerankerConfig, RetrievalConfig
+    from app.knowledge.retrieval.config import RetrievalConfig
     from app.knowledge.retrieval.pipeline import RetrievalPipeline
     from app.knowledge.retrieval.vector import ChromaVectorRetriever
-    from app.knowledge.storage.chroma import ChromaSource, ChromaStore, validate_embedding
+    from app.knowledge.storage.chroma import (
+        ChromaSource,
+        ChromaStore,
+        validate_embedding,
+    )
     from app.knowledge.wiring import build_law_search_service
 
     index_dir = Path(index_dir).resolve()
@@ -454,30 +460,29 @@ def build_snapshot_search_service(
         if any(row.metadata.get(key) != value for key, value in expected.items()):
             raise ValueError("snapshot index metadata mismatch")
     if embed_query is None:
+        client = model_manager.get_ollama(os.environ["OLLAMA_BASE_URL"])
 
         async def embed_query(query):
-            import httpx
-
-            async with httpx.AsyncClient(trust_env=False, timeout=60) as client:
-                response = await client.post(
-                    os.environ["OLLAMA_BASE_URL"].rstrip("/") + "/api/embed",
-                    json={"model": embedding_model, "input": [query], "truncate": False},
-                )
-                response.raise_for_status()
-                vectors = response.json()["embeddings"]
+            result = await client.embed(embedding_model, [query], truncate=False, timeout_s=60)
+            vectors = result["embeddings"]
             if len(vectors) != 1:
                 raise ValueError("query embedding count invalid")
             return validate_embedding(vectors[0], expected_dimension=manifest["embedding_dimension"])
 
     config = config if config is not None else RetrievalConfig.from_env()
-    scorer = resources.scorer(RerankerConfig.from_env()) if config.rerank else None
+    scorer = model_manager.get_reranker(RerankerConfig.from_env()) if config.rerank else None
     expander = None
     if config.hyde:
-        from app.knowledge.retrieval.hyde import HyDEExpander, ollama_generate
+        from app.knowledge.retrieval.hyde import HyDEExpander, generate_hyde
 
         model = os.environ.get("OLLAMA_MODEL_NAME", "qwen3.5:0.8b")
         expander = HyDEExpander(
-            partial(ollama_generate, base_url=os.environ["OLLAMA_BASE_URL"], model_name=model), model_name=model
+            partial(
+                generate_hyde,
+                client=model_manager.get_ollama(os.environ["OLLAMA_BASE_URL"]),
+                model_name=model,
+            ),
+            model_name=model,
         )
     pipeline = RetrievalPipeline(
         ChromaVectorRetriever(store, embed_query, manifest["embedding_dimension"]),
@@ -487,35 +492,41 @@ def build_snapshot_search_service(
         config=config,
     )
     return build_law_search_service(
-        law_data=data, profile="snapshot", pipeline=pipeline, source_id=source_id, resources=resources
+        law_data=data,
+        profile="snapshot",
+        pipeline=pipeline,
+        source_id=source_id,
+        resources=resources,
+        model_manager=model_manager,
     )
 
 
-@contextmanager
-def snapshot_search_runtime(*, index_dir: Path, preflight_result: dict[str, Any]):
-    """仅在真实链评测期间注入隔离法律工厂，退出时恢复生产组装入口。"""
+@asynccontextmanager
+async def snapshot_search_runtime(*, index_dir: Path, preflight_result: dict[str, Any]):
+    """仅在真实链评测期间持有独立模型，退出时恢复生产组装入口。"""
     from app.consultation.agents import legal_research
-    from app.knowledge.wiring import KnowledgeResources
+
+    from evaluation.model_runtime import evaluation_runtime
 
     original = legal_research.build_law_search_service
-    resources = KnowledgeResources()
+    async with evaluation_runtime() as (manager, resources):
 
-    def factory(*, law_data=None):
-        return build_snapshot_search_service(
-            resources=resources,
-            index_dir=index_dir,
-            law_data=law_data,
-            collection=preflight_result["index_collection"],
-            embedding_model=os.environ["TEXT_EMBEDDING_MODEL_NAME"],
-            embedding_digest=preflight_result["embedding_digest"],
-        )
+        def factory(*, law_data=None):
+            return build_snapshot_search_service(
+                resources=resources,
+                model_manager=manager,
+                index_dir=index_dir,
+                law_data=law_data,
+                collection=preflight_result["index_collection"],
+                embedding_model=os.environ["TEXT_EMBEDDING_MODEL_NAME"],
+                embedding_digest=preflight_result["embedding_digest"],
+            )
 
-    legal_research.build_law_search_service = factory
-    try:
-        yield
-    finally:
-        legal_research.build_law_search_service = original
-        resources.close()
+        legal_research.build_law_search_service = factory
+        try:
+            yield
+        finally:
+            legal_research.build_law_search_service = original
 
 
 async def _execute_chain(case: dict[str, str]) -> dict[str, Any]:
@@ -618,12 +629,21 @@ async def _run_ablation(cases: list[dict[str, str]], output: Path, metadata: dic
         template = disclaimer.inject("请选择您的身份类型：当事人、被害人或家属。")
         template_ms = round((time.monotonic() - template_start) * 1000, 3)
         session_id = f"reception-ablation-{uuid.uuid4().hex}"
-        state: ConsultationState = {"session_id": session_id, "facts_raw": [case["input"]], "consent_given": True}
+        state: ConsultationState = {
+            "session_id": session_id,
+            "facts_raw": [case["input"]],
+            "consent_given": True,
+        }
         llm_start = time.monotonic()
         failure: Exception | None = None
         response: ConsultationState = {}
         try:
-            with trace_span(trace_store, event_type="ablation", name="receptionist_identity", session_id=session_id):
+            with trace_span(
+                trace_store,
+                event_type="ablation",
+                name="receptionist_identity",
+                session_id=session_id,
+            ):
                 response = await _confirm_identity(state)
         except Exception as exc:
             failure = exc
@@ -655,13 +675,19 @@ async def _run_ablation(cases: list[dict[str, str]], output: Path, metadata: dic
             "llm_output_sha256": f"sha256:{hashlib.sha256(final_output.encode()).hexdigest()}",
         }
 
-    return await run_cases(
-        cases,
-        execute,
-        output,
-        metadata={**metadata, "ablation": "Receptionist identity prompt: template vs production LLM"},
-        mode="component-ablation",
-    )
+    from evaluation.model_runtime import evaluation_runtime
+
+    async with evaluation_runtime():
+        return await run_cases(
+            cases,
+            execute,
+            output,
+            metadata={
+                **metadata,
+                "ablation": "Receptionist identity prompt: template vs production LLM",
+            },
+            mode="component-ablation",
+        )
 
 
 def configure_runtime() -> dict[str, Path]:
@@ -713,15 +739,30 @@ def main() -> int:
     if args.mode == "run" and not pre["ready"]:
         required = pre["issues"]
     if required:
-        print(json.dumps({"status": "blocked", "issues": required, "metadata": metadata}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {"status": "blocked", "issues": required, "metadata": metadata},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 2
     output = args.output or OUTPUT_DIR / ("chain.json" if args.mode == "run" else "receptionist_ablation.json")
     if args.mode == "run":
-        with snapshot_search_runtime(index_dir=paths["index_dir"], preflight_result=pre):
-            result = asyncio.run(run_cases(cases, _execute_chain, output, metadata=metadata, mode="live-chain"))
+
+        async def run_chain():
+            async with snapshot_search_runtime(index_dir=paths["index_dir"], preflight_result=pre):
+                return await run_cases(cases, _execute_chain, output, metadata=metadata, mode="live-chain")
+
+        result = asyncio.run(run_chain())
     else:
         result = asyncio.run(_run_ablation(cases, output, metadata))
-    print(json.dumps({"output": str(output), "aggregate": result["aggregate"]}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {"output": str(output), "aggregate": result["aggregate"]},
+            ensure_ascii=False,
+        )
+    )
     return 0 if result["aggregate"]["errors"] == 0 else 1
 
 

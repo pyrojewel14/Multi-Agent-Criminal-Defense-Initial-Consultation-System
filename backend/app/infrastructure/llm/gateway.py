@@ -14,7 +14,8 @@ from pydantic import BaseModel
 
 from app.consultation.memory.context import ContextBuilder, ContextLimitError, MemorySettings, current_node_context
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
-from app.infrastructure.llm.factory import chat_model_factory
+from app.infrastructure.llm.config import ChatConfig
+from app.infrastructure.llm.manager import ModelManager, get_model_manager
 from app.infrastructure.logging import get_logger
 from app.infrastructure.observability.tracing import (
     SessionBudgetExceeded,
@@ -173,12 +174,15 @@ class LLMGateway:
         policy: LLMCallPolicy | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         jitter: Callable[[float], float] = _default_jitter,
+        *,
+        model_manager: ModelManager | None = None,
     ):
         """初始化 LLM 网关。"""
         self._logger = get_logger("LLMGateway")
         self._policy = policy or LLMCallPolicy.from_env()
         self._sleep = sleep
         self._jitter = jitter
+        self._model_manager = model_manager
         self._logger.info("【__init__】LLM 网关初始化完成")
 
     @staticmethod
@@ -310,9 +314,13 @@ class LLMGateway:
 
         built = _bounded_messages(system_prompt, user_message)
         messages = built.messages
+        values = dict(os.environ)
 
         async def invoke(attempt: int):
-            model = _bounded_model(chat_model_factory.create_precise_model(actual_temp), output_limit, reasoning)
+            manager = self._model_manager if self._model_manager is not None else get_model_manager()
+            model = _bounded_model(
+                manager.get_chat(ChatConfig.from_env(values, temperature=actual_temp)), output_limit, reasoning
+            )
             context = current_trace_context()
             session_id = str(context["session_id"]) if context and context["session_id"] else "unknown"
             if session_id != "unknown":
@@ -400,12 +408,14 @@ class LLMGateway:
             schemas.append(response_schema)
         built = _bounded_messages(system_prompt, user_message, history=message_history or (), schemas=schemas)
         messages = built.messages
+        values = dict(os.environ)
 
         async def invoke(attempt: int):
-            model = _bounded_model(chat_model_factory.create_precise_model(actual_temp))
+            manager = self._model_manager if self._model_manager is not None else get_model_manager()
+            model = _bounded_model(manager.get_chat(ChatConfig.from_env(values, temperature=actual_temp)))
             local_ollama = model.__class__.__module__.startswith("langchain_ollama")
             if response_schema is not None and local_ollama:
-                # 不改动工厂缓存，避免最终回答落入 thinking 字段或挤占其他节点的预算。
+                # 请求副本只借用共享客户端，避免最终回答挤占其他节点的预算。
                 model = model.model_copy(update={"reasoning": False, "num_predict": 1024})
                 model_with_tools = model.bind(format=response_schema)
             elif response_schema is not None:

@@ -8,7 +8,11 @@
 
 模型工厂测试显式指定本机和远程 Ollama 端点，分别核对代理参数，不依赖运行机器的默认端点。云端评测测试使用批准的公开合成事实，保留未批准事实、模型回落与原生输出参数的拒绝检查；当前 `mask_pii()` 原样返回文本，测试不假设它执行了脱敏。
 
-真实 tokenizer 协议检查集中在 `tests/knowledge/retrieval/test_rerankers.py`：先检查 `RERANKER_MODEL_PATH`，再检查 `MODEL_CACHE_DIR` 下的 Qwen 标准目录和 ModelScope 缓存目录，只读取已有文件。没有可用 tokenizer 时明确跳过，不自动下载。测试中的缓存查找只用于验证评分协议，生产评分器仍严格使用配置目录。该检查验证特殊 token、原查询及否认保留和正文截断，不加载评分权重，也不证明真实检索质量。
+模型资源测试位于 `tests/infrastructure/llm/`，核对不可变配置、完整缓存身份、并发创建、轻量代理、同步/异步客户端关闭和关闭失败重试。`tests/knowledge/` 核对领域缓存、法律配置拒绝、索引绑定和检索组装；`tests/integration/test_readiness.py` 核对应用生命周期与状态聚合。网络请求使用替身，真实 SDK 客户端只构造和关闭，不发起模型请求或下载权重。
+
+2026-10-16 模型资源迁移经主线程隔离回归：后端 1845 项、评测 167 项通过，无失败或跳过；后端仍有 621 条既有警告。独立审查另核对关闭失败后的重新启动、实际任务取消和 SDK 双客户端关闭。已有 Ollama 服务的公开合成冒烟调用收到 Chat、1024 维 Embedding 和 HyDE 响应，退出时客户端成功关闭；没有下载模型、写业务索引或重新评估 Reranker 排名与法律质量。评分器搬迁前后除导入路径外的 AST 一致，法条与固定案例资产保持原字节。
+
+真实 tokenizer 协议检查集中在 `tests/infrastructure/llm/test_rerankers.py`：先检查 `RERANKER_MODEL_PATH`，再检查 `MODEL_CACHE_DIR` 下的 Qwen 标准目录和 ModelScope 缓存目录，只读取已有文件。没有可用 tokenizer 时明确跳过，不自动下载。测试中的缓存查找只用于验证评分协议，生产评分器仍严格使用配置目录。该检查验证特殊 token、原查询及否认保留和正文截断，不加载评分权重，也不证明真实检索质量。
 
 2026-10-15 后续修复了工厂测试的环境依赖、两项过时脱敏文本断言，以及修正文本后暴露的云端适配与 Gateway 本地预算参数冲突。使用独立临时 Redis、SQLite 与上传库复跑：在 `backend/` 执行 `python -m pytest -q --tb=short --disable-warnings -rs`，1801 项通过；在根目录执行 `python -m pytest -q evaluation --tb=short --disable-warnings -rs`，149 项通过，均退出 0、无失败或跳过。后端仍有 621 项既有弃用及资源警告，未把警告消除计入本次修复。真实 tokenizer 检查已执行；云端 HTTP 为替身，不证明真实云服务可用。此前检索实测原始 JSON 及当次失败记录保留原字节。
 

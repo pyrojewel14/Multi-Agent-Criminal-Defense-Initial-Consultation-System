@@ -30,7 +30,9 @@ backend/.venv/bin/python evaluation/run_live_eval.py run
 
 snapshot 真实检索使用专用 `LAW_SNAPSHOT_INDEX_DIRECTORY`（默认 `evaluation/live_index`）和 `LAW_SNAPSHOT_INDEX_COLLECTION`，不再借用或改写 `CHROMA_*` 上传库配置。评测显式校验已有六条索引及 manifest，并把匹配的向量/BM25 Pipeline 注入法律服务；仅选择 `snapshot` 资产不会自动连接向量库。Memory 离线重启评测的法律节点仍是替身，不据此声称执行过法条 RAG。
 
-云端对照适配器会在每次模型副本上移除 Gateway 注入的本地 `num_ctx`、`num_predict`，再构造实际 HTTP 请求，不改变共享工厂或本地模型预算。显式传入的未经核验 `options.num_predict`、原生 `format`、未批准事实和模型回落仍会被拒绝；单元测试使用 HTTP 替身，不代表真实云服务调用成功。
+云端对照适配器会在每次模型副本上移除 Gateway 注入的本地 `num_ctx`、`num_predict`，再构造实际 HTTP 请求，不改变共享模型或本地模型预算。显式传入的未经核验 `options.num_predict`、原生 `format`、未批准事实和模型回落仍会被拒绝；单元测试使用 HTTP 替身，不代表真实云服务调用成功。
+
+每轮评测使用独立 `ModelManager`，临时替换 Gateway 或法律组装依赖后，在异步退出时恢复并关闭自己的资源；不会关闭应用默认管理器。CLI 命令不变，程序内的捕获与 snapshot 运行上下文使用 `async with`。
 
 ## 全量正文与检索消融
 

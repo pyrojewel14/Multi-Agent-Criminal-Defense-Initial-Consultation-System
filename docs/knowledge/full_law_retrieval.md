@@ -24,7 +24,7 @@ BM25 复用通用实现，每组件进程内最多缓存 8 份授权快照。键
 
 ## 本地评分协议
 
-统一的 `retrieval/rerankers/qwen.py` 读取已有 `RERANKER_MODEL_PATH`，使用 `local_files_only=True`，不会自动下载。full 业务适配只接受 Qwen3-Reranker-0.6B；文档检索可注入同一评分器或 Cross-Encoder，均由同一执行器管理加载与生命周期。评分器只返回输入顺序的分数，不自行排序或截断。
+统一的 `infrastructure/llm/rerankers/qwen.py` 读取已有 `RERANKER_MODEL_PATH`，使用 `local_files_only=True`，不会自动下载。`ModelManager` 按配置复用轻量评分器，执行器仍负责首次评分时加载权重及忙碌、取消边界。full 的模型限制和每请求索引预检位于 `knowledge/law/binding.py`；文档检索可选择 Qwen 或 Cross-Encoder。评分器只返回输入顺序的分数，不自行排序或截断，资源所有权见[架构说明](../architecture.md#模型配置与资源所有权)。
 
 采用 [Qwen 官方 Transformers 示例](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B#using-transformers) 的完整 system/user/assistant/think 模板，以 `yes` 和 `no` 最后位置 logits 的二元 softmax 给出 0..1 分数。完整特殊 token IDs 直接进入模型，不经 `decode(skip_special_tokens=True)` 往返。实测 token IDs 为 yes=9693、no=2152；运行时会核对二者均为单 token。下方新旧对照记录了实际加载的权重、配置、tokenizer、模板 hash 和运行设备。
 

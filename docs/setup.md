@@ -62,6 +62,8 @@ LAW_FULL_DEMO_ANNOTATIONS=on
 
 embedding 把文字转换为向量，用于按语义检索。当前 `full` 索引入口只接受 Ollama embedding；聊天模型与 embedding 配置需分别核对，不能把云聊天配置直接当作全量检索配置。
 
+应用在组装时保存模型配置快照，由 `ModelManager` 复用实例并在退出时关闭客户端；修改端点、凭据或模型配置后应重启应用。构造检索服务和访问 readiness 不加载 Reranker 权重；关闭客户端也不代表卸载 Ollama 服务端模型。资源职责见[架构说明](architecture.md#模型配置与资源所有权)。
+
 **先知道这个限制**：上述小模型是默认配置示例。2026-10-15 已安装的 `qwen3.5:9b` 六例 LawRef 复测仍未通过；配置正确不保证生成有效最终答案。详见 [模型证据](knowledge/lawref_response_protocol.md#本地有限对照入口)。
 
 ## 4. 构建并连接全量法条索引

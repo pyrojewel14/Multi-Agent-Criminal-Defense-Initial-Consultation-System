@@ -1,8 +1,10 @@
 """Configuration rejects unsafe values before components are constructed."""
 
 from dataclasses import FrozenInstanceError
+
 import pytest
 
+from app.infrastructure.llm.config import RerankerConfig
 from app.knowledge.retrieval import config as config_module
 
 
@@ -127,7 +129,7 @@ def test_configuration_accepts_inclusive_budget_boundaries():
 
 
 def test_reranker_environment_snapshot_keeps_model_protocol_fields():
-    config = config_module.RerankerConfig.from_env(
+    config = RerankerConfig.from_env(
         {
             "RERANKER_MODEL_NAME": "custom/cross-encoder",
             "RERANKER_MODEL_PATH": "./data/models/custom",
@@ -177,17 +179,17 @@ def test_reranker_environment_snapshot_keeps_model_protocol_fields():
 )
 def test_reranker_rejects_invalid_settings(settings):
     with pytest.raises(ValueError):
-        config_module.RerankerConfig(**settings)
+        RerankerConfig(**settings)
 
 
 @pytest.mark.parametrize("device", ["auto", "cpu", "cuda", "mps"])
 def test_reranker_accepts_supported_devices(device):
-    assert config_module.RerankerConfig(device=device).device == device
+    assert RerankerConfig(device=device).device == device
 
 
 @pytest.mark.parametrize("instruction", [None, ""])
 def test_reranker_instruction_is_optional(instruction):
-    assert config_module.RerankerConfig(instruction=instruction).instruction == instruction
+    assert RerankerConfig(instruction=instruction).instruction == instruction
 
 
 @pytest.mark.parametrize(
@@ -204,4 +206,4 @@ def test_reranker_instruction_is_optional(instruction):
 )
 def test_reranker_environment_cannot_bypass_validation(setting, value):
     with pytest.raises(ValueError):
-        config_module.RerankerConfig.from_env({setting: value})
+        RerankerConfig.from_env({setting: value})

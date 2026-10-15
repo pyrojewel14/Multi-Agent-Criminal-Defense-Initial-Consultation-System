@@ -419,7 +419,7 @@ async def test_rerank_failures_preserve_fusion_and_trace_degraded(monkeypatch, e
 
 
 async def test_rerank_busy_is_distinct_and_empty_pool_does_not_score():
-    from app.knowledge.retrieval.rerankers import RerankerBusyError
+    from app.infrastructure.llm.rerankers import RerankerBusyError
 
     scorer = type("Scorer", (), {"score": AsyncMock(side_effect=RerankerBusyError())})()
     result = await RetrievalPipeline(retriever(channel("vector", 1)), reranker=scorer).search(request())

@@ -106,10 +106,15 @@ def _hash_file(path: Path) -> str:
 
 def identity() -> dict[str, Any]:
     """记录语料、模型和评分协议的身份，排除个人路径和配置秘密。"""
-    from app.knowledge.retrieval.config import RerankerConfig
-    from app.knowledge.retrieval.rerankers.qwen import INSTRUCTION, PREFIX, SUFFIX, QwenReranker
     import torch
     import transformers
+    from app.infrastructure.llm.config import RerankerConfig
+    from app.infrastructure.llm.rerankers.qwen import (
+        INSTRUCTION,
+        PREFIX,
+        SUFFIX,
+        QwenReranker,
+    )
 
     directory = Path(os.environ["LAW_FULL_INDEX_DIRECTORY"])
     manifest = json.loads((directory.parent / f"{directory.name}.manifest.json").read_text())
@@ -143,8 +148,8 @@ def identity() -> dict[str, Any]:
                 BACKEND / "app/knowledge/retrieval/tokenization.py",
                 BACKEND / "app/knowledge/retrieval/pipeline.py",
                 BACKEND / "app/knowledge/retrieval/hyde.py",
-                BACKEND / "app/knowledge/retrieval/rerankers/qwen.py",
-                BACKEND / "app/knowledge/retrieval/rerankers/_execution.py",
+                BACKEND / "app/infrastructure/llm/rerankers/qwen.py",
+                BACKEND / "app/infrastructure/llm/rerankers/_execution.py",
                 BACKEND / "app/knowledge/wiring.py",
                 BACKEND / "app/consultation/agents/legal_research.py",
             )
@@ -173,18 +178,24 @@ def identity() -> dict[str, Any]:
         "vector_rag_channels": ["vector"],
         "common_domain_channels": ["keyword"],
         "historical_strict_comparison_supported": False,
-        "semantic_changes": ["统一 RRF，取消旧来源优先排序", "领域核验后只进行一次最终排序"],
+        "semantic_changes": [
+            "统一 RRF，取消旧来源优先排序",
+            "领域核验后只进行一次最终排序",
+        ],
     }
 
 
 async def run(cases: list[dict[str, Any]], modes: list[str], output: Path, case_timeout: float) -> dict[str, Any]:
     """有界顺序调用真实 Registry，每条写盘保留中断前证据。"""
     from app.consultation.agents.legal_research import LegalToolRegistry
+    from app.infrastructure.llm.config import RerankerConfig
+    from app.infrastructure.llm.manager import ModelManager
     from app.knowledge.law.corpus import load_criminal_law_data
-    from app.knowledge.retrieval.config import RerankerConfig
-    from app.knowledge.wiring import KnowledgeResources, build_law_search_service
+    from app.knowledge.resources import KnowledgeResources
+    from app.knowledge.wiring import build_law_search_service
 
     resources = KnowledgeResources()
+    manager = ModelManager()
 
     report: dict[str, Any] = {
         "schema": "full-retrieval-ablation-v2",
@@ -214,7 +225,10 @@ async def run(cases: list[dict[str, Any]], modes: list[str], output: Path, case_
                 model["name"]: model["digest"]
                 for model in response.json().get("models", [])
                 if model.get("name")
-                in {report["identity"]["hyde_model"], report["identity"]["index_manifest"]["embedding_model"]}
+                in {
+                    report["identity"]["hyde_model"],
+                    report["identity"]["index_manifest"]["embedding_model"],
+                }
             }
         with settings({"LAW_KNOWLEDGE_PROFILE": "full"}):
             law_data = load_criminal_law_data()
@@ -224,9 +238,18 @@ async def run(cases: list[dict[str, Any]], modes: list[str], output: Path, case_
             with settings({**MODES[mode], "LAW_KNOWLEDGE_PROFILE": "full"}):
                 for case in cases:
                     started = time.monotonic()
-                    service = build_law_search_service(law_data=law_data, profile="full", resources=resources)
+                    service = build_law_search_service(
+                        law_data=law_data,
+                        profile="full",
+                        resources=resources,
+                        model_manager=manager,
+                    )
                     registry = LegalToolRegistry({}, "retrieval-evaluation", law_data, search_service=service)
-                    row: dict[str, Any] = {"id": case["id"], "category": case["category"], "query": case["query"]}
+                    row: dict[str, Any] = {
+                        "id": case["id"],
+                        "category": case["category"],
+                        "query": case["query"],
+                    }
                     try:
                         observation = await asyncio.wait_for(registry._search_laws(case["query"]), timeout=case_timeout)
                         row.update(
@@ -239,7 +262,10 @@ async def run(cases: list[dict[str, Any]], modes: list[str], output: Path, case_
                             row["error"] = "RAGDependencyFailure"
                     except Exception as exc:  # noqa: BLE001 — 每例保留失败类别并继续有界评测。
                         row.update(
-                            article_ids=[], candidates=[], retrieval_status={"degraded": True}, error=type(exc).__name__
+                            article_ids=[],
+                            candidates=[],
+                            retrieval_status={"degraded": True},
+                            error=type(exc).__name__,
                         )
                     row["latency_ms"] = round((time.monotonic() - started) * 1000, 3)
                     # gold 只在真实调用返回后参与评价，未传入 Registry 或查询事实。
@@ -264,7 +290,7 @@ async def run(cases: list[dict[str, Any]], modes: list[str], output: Path, case_
                     )
                 if MODES[mode]["LAW_FULL_RERANK_ENABLED"] == "true":
                     config = RerankerConfig.from_env()
-                    scorer = resources.scorer(config)
+                    scorer = manager.get_reranker(config)
                     model = scorer._model
                     report["modes"][mode]["reranker_runtime"] = {
                         **scorer.readiness(),
@@ -277,8 +303,13 @@ async def run(cases: list[dict[str, Any]], modes: list[str], output: Path, case_
     except Exception as exc:  # noqa: BLE001 — 前置条件失败也必须落盘，避免丢失真实失败证据。
         report["preflight_error"] = type(exc).__name__
     finally:
-        resources.close()
-        save()
+        try:
+            await resources.aclose()
+        finally:
+            try:
+                await manager.aclose()
+            finally:
+                save()
     return report
 
 

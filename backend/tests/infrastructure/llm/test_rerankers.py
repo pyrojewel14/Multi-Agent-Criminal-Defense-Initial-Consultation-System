@@ -11,9 +11,9 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from app.knowledge.retrieval.config import RerankerConfig
-from app.knowledge.retrieval.rerankers import CrossEncoderReranker, QwenReranker
-from app.knowledge.retrieval.rerankers.qwen import INSTRUCTION, PREFIX, SUFFIX
+from app.infrastructure.llm.config import RerankerConfig
+from app.infrastructure.llm.rerankers import CrossEncoderReranker, QwenReranker
+from app.infrastructure.llm.rerankers.qwen import INSTRUCTION, PREFIX, SUFFIX
 
 
 class Tokenizer:
@@ -253,8 +253,8 @@ def test_import_constructor_and_readiness_do_not_import_model_dependencies():
         [
             sys.executable,
             "-c",
-            "import sys; from app.knowledge.retrieval.config import RerankerConfig; "
-            "from app.knowledge.retrieval.rerankers import QwenReranker, CrossEncoderReranker; "
+            "import sys; from app.infrastructure.llm.config import RerankerConfig; "
+            "from app.infrastructure.llm.rerankers import QwenReranker, CrossEncoderReranker; "
             "scorers = [QwenReranker(RerankerConfig()), CrossEncoderReranker(RerankerConfig())]; "
             "assert all(s.readiness()['status'] == 'not_loaded' for s in scorers); "
             "assert not {'torch', 'transformers', 'sentence_transformers', 'modelscope'} & set(sys.modules); "
@@ -270,7 +270,7 @@ def test_import_constructor_and_readiness_do_not_import_model_dependencies():
 def test_actual_local_tokenizer_keeps_original_query_and_official_decisions():
     from transformers import AutoTokenizer
 
-    from app.knowledge.retrieval.rerankers._execution import resolve_local_path
+    from app.infrastructure.llm.rerankers._execution import resolve_local_path
 
     backend = Path(__file__).resolve().parents[3]
     config = RerankerConfig.from_env()

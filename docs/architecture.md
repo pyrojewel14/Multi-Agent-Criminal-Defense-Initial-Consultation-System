@@ -38,22 +38,19 @@ JWT 是签名访问令牌，RBAC 是按角色控制权限，LangGraph 是保存�
 
 ```text
 knowledge/
-├── wiring.py                     组装数据源、Embedding、服务与模型生命周期
+├── wiring.py                     获取模型、选择数据源并组装检索服务
+├── resources.py                  BM25 LRU、文档服务复用和法律配置状态
 ├── retrieval/                    不依赖法律业务的检索组件
 │   ├── models.py                 请求、范围、候选、通道池、状态和最终结果
 │   ├── protocols.py              Retriever、QueryExpander、Reranker 注入契约
-│   ├── config.py                 检索和模型配置；在组装时读取环境
+│   ├── config.py                 检索阶段配置；在组装时读取环境
 │   ├── errors.py                 固定安全诊断类别，未知异常名归 OtherError
 │   ├── pipeline.py               召回、一次融合、可选重排、最后 Top K 和降级
 │   ├── vector.py                 指定数据源和授权范围的向量召回
 │   ├── bm25.py                   指定授权快照的 BM25 与有界缓存
 │   ├── tokenization.py           文档和查询共用中文单字/双字切分
 │   ├── fusion.py                 RRF、去重及原始通道证据保留
-│   ├── hyde.py                   可选假设文本生成、预算和 usage 记录
-│   └── rerankers/
-│       ├── qwen.py               Qwen yes/no 评分协议，返回输入顺序的分数
-│       ├── cross_encoder.py      Cross-Encoder 评分适配
-│       └── _execution.py         本地加载、设备、单工作线程、busy/关闭
+│   └── hyde.py                   可选假设文本提示词、预算和 usage 记录
 ├── storage/
 │   └── chroma.py                 原生 Chroma 读写，禁用隐式 Embedding
 ├── law/                          法律领域规则，不实现另一套排序
@@ -65,6 +62,7 @@ knowledge/
 │   ├── verification.py           正文一致性、来源和覆盖资格核验
 │   ├── keyword.py                受控 JSON 关键词召回通道
 │   ├── index.py                  全量索引构建、manifest/向量完整性校验
+│   ├── binding.py                每请求索引预检、查询向量核验与法律模型限制
 │   └── service.py                精确条号分流、核验完整池、交 Pipeline 排序
 └── documents/                    上传文档的管理与统一检索
     ├── service.py                上传/SSE、搜索和管理操作的协调
@@ -78,13 +76,38 @@ knowledge/
     └── splitters/{text,legal}.py  普通文本与法律文本切块
 ```
 
-`pipeline.py` 只决定阶段如何组合；评分算法具体在 `rerankers/qwen.py` 和 `cross_encoder.py`。评分器不去重、不融合、不截断，Pipeline 收到完整候选池的分数后才决定最终顺序。`HyDEExpander` 只生成额外召回文本，`BM25Retriever` 与 `ChromaVectorRetriever` 只返回各自通道结果。
+`pipeline.py` 只决定阶段如何组合；评分算法具体在 `infrastructure/llm/rerankers/qwen.py` 和 `cross_encoder.py`。评分器不去重、不融合、不截断，Pipeline 收到完整候选池的分数后才决定最终顺序。`HyDEExpander` 只生成额外召回文本，`BM25Retriever` 与 `ChromaVectorRetriever` 只返回各自通道结果。
 
-组装层统一通过 `KnowledgeResources.scorer(config, kind=...)` 获取评分器：默认 `causal_lm` 使用 Qwen，`cross_encoder` 使用 Cross-Encoder。两类实例以 `(kind, config)` 为键存入同一个缓存，在同一锁内复用；获取实例时不加载模型权重。
+组装层统一通过 `ModelManager.get_reranker(config, kind=...)` 获取评分器：默认 `causal_lm` 使用 Qwen，`cross_encoder` 使用 Cross-Encoder。缓存键同时包含类型和完整配置，在同一锁内复用；获取轻量评分器时不加载模型权重。`KnowledgeResources` 只管理领域缓存和法律配置状态，清理它不会关闭模型。
 
 法条服务先 `recall()`，把关键词放进同一池并核验每个原始候选，再 `finalize()` 一次完成融合、重排和截断。领域服务可选择可信的同条代表，但失败来源的核验结果仍保留在 `origins`，相关性分数不能提升覆盖资格。普通文档直接调用 `search()`；摘要复用该结果，不重新检索或重排。
 
 上传文档以原文件名统一列表、详情与删除的管理身份。服务先准备分块和显式向量，再协调 Chroma 与 JSONL 指纹；加载、Embedding 或写入失败通过现有错误响应/SSE 返回。稳定行 ID 与限定本次上传的补偿支持失败重试，文件指纹必须得到实际完整分块支撑才视为已上传。这不是跨库事务，补偿失败仍明确报错。上传管理组装入口显式允许初始化缺失 collection；法条索引仍只打开已有库，不借此创建或回退。
+
+## 模型配置与资源所有权
+
+```text
+infrastructure/llm/
+├── config.py                     不可变 Chat、Embedding、Reranker 配置快照
+├── factory.py                    三类纯构造工厂；无实例缓存和关闭逻辑
+├── manager.py                    延迟创建、配置缓存、并发保护、状态及关闭
+├── clients.py                    识别同步/异步关闭方法，共享客户端按身份去重
+├── ollama.py                     通用 tags/embed/generate HTTP 协议
+├── errors.py                     通用安全错误类别
+├── gateway.py                    请求上下文、预算、deadline、重试和 trace
+└── rerankers/
+    ├── qwen.py                   原有 yes/no 评分协议
+    ├── cross_encoder.py          Cross-Encoder 评分
+    └── _execution.py             权重懒加载、设备、单线程执行和 busy/取消
+```
+
+配置在组装时显式读取环境，工厂和管理器获取方法不再隐式读取。模型、端点、凭据及采样参数共同参与缓存身份；凭据不进入配置的 `repr` 或状态输出。Embedding 获取只建立代理，首次嵌入才构造供应商客户端；本地 Reranker 首次评分才加载权重。Chat 首次获取时构造 SDK 对象，不主动发起推理。
+
+`main.py` 持有本次 lifespan 的默认管理器，退出时等待异步关闭。关闭开始后禁止创建新资源；关闭失败保留引用供重试。下一次 lifespan 先重试旧资源清理，成功后显式更换已关闭管理器，普通 getter 不隐式重开。readiness 只读取已有评分器状态并优先报告法律配置错误，保留存储失败时的 `not_ready` 判定，不探测远端或加载模型。
+
+Gateway 的请求副本借用原始客户端；Manager 关闭自身创建的原始资源，并对同步、异步客户端分别处理。显式注入的模型、回调或 Pipeline 由调用方管理。评测使用独立 Manager，退出恢复注入并关闭自己持有的资源。关闭 Ollama 或云 SDK 连接不等于卸载服务端模型。
+
+HyDE 的提示词、调用预算和 trace 留在 `retrieval/hyde.py`，通用 Ollama 客户端只执行原协议，不追加重试或重复计费。法律配置限制和每请求索引核验留在 `law/binding.py`；基础设施不依赖知识库领域模块。
 
 ## 存储与恢复
 

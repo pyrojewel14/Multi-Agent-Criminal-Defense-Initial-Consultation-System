@@ -16,7 +16,7 @@ CASES = Path(__file__).with_name("full_cases.jsonl")
 
 
 @contextmanager
-def _lawref_search_runtime(resources):
+def _lawref_search_runtime(resources, model_manager):
     """只在 LawRef 评测中替换法律工厂，完整退出后恢复生产入口。"""
     from app.consultation.agents import legal_research
     from app.knowledge.wiring import build_law_search_service
@@ -24,7 +24,12 @@ def _lawref_search_runtime(resources):
     original = legal_research.build_law_search_service
 
     def factory(*, law_data=None):
-        return build_law_search_service(law_data=law_data, profile="full", resources=resources)
+        return build_law_search_service(
+            law_data=law_data,
+            profile="full",
+            resources=resources,
+            model_manager=model_manager,
+        )
 
     legal_research.build_law_search_service = factory
     try:
@@ -40,16 +45,22 @@ async def run_evaluation(
     query_mode: str = "article",
     *,
     cases_path: Path = CASES,
+    model_manager=None,
 ) -> dict:
     """每次评测独立持有模型资源，正常、异常和取消退出均释放。"""
-    from app.knowledge.wiring import KnowledgeResources
+    from evaluation.model_runtime import evaluation_runtime
 
-    resources = KnowledgeResources()
-    try:
-        with _lawref_search_runtime(resources) if mode == "live-lawref" else nullcontext():
-            return await _run_evaluation(mode, output, case_ids, query_mode, cases_path=cases_path, resources=resources)
-    finally:
-        resources.close()
+    async with evaluation_runtime(model_manager=model_manager) as (manager, resources):
+        with _lawref_search_runtime(resources, manager) if mode == "live-lawref" else nullcontext():
+            return await _run_evaluation(
+                mode,
+                output,
+                case_ids,
+                query_mode,
+                cases_path=cases_path,
+                resources=resources,
+                model_manager=manager,
+            )
 
 
 async def _run_evaluation(
@@ -60,12 +71,13 @@ async def _run_evaluation(
     *,
     cases_path: Path,
     resources,
+    model_manager,
 ) -> dict:
     """运行固定公共案例；离线模式只调用真实关键词与读取工具。"""
     from app.consultation.agents.legal_research import LegalToolRegistry
-    from app.knowledge.law.repository import _build_article_index
     from app.knowledge.law.corpus import load_criminal_law_data
     from app.knowledge.law.keyword import facts_query, facts_terms
+    from app.knowledge.law.repository import _build_article_index
     from app.knowledge.retrieval.config import RetrievalConfig
     from app.knowledge.retrieval.pipeline import RetrievalPipeline
     from app.knowledge.wiring import build_law_search_service
@@ -88,6 +100,7 @@ async def _run_evaluation(
             law_data=corpus,
             profile="full",
             resources=resources,
+            model_manager=model_manager,
             pipeline=RetrievalPipeline(None, config=RetrievalConfig(rerank=False)) if mode == "offline" else None,
         )
     )
@@ -103,7 +116,11 @@ async def _run_evaluation(
             if demo_enabled
             else case.get("coverage_eligible", False)
         )
-        row = {"id": case["id"], "passed": False, "expected_coverage_eligible": expected_coverage}
+        row = {
+            "id": case["id"],
+            "passed": False,
+            "expected_coverage_eligible": expected_coverage,
+        }
         try:
             if mode == "live-lawref":
                 from app.consultation.agents.fact_digger import _analyze_coverage

@@ -102,12 +102,12 @@ async def test_gateway_rejects_over_budget_before_model_call(monkeypatch):
     from unittest.mock import AsyncMock, MagicMock
 
     from app.errors.exceptions import LLMServiceException
-    from app.infrastructure.llm.factory import chat_model_factory
     from app.infrastructure.llm.gateway import LLMGateway
+    from app.infrastructure.llm.manager import get_model_manager
     monkeypatch.setenv("MEMORY_CONTEXT_TOKEN_BUDGET", "300")
     model = MagicMock()
     model.ainvoke = AsyncMock(return_value=AIMessage(content="unexpected model call"))
-    monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda *args: model)
+    monkeypatch.setattr(get_model_manager(), "get_chat", lambda *args: model)
     with pytest.raises(LLMServiceException) as error:
         await LLMGateway().generate("system", "字" * 1000)
     assert error.value.detail == "context_budget_exceeded"

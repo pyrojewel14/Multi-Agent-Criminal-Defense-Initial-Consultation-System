@@ -3,8 +3,10 @@
 import asyncio
 from functools import partial
 from unittest.mock import AsyncMock
+
 import httpx
 import pytest
+
 from app.infrastructure.observability.tracing import BoundedTraceStore, SessionBudget, SessionBudgetExceeded, trace_span
 
 
@@ -73,7 +75,7 @@ async def test_expander_deadline_and_external_cancel_propagate():
 
 
 async def test_ollama_http_payload_is_explicit_and_ignores_environment(monkeypatch):
-    from app.knowledge.retrieval.hyde import HyDEExpander, ollama_generate
+    from app.knowledge.retrieval.hyde import HyDEExpander, generate_hyde
 
     seen = []
 
@@ -93,8 +95,14 @@ async def test_ollama_http_payload_is_explicit_and_ignores_environment(monkeypat
     monkeypatch.setattr(httpx, "AsyncClient", client)
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://wrong.invalid")
     monkeypatch.setenv("OLLAMA_MODEL_NAME", "wrong-model")
+    from app.infrastructure.llm.manager import get_model_manager
+
     expander = HyDEExpander(
-        partial(ollama_generate, base_url="http://configured:11434/", model_name="configured-model"),
+        partial(
+            generate_hyde,
+            client=get_model_manager().get_ollama("http://configured:11434/"),
+            model_name="configured-model",
+        ),
         model_name="configured-model",
     )
     assert await expander.expand("否认拿钱", timeout_s=1) == "条文用语"

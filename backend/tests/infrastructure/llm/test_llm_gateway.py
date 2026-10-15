@@ -1,6 +1,6 @@
 """Unit tests for ``app.infrastructure.llm.gateway.LLMGateway``.
 
-The ``chat_model_factory`` and underlying LLM are mocked so tests run without
+The model manager and underlying LLM are mocked so tests run without
 any real model calls.  Both happy and error paths are exercised for
 ``generate`` and ``generate_with_tools``.
 """
@@ -15,6 +15,7 @@ from langchain_core.tools import tool
 
 from app.errors.exceptions import LLMServiceException, LLMTimeoutException
 from app.infrastructure.llm import gateway as gateway_module
+from app.infrastructure.llm.config import ChatConfig
 from app.infrastructure.llm.gateway import LLMCallPolicy, LLMGateway
 from app.infrastructure.observability.tracing import (
     BoundedTraceStore,
@@ -23,6 +24,12 @@ from app.infrastructure.observability.tracing import (
     TokenCostEstimator,
     trace_span,
 )
+
+
+@pytest.fixture(autouse=True)
+def ollama_config(monkeypatch):
+    monkeypatch.setenv("LLM_TYPE", "OLLAMA")
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -35,6 +42,60 @@ def _make_response(content: object = "hello", tool_calls=None):
     response.content = content
     response.tool_calls = tool_calls or []
     return response
+
+
+@pytest.mark.asyncio
+async def test_explicit_manager_is_borrowed_and_receives_config_snapshot(monkeypatch):
+    monkeypatch.setenv("LLM_TYPE", "OLLAMA")
+    monkeypatch.setenv("OLLAMA_MODEL_NAME", "public-test")
+    manager = MagicMock()
+    model = MagicMock()
+    model.ainvoke = AsyncMock(return_value=_make_response("ok"))
+    manager.get_chat.return_value = model
+    gateway = LLMGateway(model_manager=manager)
+    assert await gateway.generate("system", "public", is_legal=True) == "ok"
+    config = manager.get_chat.call_args.args[0]
+    assert config.model_name == "public-test" and config.temperature == 0.0
+    manager.close.assert_not_called()
+    manager.aclose.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_default_manager_is_resolved_for_each_new_call(monkeypatch):
+    monkeypatch.setenv("LLM_TYPE", "OLLAMA")
+    first, second = MagicMock(), MagicMock()
+    for manager in (first, second):
+        manager.get_chat.return_value.ainvoke = AsyncMock(return_value=_make_response("ok"))
+    gateway = LLMGateway()
+    with patch.object(gateway_module, "get_model_manager", side_effect=[first, second]):
+        assert await gateway.generate("system", "first") == "ok"
+        assert await gateway.generate("system", "second") == "ok"
+    first.get_chat.assert_called_once()
+    second.get_chat.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_retry_uses_original_configuration_even_if_environment_changes(monkeypatch):
+    monkeypatch.setenv("OLLAMA_MODEL_NAME", "before")
+    manager = MagicMock()
+    model = MagicMock()
+    attempts = 0
+
+    async def invoke(messages):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            monkeypatch.setenv("OLLAMA_MODEL_NAME", "after")
+            raise ConnectionError("temporary")
+        return _make_response("ok")
+
+    manager.get_chat.return_value = model
+    model.ainvoke = invoke
+    gateway = LLMGateway(model_manager=manager, policy=LLMCallPolicy(backoff_seconds=0))
+    assert await gateway.generate("system", "public") == "ok"
+    configs = [call.args[0] for call in manager.get_chat.call_args_list]
+    assert len(configs) == 2 and configs[0] == configs[1]
+    assert configs[0].model_name == "before"
 
 
 # ---------------------------------------------------------------------------
@@ -63,11 +124,11 @@ class TestGenerate:
 
         success_response = _make_response("ok")
         success_response.usage_metadata = {"input_tokens": 11, "output_tokens": 7}
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.model = "qwen-test"
             model.ainvoke = AsyncMock(side_effect=[UpstreamError("temporary"), success_response])
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             with trace_span(
                 store,
@@ -101,14 +162,14 @@ class TestGenerate:
             raising=False,
         )
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.model_name = "provider-model"
             response = _make_response("ok")
             response.usage_metadata = None
             response.response_metadata = {}
             model.ainvoke = AsyncMock(return_value=response)
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
             with trace_span(
                 store,
                 event_type="node",
@@ -129,10 +190,10 @@ class TestGenerate:
         monkeypatch.setattr(gateway_module, "trace_store", store, raising=False)
         monkeypatch.setattr(gateway_module, "session_budget", budget, raising=False)
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(return_value=_make_response("ok"))
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
             with trace_span(
                 store,
                 event_type="node",
@@ -147,47 +208,47 @@ class TestGenerate:
     @pytest.mark.asyncio
     async def test_returns_content_on_success(self):
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(return_value=_make_response("ok"))
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             result = await gateway.generate("system", "user")
 
         assert result == "ok"
-        mock_factory.create_precise_model.assert_called_once_with(0.1)
+        mock_factory.return_value.get_chat.assert_called_once_with(ChatConfig.from_env(temperature=0.1))
 
     @pytest.mark.asyncio
     async def test_is_legal_forces_zero_temperature(self):
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(return_value=_make_response("legal answer"))
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             await gateway.generate("system", "user", temperature=0.7, is_legal=True)
 
-        mock_factory.create_precise_model.assert_called_once_with(0.0)
+        mock_factory.return_value.get_chat.assert_called_once_with(ChatConfig.from_env(temperature=0.0))
 
     @pytest.mark.asyncio
     async def test_uses_supplied_temperature_when_not_legal(self):
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(return_value=_make_response("ok"))
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             await gateway.generate("system", "user", temperature=0.5, is_legal=False)
 
-        mock_factory.create_precise_model.assert_called_once_with(0.5)
+        mock_factory.return_value.get_chat.assert_called_once_with(ChatConfig.from_env(temperature=0.5))
 
     @pytest.mark.asyncio
     async def test_raises_timeout_exception_on_asyncio_timeout(self):
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(side_effect=TimeoutError("timed out"))
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             with pytest.raises(LLMTimeoutException):
                 await gateway.generate("system", "user")
@@ -195,10 +256,10 @@ class TestGenerate:
     @pytest.mark.asyncio
     async def test_raises_service_exception_on_generic_error(self):
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(side_effect=RuntimeError("api error"))
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             with pytest.raises(LLMServiceException):
                 await gateway.generate("system", "user")
@@ -206,10 +267,10 @@ class TestGenerate:
     @pytest.mark.asyncio
     async def test_handles_empty_content(self):
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(return_value=_make_response(""))
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             result = await gateway.generate("system", "user")
 
@@ -220,10 +281,10 @@ class TestGenerate:
         """LangChain 的结构化 content block 应转换为稳定的文本返回值。"""
         content = ["前缀", {"type": "text", "text": "正文"}, {"type": "image_url"}]
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(return_value=_make_response(content))
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             result = await gateway.generate("system", "user")
 
@@ -240,14 +301,14 @@ class TestGenerate:
                 backoff_seconds=0,
             )
         )
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
 
             async def never_returns(*_args, **_kwargs):
                 await asyncio.Event().wait()
 
             model.ainvoke = AsyncMock(side_effect=never_returns)
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             with pytest.raises(LLMTimeoutException) as exc_info:
                 await gateway.generate("system", "user")
@@ -266,7 +327,7 @@ class TestGenerate:
                 backoff_seconds=0,
             )
         )
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
 
             async def first_times_out_then_succeeds(*_args, **_kwargs):
@@ -275,7 +336,7 @@ class TestGenerate:
                 return _make_response("ok")
 
             model.ainvoke = AsyncMock(side_effect=first_times_out_then_succeeds)
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             assert await gateway.generate("system", "user") == "ok"
 
@@ -300,10 +361,10 @@ class TestGenerate:
             sleep=record_sleep,
             jitter=lambda delay: delay,
         )
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(side_effect=[UpstreamError(status_code), _make_response("ok")])
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             assert await gateway.generate("system", "user") == "ok"
 
@@ -323,10 +384,10 @@ class TestGenerate:
             sleep=record_sleep,
             jitter=lambda delay: delay + 0.05,
         )
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(side_effect=[ConnectionError("reset"), _make_response("ok")])
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             assert await gateway.generate("system", "user") == "ok"
 
@@ -342,10 +403,10 @@ class TestGenerate:
                 self.status_code = status
 
         gateway = LLMGateway(policy=LLMCallPolicy(max_attempts=2))
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(side_effect=UpstreamError(status_code))
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             with pytest.raises(LLMServiceException):
                 await gateway.generate("system", "user")
@@ -358,10 +419,10 @@ class TestGenerate:
         gateway = LLMGateway(
             policy=LLMCallPolicy(max_attempts=2, backoff_seconds=0),
         )
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(side_effect=[ConnectionError("reset"), _make_response("ok")])
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             assert await gateway.generate("system", "user") == "ok"
 
@@ -380,10 +441,10 @@ class TestGenerate:
         gateway = LLMGateway(policy=LLMCallPolicy(max_attempts=2))
         gateway._logger.addHandler(handler)
         try:
-            with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+            with patch.object(gateway_module, "get_model_manager") as mock_factory:
                 model = MagicMock()
                 model.ainvoke = AsyncMock(side_effect=UpstreamError(secret))
-                mock_factory.create_precise_model.return_value = model
+                mock_factory.return_value.get_chat.return_value = model
 
                 with pytest.raises(LLMServiceException):
                     await gateway.generate(secret, secret)
@@ -426,7 +487,7 @@ class TestGenerateWithTools:
             }) + "\n", headers={"content-type": "application/x-ndjson"})
 
         model = ChatOllama(model="qwen3.5:0.8b", client_kwargs={"transport": httpx.MockTransport(handle)})
-        with patch.object(gateway_module.chat_model_factory, "create_precise_model", return_value=model):
+        with patch.object(gateway_module, "get_model_manager", return_value=MagicMock(get_chat=MagicMock(return_value=model))):
             response = await LLMGateway().generate_with_tools("schema", "public", [], response_schema=schema, is_legal=True)
         assert json.loads(response["content"]) == {"ok": True}
         assert response["token_usage"]["total_tokens"] == 15
@@ -448,7 +509,7 @@ class TestGenerateWithTools:
         raw = AIMessage(content="", tool_calls=[{"id": "f", "name": "final", "args": {"ok": True}}], usage_metadata={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15})
         model = MagicMock()
         model.with_structured_output.return_value.ainvoke = AsyncMock(return_value={"raw": raw, "parsed": {"ok": True}, "parsing_error": None})
-        with patch.object(gateway_module.chat_model_factory, "create_precise_model", return_value=model):
+        with patch.object(gateway_module, "get_model_manager", return_value=MagicMock(get_chat=MagicMock(return_value=model))):
             response = await LLMGateway().generate_with_tools("schema", "public", [], response_schema=schema)
         assert json.loads(response["content"]) == {"ok": True}
         assert response["tool_calls"] == []
@@ -468,10 +529,10 @@ class TestGenerateWithTools:
             return _make_response("final")
 
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as factory:
+        with patch.object(gateway_module, "get_model_manager") as factory:
             model = MagicMock()
             model.ainvoke = AsyncMock(side_effect=invoke)
-            factory.create_precise_model.return_value = model
+            factory.return_value.get_chat.return_value = model
             result = await gateway.generate_with_tools("system", "facts", [], message_history=history)
         assert result["content"] == "final"
         assert [m.type for m in captured] == ["system", "human", "ai", "tool"]
@@ -480,12 +541,12 @@ class TestGenerateWithTools:
     @pytest.mark.asyncio
     async def test_returns_no_tool_call_when_response_has_none(self):
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             bound = MagicMock()
             bound.ainvoke = AsyncMock(return_value=_make_response("just text"))
             model = MagicMock()
             model.bind_tools = MagicMock(return_value=bound)
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             result = await gateway.generate_with_tools("system", "user", [_echo_tool])
 
@@ -502,12 +563,12 @@ class TestGenerateWithTools:
         response_with_tc.content = ""
         response_with_tc.tool_calls = [tool_call]
 
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             bound = MagicMock()
             bound.ainvoke = AsyncMock(return_value=response_with_tc)
             model = MagicMock()
             model.bind_tools = MagicMock(return_value=bound)
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             result = await gateway.generate_with_tools("system", "user", [_echo_tool])
 
@@ -519,26 +580,26 @@ class TestGenerateWithTools:
     @pytest.mark.asyncio
     async def test_is_legal_forces_zero_temperature(self):
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             bound = MagicMock()
             bound.ainvoke = AsyncMock(return_value=_make_response("ok"))
             model = MagicMock()
             model.bind_tools = MagicMock(return_value=bound)
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             await gateway.generate_with_tools("system", "user", [_echo_tool], temperature=0.7, is_legal=True)
 
-        mock_factory.create_precise_model.assert_called_once_with(0.0)
+        mock_factory.return_value.get_chat.assert_called_once_with(ChatConfig.from_env(temperature=0.0))
 
     @pytest.mark.asyncio
     async def test_raises_timeout_exception(self):
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             bound = MagicMock()
             bound.ainvoke = AsyncMock(side_effect=TimeoutError("slow"))
             model = MagicMock()
             model.bind_tools = MagicMock(return_value=bound)
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             with pytest.raises(LLMTimeoutException):
                 await gateway.generate_with_tools("system", "user", [_echo_tool])
@@ -546,12 +607,12 @@ class TestGenerateWithTools:
     @pytest.mark.asyncio
     async def test_raises_service_exception_on_error(self):
         gateway = LLMGateway()
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             bound = MagicMock()
             bound.ainvoke = AsyncMock(side_effect=RuntimeError("model error"))
             model = MagicMock()
             model.bind_tools = MagicMock(return_value=bound)
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             with pytest.raises(LLMServiceException):
                 await gateway.generate_with_tools("system", "user", [_echo_tool])
@@ -564,12 +625,12 @@ class TestGenerateWithTools:
         response = MagicMock(spec=["content"])
         response.content = "ok"
 
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             bound = MagicMock()
             bound.ainvoke = AsyncMock(return_value=response)
             model = MagicMock()
             model.bind_tools = MagicMock(return_value=bound)
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             result = await gateway.generate_with_tools("system", "user", [_echo_tool])
 
@@ -583,12 +644,12 @@ class TestGenerateWithTools:
         gateway = LLMGateway()
         response = _make_response("ok", tool_calls=[])
 
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             bound = MagicMock()
             bound.ainvoke = AsyncMock(return_value=response)
             model = MagicMock()
             model.bind_tools = MagicMock(return_value=bound)
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             result = await gateway.generate_with_tools("system", "user", [_echo_tool])
 
@@ -600,12 +661,12 @@ class TestGenerateWithTools:
         gateway = LLMGateway()
         response = _make_response([{"type": "text", "text": "工具前说明"}])
 
-        with patch.object(gateway_module, "chat_model_factory") as mock_factory:
+        with patch.object(gateway_module, "get_model_manager") as mock_factory:
             bound = MagicMock()
             bound.ainvoke = AsyncMock(return_value=response)
             model = MagicMock()
             model.bind_tools = MagicMock(return_value=bound)
-            mock_factory.create_precise_model.return_value = model
+            mock_factory.return_value.get_chat.return_value = model
 
             result = await gateway.generate_with_tools("system", "user", [_echo_tool])
 

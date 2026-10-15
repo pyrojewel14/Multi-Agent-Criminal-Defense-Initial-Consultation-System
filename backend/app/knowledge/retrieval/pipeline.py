@@ -8,6 +8,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
+from app.infrastructure.llm.rerankers import RerankerBusyError
 from app.infrastructure.observability.tracing import SessionBudgetExceeded, trace_span, trace_store
 
 from .config import RetrievalConfig
@@ -15,7 +16,6 @@ from .errors import safe_error_type
 from .fusion import choose_stable_representative, document_key, rrf_fuse
 from .models import ChannelResult, RecallPool, RetrievalCandidate, RetrievalRequest, SearchResult, StageStatus
 from .protocols import QueryExpander, Reranker, Retriever
-from .rerankers import RerankerBusyError
 
 
 class RetrievalPipeline:

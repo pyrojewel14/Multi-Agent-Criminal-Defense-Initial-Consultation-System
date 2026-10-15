@@ -5,8 +5,8 @@ import threading
 
 import pytest
 
-from app.knowledge.retrieval.config import RerankerConfig
-from app.knowledge.retrieval.rerankers import (
+from app.infrastructure.llm.config import RerankerConfig
+from app.infrastructure.llm.rerankers import (
     CrossEncoderReranker,
     QwenReranker,
     RerankerBusyError,

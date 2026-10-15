@@ -14,24 +14,16 @@ from app.infrastructure.observability.tracing import (
 )
 
 
-async def ollama_generate(query: str, *, base_url: str, model_name: str) -> Mapping[str, Any]:
-    """使用指定 Ollama 地址和模型生成候选用语，不读取进程环境。"""
-    import httpx
-
-    async with httpx.AsyncClient(trust_env=False, timeout=30) as client:
-        response = await client.post(
-            base_url.rstrip("/") + "/api/generate",
-            json={
-                "model": model_name,
-                "stream": False,
-                "think": False,
-                "prompt": "为检索生成简短刑法候选正文，不得补造事实、忽略否认或作有罪结论。只输出可能相关的条文用语，不输出解释。检索查询："
-                + query,
-                "options": {"temperature": 0, "num_predict": 192, "seed": 0},
-            },
-        )
-        response.raise_for_status()
-        return response.json()
+async def generate_hyde(query: str, *, client, model_name: str) -> Mapping[str, Any]:
+    """构造检索领域提示词，通用 Ollama 客户端只执行供应商协议。"""
+    return await client.generate(
+        model_name,
+        "为检索生成简短刑法候选正文，不得补造事实、忽略否认或作有罪结论。只输出可能相关的条文用语，不输出解释。检索查询："
+        + query,
+        options={"temperature": 0, "num_predict": 192, "seed": 0},
+        think=False,
+        timeout_s=30,
+    )
 
 
 class HyDEExpander:

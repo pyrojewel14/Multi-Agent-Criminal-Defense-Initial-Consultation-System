@@ -30,7 +30,7 @@ async def _search(facts):
 
 
 def _set_scorer(monkeypatch, callback):
-    from app.knowledge.wiring import knowledge_resources
+    from app.infrastructure.llm.manager import get_model_manager
 
     class Scorer:
         probability_scores = True
@@ -38,7 +38,7 @@ def _set_scorer(monkeypatch, callback):
         async def score(self, query, documents, *, timeout_s):
             return await callback(query, documents, timeout_s)
 
-    monkeypatch.setattr(knowledge_resources, "scorer", lambda config: Scorer())
+    monkeypatch.setattr(get_model_manager(), "get_reranker", lambda config: Scorer())
 
 
 def _set_expander(monkeypatch, callback):
@@ -53,10 +53,12 @@ def _set_expander(monkeypatch, callback):
 async def _generate_hyde(query):
     from functools import partial
 
-    from app.knowledge.retrieval.hyde import HyDEExpander, ollama_generate
+    from app.infrastructure.llm.manager import get_model_manager
+    from app.knowledge.retrieval.hyde import HyDEExpander, generate_hyde
 
     return await HyDEExpander(
-        partial(ollama_generate, base_url="http://127.0.0.1:11434", model_name="fixture"), model_name="fixture"
+        partial(generate_hyde, client=get_model_manager().get_ollama("http://127.0.0.1:11434"), model_name="fixture"),
+        model_name="fixture",
     ).expand(query, timeout_s=10)
 
 
@@ -227,8 +229,8 @@ async def test_digest_manifest_reject_no_upload_fallback(runtime, public_index, 
 
 
 def test_qwen_protocol_token_ids_preserve_special_tokens_and_yes_no():
-    from app.knowledge.retrieval.config import RerankerConfig
-    from app.knowledge.retrieval.rerankers.qwen import PREFIX, SUFFIX, QwenReranker
+    from app.infrastructure.llm.config import RerankerConfig
+    from app.infrastructure.llm.rerankers.qwen import PREFIX, SUFFIX, QwenReranker
 
     class Tokenizer:
         def encode(self, text, **kw):
@@ -262,8 +264,8 @@ def test_qwen_protocol_token_ids_preserve_special_tokens_and_yes_no():
 
 
 def test_reranker_retains_query_tail_and_only_truncates_document():
-    from app.knowledge.retrieval.config import RerankerConfig
-    from app.knowledge.retrieval.rerankers.qwen import PREFIX, SUFFIX, QwenReranker
+    from app.infrastructure.llm.config import RerankerConfig
+    from app.infrastructure.llm.rerankers.qwen import PREFIX, SUFFIX, QwenReranker
 
     class Tokenizer:
         def encode(self, text, **kw):
@@ -333,8 +335,8 @@ async def test_actual_hyde_deadline_and_session_budget_fallback(runtime, monkeyp
 async def test_timeout_does_not_queue_another_background_inference():
     import threading
 
-    from app.knowledge.retrieval.config import RerankerConfig
-    from app.knowledge.retrieval.rerankers import QwenReranker, RerankerBusyError
+    from app.infrastructure.llm.config import RerankerConfig
+    from app.infrastructure.llm.rerankers import QwenReranker, RerankerBusyError
 
     scorer = QwenReranker(RerankerConfig(local_path="unused", max_length=512, instruction="instruction"))
     started, release = threading.Event(), threading.Event()
@@ -429,8 +431,8 @@ async def test_vector_registry_uses_shared_fusion_without_source_priority(runtim
 async def test_worker_cancel_busy_recovery_and_background_error_consumed():
     import threading
 
-    from app.knowledge.retrieval.config import RerankerConfig
-    from app.knowledge.retrieval.rerankers import QwenReranker, RerankerBusyError
+    from app.infrastructure.llm.config import RerankerConfig
+    from app.infrastructure.llm.rerankers import QwenReranker, RerankerBusyError
 
     scorer = QwenReranker(RerankerConfig(local_path="unused", max_length=512, instruction="instruction"))
     started, release = threading.Event(), threading.Event()

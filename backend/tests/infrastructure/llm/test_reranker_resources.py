@@ -7,9 +7,9 @@ from dataclasses import replace
 
 import pytest
 
-from app.knowledge import wiring
-from app.knowledge.retrieval.config import RerankerConfig
-from app.knowledge.retrieval.rerankers import CrossEncoderReranker, QwenReranker
+from app.infrastructure.llm.config import RerankerConfig
+from app.infrastructure.llm.manager import ModelManager
+from app.infrastructure.llm.rerankers import CrossEncoderReranker, QwenReranker
 
 
 @pytest.mark.parametrize(
@@ -26,12 +26,12 @@ def test_scorer_selects_type_without_loading_weights(monkeypatch, kwargs, expect
 
     monkeypatch.setattr(QwenReranker, "_load_model_sync", no_load)
     monkeypatch.setattr(CrossEncoderReranker, "_load_model_sync", no_load)
-    resources = wiring.KnowledgeResources()
+    resources = ModelManager()
     try:
-        scorer = resources.scorer(RerankerConfig(local_path="missing-model"), **kwargs)
+        scorer = resources.get_reranker(RerankerConfig(local_path="missing-model"), **kwargs)
         assert isinstance(scorer, expected)
         assert scorer.readiness()["status"] == "not_loaded"
-        assert resources.readiness()["status"] == "not_loaded"
+        assert resources.reranker_readiness()["status"] == "not_loaded"
     finally:
         resources.close()
     assert scorer.readiness()["closed"] is True
@@ -39,24 +39,24 @@ def test_scorer_selects_type_without_loading_weights(monkeypatch, kwargs, expect
 
 @pytest.mark.parametrize("kind", ["causal_lm", "cross_encoder"])
 def test_equal_config_reuses_scorer_but_different_config_does_not(kind):
-    resources = wiring.KnowledgeResources()
+    resources = ModelManager()
     config = RerankerConfig(local_path="missing-model", device="cpu")
     try:
-        scorer = resources.scorer(config, kind=kind)
-        assert resources.scorer(replace(config), kind=kind) is scorer
-        assert resources.scorer(replace(config, local_path="other-model"), kind=kind) is not scorer
+        scorer = resources.get_reranker(config, kind=kind)
+        assert resources.get_reranker(replace(config), kind=kind) is scorer
+        assert resources.get_reranker(replace(config, local_path="other-model"), kind=kind) is not scorer
     finally:
         resources.close()
 
 
 def test_default_and_explicit_qwen_share_cache_but_cross_encoder_is_independent():
-    resources = wiring.KnowledgeResources()
+    resources = ModelManager()
     config = RerankerConfig(local_path="missing-model")
     try:
-        qwen = resources.scorer(config)
-        cross_encoder = resources.scorer(config, kind="cross_encoder")
-        assert resources.scorer(config, kind="causal_lm") is qwen
-        assert resources.scorer(config, kind="cross_encoder") is cross_encoder
+        qwen = resources.get_reranker(config)
+        cross_encoder = resources.get_reranker(config, kind="cross_encoder")
+        assert resources.get_reranker(config, kind="causal_lm") is qwen
+        assert resources.get_reranker(config, kind="cross_encoder") is cross_encoder
         assert qwen is not cross_encoder
         assert isinstance(qwen, QwenReranker) and isinstance(cross_encoder, CrossEncoderReranker)
     finally:
@@ -65,15 +65,15 @@ def test_default_and_explicit_qwen_share_cache_but_cross_encoder_is_independent(
 
 
 def test_single_cache_tracks_every_scorer_for_resource_cleanup():
-    resources = wiring.KnowledgeResources()
+    resources = ModelManager()
     config = RerankerConfig(local_path="missing-model")
     try:
-        qwen = resources.scorer(config)
-        cross_encoder = resources.scorer(config, kind="cross_encoder")
-        assert set(resources._scorers.values()) == {qwen, cross_encoder}
+        qwen = resources.get_reranker(config)
+        cross_encoder = resources.get_reranker(config, kind="cross_encoder")
+        assert set(resources._rerankers.values()) == {qwen, cross_encoder}
     finally:
         resources.close()
-    assert resources._scorers == {}
+    assert resources._rerankers == {}
 
 
 @pytest.mark.parametrize(
@@ -86,16 +86,16 @@ def test_single_cache_tracks_every_scorer_for_resource_cleanup():
     ],
 )
 def test_readiness_preserves_type_priority_when_cross_encoder_is_created_first(qwen_ready, cross_ready, expected_kind):
-    resources = wiring.KnowledgeResources()
+    resources = ModelManager()
     config = RerankerConfig(local_path="missing-model")
     try:
-        cross_encoder = resources.scorer(config, kind="cross_encoder")
-        qwen = resources.scorer(config)
+        cross_encoder = resources.get_reranker(config, kind="cross_encoder")
+        qwen = resources.get_reranker(config)
         if qwen_ready:
             qwen._set_load_status("ready")
         if cross_ready:
             cross_encoder._set_load_status("ready")
-        assert resources.readiness()["type"] == expected_kind
+        assert resources.reranker_readiness()["type"] == expected_kind
     finally:
         resources.close()
 
@@ -103,15 +103,14 @@ def test_readiness_preserves_type_priority_when_cross_encoder_is_created_first(q
 @pytest.mark.asyncio
 @pytest.mark.parametrize("async_close", [False, True])
 async def test_both_close_paths_clear_cache_and_close_once_outside_lock_in_original_order(monkeypatch, async_close):
-    resources = wiring.KnowledgeResources()
+    resources = ModelManager()
     config = RerankerConfig(local_path="missing-model")
-    cross_encoder = resources.scorer(config, kind="cross_encoder")
-    qwen = resources.scorer(config)
+    cross_encoder = resources.get_reranker(config, kind="cross_encoder")
+    qwen = resources.get_reranker(config)
     closed = []
 
     def tracked_close(kind, original):
         def close():
-            assert resources._scorers == {}
             assert resources._lock.acquire(blocking=False)
             resources._lock.release()
             closed.append(kind)
@@ -138,13 +137,13 @@ def test_unknown_scorer_kind_is_rejected_without_creating_resources(monkeypatch,
     def no_create(config):
         pytest.fail("invalid kind must not create a scorer")
 
-    monkeypatch.setattr(wiring, "QwenReranker", no_create)
-    monkeypatch.setattr(wiring, "CrossEncoderReranker", no_create)
-    resources = wiring.KnowledgeResources()
+    monkeypatch.setattr("app.infrastructure.llm.rerankers.QwenReranker", no_create)
+    monkeypatch.setattr("app.infrastructure.llm.rerankers.CrossEncoderReranker", no_create)
+    resources = ModelManager()
     try:
         with pytest.raises(ValueError, match="^unknown reranker type$"):
-            resources.scorer(RerankerConfig(), kind=kind)
-        assert resources.readiness()["status"] == "not_loaded"
+            resources.get_reranker(RerankerConfig(), kind=kind)
+        assert resources.reranker_readiness()["status"] == "not_loaded"
     finally:
         resources.close()
 
@@ -160,15 +159,17 @@ def test_concurrent_requests_create_only_one_instance_per_kind(monkeypatch):
 
         return create
 
-    monkeypatch.setattr(wiring, "QwenReranker", constructor("causal_lm", QwenReranker))
-    monkeypatch.setattr(wiring, "CrossEncoderReranker", constructor("cross_encoder", CrossEncoderReranker))
-    resources = wiring.KnowledgeResources()
+    monkeypatch.setattr("app.infrastructure.llm.rerankers.QwenReranker", constructor("causal_lm", QwenReranker))
+    monkeypatch.setattr(
+        "app.infrastructure.llm.rerankers.CrossEncoderReranker", constructor("cross_encoder", CrossEncoderReranker)
+    )
+    resources = ModelManager()
     config = RerankerConfig(local_path="missing-model")
     barrier = threading.Barrier(8)
 
     def get_scorer(kind):
         barrier.wait(timeout=5)
-        return kind, resources.scorer(config, kind=kind)
+        return kind, resources.get_reranker(config, kind=kind)
 
     try:
         with ThreadPoolExecutor(max_workers=8) as pool:

@@ -8,8 +8,8 @@ from langchain_core.messages import AIMessage
 from langchain_ollama import ChatOllama
 
 from app.consultation.agents import fact_digger
-from app.infrastructure.llm.factory import chat_model_factory
 from app.infrastructure.llm.gateway import LLMGateway
+from app.infrastructure.llm.manager import get_model_manager
 from tests.consultation.test_memory_persistence import memory_db as memory_db
 from tests.consultation.test_memory_persistence import memory_graph as memory_graph
 
@@ -44,8 +44,9 @@ async def test_ollama_memory_candidate_uses_schema_before_case_merge(monkeypatch
 
 @pytest.mark.asyncio
 async def test_summary_can_disable_ollama_thinking_without_mutating_cached_model(monkeypatch):
+    monkeypatch.setenv("LLM_TYPE", "OLLAMA")
     cached = ChatOllama(model="synthetic", reasoning=True)
-    monkeypatch.setattr(chat_model_factory, "create_precise_model", lambda *_: cached)
+    monkeypatch.setattr(get_model_manager(), "get_chat", lambda *_: cached)
     seen = []
 
     async def invoke(model, messages, **kwargs):

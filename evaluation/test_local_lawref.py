@@ -120,7 +120,8 @@ def test_current_read_prompt_accepts_facts_object_but_rejects_snapshot_changes(t
 @pytest.mark.asyncio
 async def test_capture_forces_direct_client_and_restores_factory_on_budget_exhaustion(tmp_path, monkeypatch):
     from app.consultation.agents.legal_research import _SYSTEM_PROMPT
-    from app.infrastructure.llm.factory import chat_model_factory
+    from app.infrastructure.llm.config import ChatConfig
+    from app.infrastructure.llm.gateway import llm_gateway
 
     sent = []
 
@@ -141,31 +142,42 @@ async def test_capture_forces_direct_client_and_restores_factory_on_budget_exhau
 
     cap = capture(tmp_path, max_requests=1)
     cap.client_kwargs["transport"] = httpx.MockTransport(respond)
-    original = chat_model_factory.create_precise_model
+    original = llm_gateway._model_manager
     from app.infrastructure.llm.gateway import LLMCallPolicy, llm_gateway
 
-    monkeypatch.setattr(llm_gateway, "_policy", LLMCallPolicy(total_timeout_seconds=7, attempt_timeout_seconds=3))
+    monkeypatch.setattr(
+        llm_gateway,
+        "_policy",
+        LLMCallPolicy(total_timeout_seconds=7, attempt_timeout_seconds=3),
+    )
     messages = [
         SystemMessage(content=_SYSTEM_PROMPT),
         HumanMessage(
             content=json.dumps(
                 {
                     "facts": json.dumps(
-                        {"behavior_sequence": ["我没有拿走任何物品。"], "consequence": ""}, ensure_ascii=False
+                        {
+                            "behavior_sequence": ["我没有拿走任何物品。"],
+                            "consequence": "",
+                        },
+                        ensure_ascii=False,
                     )
                 }
             )
         ),
     ]
-    with cap:
-        model = chat_model_factory.create_precise_model(0)
+    async with cap:
+        model = cap.model_manager.get_chat(ChatConfig(provider="OLLAMA", temperature=0))
         assert llm_gateway._policy == LLMCallPolicy()
         assert isinstance(model, ChatOllama)
         assert model.client_kwargs["trust_env"] is False
         assert (await model.ainvoke(messages)).content == "{}"
         with pytest.raises(ValueError, match="请求预算"):
             await model.ainvoke(messages)
-    assert chat_model_factory.create_precise_model == original
+    assert llm_gateway._model_manager is original
+    assert cap.model_manager.closed
+    assert model._client._client.is_closed
+    assert model._async_client._client.is_closed
     assert llm_gateway._policy.total_timeout_seconds == 7
     assert len(sent) == 1
     assert sent[0]["think"] is False
@@ -177,7 +189,7 @@ async def test_capture_forces_direct_client_and_restores_factory_on_budget_exhau
 @pytest.mark.parametrize("mode", ["refusal", "wrong_model", "thinking_only"])
 async def test_raw_failure_and_thinking_channels_remain_distinct(tmp_path, mode):
     from app.consultation.agents.legal_research import _SYSTEM_PROMPT
-    from app.infrastructure.llm.factory import chat_model_factory
+    from app.infrastructure.llm.config import ChatConfig
     from ollama import ResponseError
 
     def respond(request):
@@ -188,7 +200,11 @@ async def test_raw_failure_and_thinking_channels_remain_distinct(tmp_path, mode)
             text=json.dumps(
                 {
                     "model": "other" if mode == "wrong_model" else "qwen3.5:9b",
-                    "message": {"role": "assistant", "content": "", "thinking": "原始思考片段"},
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "thinking": "原始思考片段",
+                    },
                     "done": True,
                     "done_reason": "length",
                     "eval_count": 1024,
@@ -201,14 +217,23 @@ async def test_raw_failure_and_thinking_channels_remain_distinct(tmp_path, mode)
     cap.client_kwargs["transport"] = httpx.MockTransport(respond)
     messages = [
         SystemMessage(content=_SYSTEM_PROMPT),
-        HumanMessage(content=json.dumps({"facts": {"behavior_sequence": ["我没有拿走任何物品。"], "consequence": ""}})),
+        HumanMessage(
+            content=json.dumps(
+                {
+                    "facts": {
+                        "behavior_sequence": ["我没有拿走任何物品。"],
+                        "consequence": "",
+                    }
+                }
+            )
+        ),
     ]
-    with cap:
+    async with cap:
         if mode in {"refusal", "wrong_model"}:
             with pytest.raises(ResponseError if mode == "refusal" else ValueError):
-                await chat_model_factory.create_precise_model(0).ainvoke(messages)
+                await cap.model_manager.get_chat(ChatConfig(provider="OLLAMA", temperature=0)).ainvoke(messages)
         else:
-            result = await chat_model_factory.create_precise_model(0).ainvoke(messages)
+            result = await cap.model_manager.get_chat(ChatConfig(provider="OLLAMA", temperature=0)).ainvoke(messages)
             assert result.content == ""
     row = cap.records[0]
     if mode == "refusal":
@@ -392,24 +417,36 @@ async def test_fixed_six_replay_through_real_lawref_and_original_scorer(tmp_path
     index = tmp_path / "public.index"
     index.mkdir()
     (index.parent / (index.name + ".manifest.json")).write_text(
-        json.dumps({"embedding_model": "embedding", "embedding_model_digest": "emb", "collection": "public"})
+        json.dumps(
+            {
+                "embedding_model": "embedding",
+                "embedding_model_digest": "emb",
+                "collection": "public",
+            }
+        )
     )
 
     async def available(*_):
         return {
             "available_models": ["qwen3.5:9b"],
             "models": {"qwen3.5:9b": {"catalog_entry": {"digest": "nine"}}},
-            "requests": [{"endpoint": "/api/tags", "body": {"models": [{"name": "embedding", "digest": "emb"}]}}],
+            "requests": [
+                {
+                    "endpoint": "/api/tags",
+                    "body": {"models": [{"name": "embedding", "digest": "emb"}]},
+                }
+            ],
         }
 
     monkeypatch.setattr(runner, "probe", available)
     monkeypatch.setattr(
         wiring,
         "build_law_search_service",
-        lambda *, law_data, profile, resources: build_law_search_service(
+        lambda *, law_data, profile, resources, model_manager: build_law_search_service(
             law_data=law_data,
             profile=profile,
             resources=resources,
+            model_manager=model_manager,
             pipeline=RetrievalPipeline(None, config=RetrievalConfig(rerank=False)),
         ),
     )
@@ -430,7 +467,11 @@ async def test_fixed_six_replay_through_real_lawref_and_original_scorer(tmp_path
             message = {
                 "role": "assistant",
                 "content": json.dumps(
-                    {"article_ids": [article], "matched_elements": {article: []}, "confidence": "low"}
+                    {
+                        "article_ids": [article],
+                        "matched_elements": {article: []},
+                        "confidence": "low",
+                    }
                 ),
             }
         else:
@@ -439,7 +480,11 @@ async def test_fixed_six_replay_through_real_lawref_and_original_scorer(tmp_path
                 if tool_messages
                 else {"name": "search_laws", "arguments": {"query": article}}
             )
-            message = {"role": "assistant", "content": "", "tool_calls": [{"function": function}]}
+            message = {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"function": function}],
+            }
         actual_model = (
             ("qwen3.5:9b" if len(sent) == 1 else "unrequested-model")
             if returned_model == "mixed-models"
@@ -448,14 +493,22 @@ async def test_fixed_six_replay_through_real_lawref_and_original_scorer(tmp_path
         return httpx.Response(
             200,
             text=json.dumps(
-                {"model": actual_model, "message": message, "done": True, "eval_count": 10, "prompt_eval_count": 20}
+                {
+                    "model": actual_model,
+                    "message": message,
+                    "done": True,
+                    "eval_count": 10,
+                    "prompt_eval_count": 20,
+                }
             )
             + "\n",
         )
 
     original = httpx.AsyncClient
     monkeypatch.setattr(
-        httpx, "AsyncClient", lambda **kwargs: original(**{**kwargs, "transport": httpx.MockTransport(respond)})
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original(**{**kwargs, "transport": httpx.MockTransport(respond)}),
     )
     args = Namespace(
         output_dir=tmp_path / "output",

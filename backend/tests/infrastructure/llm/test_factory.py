@@ -2,20 +2,21 @@
 
 Tests cover:
 - DashScopeEmbeddingsWrapper.embed_documents / embed_query
-- ChatModelFactory.create_model / create_streaming_model / create_precise_model
-- EmbedModelFactory.create_embedding_model
-- Cache behavior of the factories
+- Explicit Chat/Embedding/Reranker construction
+- Provider kwargs and environment snapshot isolation
+- Model caches and lifecycle are covered by manager tests
 """
 
-import warnings
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.infrastructure.llm.config import ChatConfig, EmbeddingConfig, RerankerConfig
 from app.infrastructure.llm.factory import (
     ChatModelFactory,
     DashScopeEmbeddingsWrapper,
     EmbedModelFactory,
+    RerankerFactory,
     _ollama_client_kwargs,
 )
 
@@ -44,12 +45,12 @@ class TestDashScopeEmbeddingsWrapper:
             api_key="explicit-key", base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
         )
 
-    def test_init_falls_back_to_env_key(self, monkeypatch):
-        """When no api_key is passed, env var is used."""
-        env = {"DASHSCOPE_API_KEY": "env-key"}
-        monkeypatch.setattr("os.getenv", lambda k, default=None: env.get(k, default))
+    def test_config_resolves_env_key_before_pure_construction(self, monkeypatch):
+        """Credential priority belongs to the explicit snapshot, not the constructor."""
+        config = EmbeddingConfig.from_env({"EMBED_MODEL_TYPE": "ALIYUN", "DASHSCOPE_API_KEY": "env-key"})
+        monkeypatch.setenv("DASHSCOPE_API_KEY", "changed")
         with patch("openai.OpenAI") as mock_openai:
-            DashScopeEmbeddingsWrapper()
+            EmbedModelFactory().create(config)
         mock_openai.assert_called_once_with(
             api_key="env-key", base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
         )
@@ -123,9 +124,12 @@ class TestDashScopeEmbeddingsWrapper:
         """close() should call client.close()."""
         wrapper = DashScopeEmbeddingsWrapper.__new__(DashScopeEmbeddingsWrapper)
         wrapper.client = MagicMock()
-        wrapper.client.close = MagicMock()
+        client = wrapper.client
+        client.close = MagicMock()
         wrapper.close()
-        wrapper.client.close.assert_called_once()
+        wrapper.close()
+        client.close.assert_called_once()
+        assert wrapper.client is None
 
     def test_close_handles_missing_client(self):
         """close() should not raise when client attribute is missing."""
@@ -134,278 +138,112 @@ class TestDashScopeEmbeddingsWrapper:
         wrapper.close()  # should not raise
 
 
-# ---------------------------------------------------------------------------
-# ChatModelFactory
-# ---------------------------------------------------------------------------
-
-
-class TestChatModelFactory:
-    def _make_factory(self):
-        """Create a ChatModelFactory with a mocked _get_llm_config."""
-        factory = ChatModelFactory()
-        return factory
-
-    def test_get_llm_config_delegates(self):
-        """_get_llm_config should return config from config_loader."""
-        factory = self._make_factory()
-        with patch("app.infrastructure.llm.factory.config_loader") as mock_loader:
-            mock_loader.get_llm_config.return_value = {"type": "ALIYUN", "aliyun": {}, "ollama": {}}
-            result = factory._get_llm_config()
-        assert result["type"] == "ALIYUN"
-
-    def test_create_model_aliyun(self):
-        """create_model with default ALIYUN backend should create ChatTongyi."""
-        factory = self._make_factory()
-        factory.clear_cache()
-
-        with patch.object(
-            factory,
-            "_get_llm_config",
-            return_value={
-                "type": "ALIYUN",
-                "aliyun": {"model": "qwen3-max", "api_key": "test-key", "base_url": "https://example.com"},
-                "ollama": {},
-            },
-        ):
-            with patch("langchain_community.chat_models.tongyi.ChatTongyi") as mock_tongyi:
-                mock_tongyi.return_value = "mocked-chat-model"
-                result = factory.create_model(temperature=0.1)
-
-        assert result == "mocked-chat-model"
-        mock_tongyi.assert_called_once()
-        factory.close()
-
-    def test_create_model_ollama(self):
-        """create_model with OLLAMA backend should create ChatOllama."""
-        factory = self._make_factory()
-        factory.clear_cache()
-
-        with patch.object(
-            factory,
-            "_get_llm_config",
-            return_value={
-                "type": "OLLAMA",
-                "aliyun": {},
-                "ollama": {"model": "qwen3:7b", "base_url": "http://localhost:11434"},
-            },
-        ):
-            with patch("langchain_ollama.ChatOllama") as mock_ollama:
-                mock_ollama.return_value = "mocked-ollama"
-                result = factory.create_model(temperature=0.5)
-
-        assert result == "mocked-ollama"
-        assert mock_ollama.call_args.kwargs["client_kwargs"] == {"trust_env": False}
-        factory.close()
-
-    def test_remote_ollama_keeps_environment_proxy_support(self):
-        assert _ollama_client_kwargs("https://ollama.example.com") == {}
-
-    def test_create_streaming_model(self):
-        """create_streaming_model should set streaming=True and top_p."""
-        factory = self._make_factory()
-        factory.clear_cache()
-
-        with patch.object(
-            factory,
-            "_get_llm_config",
-            return_value={
-                "type": "ALIYUN",
-                "aliyun": {"model": "qwen3-max", "api_key": "k"},
-                "ollama": {},
-            },
-        ):
-            with patch("langchain_community.chat_models.tongyi.ChatTongyi") as mock_tongyi:
-                mock_tongyi.return_value = "m"
-                factory.create_streaming_model(top_p=0.9)
-
-        # streaming should be True and top_p should be set
-        kwargs = mock_tongyi.call_args.kwargs
-        assert kwargs.get("streaming") is True
-        assert kwargs.get("top_p") == 0.9
-        factory.close()
-
-    def test_create_precise_model(self):
-        """create_precise_model should set streaming=False and temperature."""
-        factory = self._make_factory()
-        factory.clear_cache()
-
-        with patch.object(
-            factory,
-            "_get_llm_config",
-            return_value={
-                "type": "ALIYUN",
-                "aliyun": {"model": "qwen3-max", "api_key": "k"},
-                "ollama": {},
-            },
-        ):
-            with patch("langchain_community.chat_models.tongyi.ChatTongyi") as mock_tongyi:
-                mock_tongyi.return_value = "m"
-                factory.create_precise_model(temperature=0.2)
-
-        kwargs = mock_tongyi.call_args.kwargs
-        assert kwargs.get("temperature") == 0.2
-        # streaming=False is the default and not explicitly added to params
-        assert kwargs.get("streaming") is None or kwargs.get("streaming") is False
-        factory.close()
-
-    def test_caches_model(self):
-        """Same config should yield the same cached instance."""
-        factory = self._make_factory()
-        factory.clear_cache()
-
-        with patch.object(
-            factory,
-            "_get_llm_config",
-            return_value={
-                "type": "ALIYUN",
-                "aliyun": {"model": "qwen3-max", "api_key": "k"},
-                "ollama": {},
-            },
-        ):
-            with patch("langchain_community.chat_models.tongyi.ChatTongyi") as mock_tongyi:
-                mock_tongyi.return_value = "m"
-                a = factory.create_model()
-                b = factory.create_model()
-        # The same model is returned both times
-        assert a is b
-        assert mock_tongyi.call_count == 1
-        factory.close()
-
-    def test_generator_deprecated(self):
-        """generator() should issue a DeprecationWarning and call create_streaming_model."""
-        factory = self._make_factory()
-        factory.clear_cache()
-
-        with patch.object(
-            factory,
-            "_get_llm_config",
-            return_value={
-                "type": "ALIYUN",
-                "aliyun": {"model": "qwen3-max", "api_key": "k"},
-                "ollama": {},
-            },
-        ):
-            with patch("langchain_community.chat_models.tongyi.ChatTongyi") as mock_tongyi:
-                mock_tongyi.return_value = "m"
-                with warnings.catch_warnings(record=True) as captured:
-                    warnings.simplefilter("always")
-                    factory.generator()
-
-        assert any(issubclass(w.category, DeprecationWarning) for w in captured)
-        factory.close()
-
-    def test_clear_cache(self):
-        """clear_cache should empty the model cache."""
-        factory = self._make_factory()
-        factory._model_cache["fake-key"] = "fake-value"
-        factory.clear_cache()
-        assert factory._model_cache == {}
-
-    def test_close_releases_models(self):
-        """close() should call client.close on each cached model that supports it."""
-        factory = self._make_factory()
-        mock_model = MagicMock()
-        mock_model.client.close = MagicMock()
-        factory._model_cache["k"] = mock_model
-        factory.close()
-        mock_model.client.close.assert_called_once()
-        assert factory._model_cache == {}
-
-
-# ---------------------------------------------------------------------------
-# EmbedModelFactory
-# ---------------------------------------------------------------------------
-
-
-class TestEmbedModelFactory:
-    def _make_factory(self):
-        return EmbedModelFactory()
-
-    @pytest.mark.parametrize(
-        "base_url,client_kwargs",
-        [
-            ("http://localhost:11434", {"trust_env": False}),
-            ("http://127.0.0.1:11434", {"trust_env": False}),
-            ("http://[::1]:11434", {"trust_env": False}),
-            ("https://ollama.example.test:11434", {}),
-        ],
+@pytest.mark.parametrize("provider", ["OLLAMA", "ALIYUN"])
+def test_chat_factory_preserves_explicit_constructor_parameters(provider, monkeypatch):
+    config = ChatConfig.from_env(
+        {
+            "LLM_TYPE": provider,
+            "OLLAMA_MODEL_NAME": "local",
+            "OLLAMA_BASE_URL": "http://localhost:11434",
+            "ALIYUN_MODEL_NAME": "cloud",
+            "ALIYUN_ACCESS_KEY_SECRET": "snapshot-key",
+            "ALIYUN_BASE_URL": "https://snapshot.invalid",
+        },
+        temperature=0,
+        streaming=True,
+        top_p=0,
     )
-    def test_create_embedding_model_ollama(self, monkeypatch, base_url, client_kwargs):
-        """Ollama Embedding 显式使用配置端点，仅回环地址禁用环境代理。"""
-        monkeypatch.setenv("EMBED_MODEL_TYPE", "OLLAMA")
-        monkeypatch.setenv("OLLAMA_BASE_URL", base_url)
-        factory = self._make_factory()
-        factory._model_cache.clear()
+    monkeypatch.setenv("ALIYUN_ACCESS_KEY_SECRET", "ambient-key")
+    monkeypatch.setenv("OLLAMA_MODEL_NAME", "ambient-model")
+    captured = []
 
-        with patch("langchain_ollama.OllamaEmbeddings") as mock_emb:
-            mock_emb.return_value = "m"
-            result = factory.create_embedding_model()
+    def constructor(**kwargs):
+        captured.append(kwargs)
+        return object()
 
-        assert result == "m"
-        assert mock_emb.call_args.kwargs["base_url"] == base_url
-        assert mock_emb.call_args.kwargs["client_kwargs"] == client_kwargs
-        factory.close()
+    path = (
+        "langchain_ollama.ChatOllama" if provider == "OLLAMA" else "langchain_community.chat_models.tongyi.ChatTongyi"
+    )
+    with patch(path, constructor):
+        factory = ChatModelFactory()
+        first, second = factory.create(config), factory.create(config)
+    assert first is not second
+    if provider == "OLLAMA":
+        assert (
+            captured
+            == [
+                {
+                    "model": "local",
+                    "base_url": "http://localhost:11434",
+                    "client_kwargs": {"trust_env": False},
+                    "temperature": 0,
+                    "streaming": True,
+                    "top_p": 0,
+                }
+            ]
+            * 2
+        )
+    else:
+        assert (
+            captured
+            == [
+                {
+                    "model": "cloud",
+                    "api_key": "snapshot-key",
+                    "base_url": "https://snapshot.invalid",
+                    "temperature": 0,
+                    "streaming": True,
+                    "top_p": 0,
+                }
+            ]
+            * 2
+        )
 
-    def test_create_embedding_model_aliyun(self, monkeypatch):
-        """create_embedding_model with EMBED_MODEL_TYPE=ALIYUN creates DashScopeEmbeddingsWrapper."""
-        monkeypatch.setenv("EMBED_MODEL_TYPE", "ALIYUN")
-        monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
-        factory = self._make_factory()
-        factory._model_cache.clear()
 
-        with patch("app.infrastructure.llm.factory.DashScopeEmbeddingsWrapper") as mock_wrap:
-            mock_wrap.return_value = "wrapper-mock"
-            result = factory.create_embedding_model()
+@pytest.mark.parametrize(
+    "base_url,expected",
+    [
+        ("http://localhost:11434", {"trust_env": False}),
+        ("http://127.0.0.1:11434", {"trust_env": False}),
+        ("http://[::1]:11434", {"trust_env": False}),
+        ("https://ollama.example.test", {}),
+    ],
+)
+def test_embedding_factory_uses_explicit_endpoint_and_loopback_proxy_boundary(base_url, expected, monkeypatch):
+    config = EmbeddingConfig.from_env({"OLLAMA_BASE_URL": base_url, "TEXT_EMBEDDING_MODEL_NAME": "snapshot"})
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ambient")
+    captured = []
+    with patch("langchain_ollama.OllamaEmbeddings", lambda **kwargs: captured.append(kwargs) or object()):
+        first = EmbedModelFactory().create(config)
+        second = EmbedModelFactory().create(config)
+    assert first is not second
+    assert captured == [{"model": "snapshot", "base_url": base_url, "client_kwargs": expected}] * 2
 
-        assert result == "wrapper-mock"
-        factory.close()
 
-    def test_create_embedding_model_invalid_type(self, monkeypatch):
-        """When EMBED_MODEL_TYPE is invalid, raise ValueError."""
-        monkeypatch.setenv("EMBED_MODEL_TYPE", "INVALID")
-        factory = self._make_factory()
-        factory._model_cache.clear()
+def test_remote_ollama_keeps_environment_proxy_support():
+    assert _ollama_client_kwargs("https://ollama.example.com") == {}
 
-        with pytest.raises(ValueError, match="不支持的 EMBED_MODEL_TYPE"):
-            factory.create_embedding_model()
-        factory.close()
 
-    def test_create_embedding_model_caches(self, monkeypatch):
-        """Same embed type should return the same instance from cache."""
-        monkeypatch.setenv("EMBED_MODEL_TYPE", "OLLAMA")
-        factory = self._make_factory()
-        factory._model_cache.clear()
+def test_invalid_provider_cannot_silently_construct_another_backend():
+    with pytest.raises(ValueError):
+        ChatModelFactory().create(ChatConfig(provider="INVALID"))
+    with pytest.raises(ValueError):
+        EmbedModelFactory().create(EmbeddingConfig(provider="INVALID"))
+    with pytest.raises(ValueError):
+        RerankerFactory().create(RerankerConfig(), kind="INVALID")
 
-        with patch("langchain_ollama.OllamaEmbeddings") as mock_emb:
-            mock_emb.return_value = "m"
-            a = factory.create_embedding_model()
-            b = factory.create_embedding_model()
 
-        assert a is b
-        # Model is built only once
-        assert mock_emb.call_count == 1
-        factory.close()
-
-    def test_generator_deprecated(self, monkeypatch):
-        """generator() should issue a DeprecationWarning."""
-        monkeypatch.setenv("EMBED_MODEL_TYPE", "OLLAMA")
-        factory = self._make_factory()
-        factory._model_cache.clear()
-
-        with patch("langchain_ollama.OllamaEmbeddings") as mock_emb:
-            mock_emb.return_value = "m"
-            with warnings.catch_warnings(record=True) as captured:
-                warnings.simplefilter("always")
-                factory.generator()
-
-        assert any(issubclass(w.category, DeprecationWarning) for w in captured)
-        factory.close()
-
-    def test_close_closes_dashscope_wrappers(self):
-        """close() should call close() on each DashScopeEmbeddingsWrapper in cache."""
-        factory = self._make_factory()
-        wrapper = MagicMock(spec=DashScopeEmbeddingsWrapper)
-        factory._model_cache["k"] = wrapper
-        factory.close()
-        wrapper.close.assert_called_once()
-        assert factory._model_cache == {}
+def test_reranker_factory_creates_independent_lightweight_scorers():
+    config = RerankerConfig(local_path="missing")
+    first = RerankerFactory().create(config)
+    second = RerankerFactory().create(config)
+    cross = RerankerFactory().create(config, kind="cross_encoder")
+    try:
+        assert first is not second and first is not cross
+        assert (
+            first.readiness()["status"] == second.readiness()["status"] == cross.readiness()["status"] == "not_loaded"
+        )
+    finally:
+        first.close()
+        second.close()
+        cross.close()

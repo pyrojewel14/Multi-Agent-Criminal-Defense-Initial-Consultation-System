@@ -5,7 +5,10 @@ from dataclasses import replace
 import pytest
 import torch
 
-from app.knowledge.retrieval.config import RerankerConfig, RetrievalConfig
+from app.infrastructure.llm.config import RerankerConfig
+from app.infrastructure.llm.manager import ModelManager
+from app.infrastructure.llm.rerankers import QwenReranker
+from app.knowledge.retrieval.config import RetrievalConfig
 from app.knowledge.retrieval.models import (
     ChannelResult,
     RetrievalCandidate,
@@ -14,8 +17,6 @@ from app.knowledge.retrieval.models import (
     StageStatus,
 )
 from app.knowledge.retrieval.pipeline import RetrievalPipeline
-from app.knowledge.retrieval.rerankers import QwenReranker
-from app.knowledge.wiring import KnowledgeResources
 
 
 @pytest.mark.parametrize("requested", ["metal", "mps:0"])
@@ -25,12 +26,12 @@ def test_invalid_device_rejected_before_allocating_model(requested):
 
 
 def test_device_setting_changes_cached_scorer_without_loading_model():
-    resources = KnowledgeResources()
+    resources = ModelManager()
     config = RerankerConfig(device="cpu")
     try:
-        cpu = resources.scorer(config)
-        mps = resources.scorer(replace(config, device="mps"))
-        assert cpu is resources.scorer(config)
+        cpu = resources.get_reranker(config)
+        mps = resources.get_reranker(replace(config, device="mps"))
+        assert cpu is resources.get_reranker(config)
         assert cpu is not mps
         assert cpu.config.device == "cpu" and mps.config.device == "mps"
         assert cpu.readiness()["status"] == mps.readiness()["status"] == "not_loaded"

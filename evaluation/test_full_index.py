@@ -137,7 +137,7 @@ async def test_exact_id_verifies_chroma_integrity_without_embedding_recall(tmp_p
     monkeypatch.setenv("TEXT_EMBEDDING_MODEL_NAME", "test")
     monkeypatch.setenv("EMBED_MODEL_TYPE", "OLLAMA")
 
-    async def tags(self, url):
+    async def tags(self, url, **kwargs):
         return httpx.Response(
             200,
             json={"models": [{"name": "test", "digest": "test-digest"}]},
@@ -149,21 +149,24 @@ async def test_exact_id_verifies_chroma_integrity_without_embedding_recall(tmp_p
 
     monkeypatch.setattr(httpx.AsyncClient, "get", tags)
     monkeypatch.setattr(httpx.AsyncClient, "post", reject_post)
-    service = build_law_search_service(profile="full")
-    searched = await service.search("第133条之1", user_id="evaluation")
-    result = searched.as_laws()
-    assert result[0]["article_number"] == "第一百三十三条之一"
-    assert "醉酒驾驶机动车" in result[0]["content"]
-    assert searched.search.retrieval_status["method"] == "article_id_index"
-    assert searched.search.retrieval_status["rerank"] == "skipped_exact"
-    assert (await service.search("第199条", user_id="evaluation")).as_laws() == []
-    collection = chromadb.PersistentClient(path=str(target)).get_collection("full_law", embedding_function=None)
-    identifier = collection.get(where={"article_id": "第133条之一"})["ids"][0]
-    collection.update(ids=[identifier], documents=["tampered"], embeddings=[[1.0, 0.0]])
-    rejected = await service.search("第133条之1", user_id="evaluation")
-    assert rejected.search.dependency_failed is True
-    assert rejected.search.retrieval_status["degraded"] is True
-    assert rejected.search.retrieval_status["integrity_error"] == "ValueError"
-    assert rejected.as_laws()[0]["data_source"] == "json_keyword"
-    assert "醉酒驾驶机动车" in rejected.as_laws()[0]["content"]
-    assert {origin.channel for candidate in rejected.search.candidates for origin in candidate.origins} == {"exact"}
+    from evaluation.model_runtime import evaluation_runtime
+
+    async with evaluation_runtime() as (manager, resources):
+        service = build_law_search_service(profile="full", resources=resources, model_manager=manager)
+        searched = await service.search("第133条之1", user_id="evaluation")
+        result = searched.as_laws()
+        assert result[0]["article_number"] == "第一百三十三条之一"
+        assert "醉酒驾驶机动车" in result[0]["content"]
+        assert searched.search.retrieval_status["method"] == "article_id_index"
+        assert searched.search.retrieval_status["rerank"] == "skipped_exact"
+        assert (await service.search("第199条", user_id="evaluation")).as_laws() == []
+        collection = chromadb.PersistentClient(path=str(target)).get_collection("full_law", embedding_function=None)
+        identifier = collection.get(where={"article_id": "第133条之一"})["ids"][0]
+        collection.update(ids=[identifier], documents=["tampered"], embeddings=[[1.0, 0.0]])
+        rejected = await service.search("第133条之1", user_id="evaluation")
+        assert rejected.search.dependency_failed is True
+        assert rejected.search.retrieval_status["degraded"] is True
+        assert rejected.search.retrieval_status["integrity_error"] == "ValueError"
+        assert rejected.as_laws()[0]["data_source"] == "json_keyword"
+        assert "醉酒驾驶机动车" in rejected.as_laws()[0]["content"]
+        assert {origin.channel for candidate in rejected.search.candidates for origin in candidate.origins} == {"exact"}

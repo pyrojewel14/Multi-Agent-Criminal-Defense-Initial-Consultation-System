@@ -8,9 +8,10 @@ from fastapi import UploadFile
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
+from app.infrastructure.llm.config import RerankerConfig
+from app.infrastructure.llm.manager import get_model_manager
+from app.infrastructure.llm.rerankers import CrossEncoderReranker, QwenReranker
 from app.knowledge import wiring
-from app.knowledge.retrieval.config import RerankerConfig
-from app.knowledge.retrieval.rerankers import CrossEncoderReranker, QwenReranker
 from app.knowledge.storage.chroma import ChromaSource, ChromaStore
 
 
@@ -36,6 +37,7 @@ class Embedding:
 @pytest.mark.asyncio
 async def test_new_upload_collection_requires_explicit_initialization_and_shares_lazy_embedding(source, tmp_path):
     resources = wiring.KnowledgeResources()
+    manager = get_model_manager()
     model, created = Embedding(), []
 
     def factory():
@@ -50,10 +52,11 @@ async def test_new_upload_collection_requires_explicit_initialization_and_shares
         create_missing=True,
         md5_directory=tmp_path / "hashes",
         resources=resources,
+        model_manager=manager,
         embedding_factory=factory,
         env={"LAW_FULL_RERANK_ENABLED": "false"},
     )
-    resources.readiness()
+    manager.readiness()
     assert created == []
     assert (await service.search("anything", user_id=None)).candidates == ()
     assert created == []
@@ -117,19 +120,21 @@ def test_existing_collection_is_never_recreated_and_nonmissing_errors_propagate(
 @pytest.mark.parametrize("kind,expected", [("causal_lm", QwenReranker), ("cross_encoder", CrossEncoderReranker)])
 def test_document_reranker_uses_shared_entry_and_keeps_types_separate(source, tmp_path, kind, expected):
     resources = wiring.KnowledgeResources()
+    manager = get_model_manager()
     config = RerankerConfig()
-    law_scorer = resources.scorer(config)
+    law_scorer = manager.get_reranker(config)
     service = wiring.build_document_services(
         source=source,
         create_missing=True,
         md5_directory=tmp_path,
         resources=resources,
+        model_manager=manager,
         reranker_type=kind,
         env={},
     )
     assert isinstance(service.pipeline.reranker, expected)
-    assert resources.scorer(config) is law_scorer
-    assert service.pipeline.reranker is resources.scorer(config, kind=kind)
+    assert manager.get_reranker(config) is law_scorer
+    assert service.pipeline.reranker is manager.get_reranker(config, kind=kind)
     assert (service.pipeline.reranker is law_scorer) == (kind == "causal_lm")
     assert service.pipeline.reranker.readiness()["status"] == "not_loaded"
     resources.close()
@@ -137,6 +142,7 @@ def test_document_reranker_uses_shared_entry_and_keeps_types_separate(source, tm
 
 def test_readiness_and_close_do_not_create_embedding(source, tmp_path):
     resources = wiring.KnowledgeResources()
+    manager = get_model_manager()
 
     def forbidden():
         raise AssertionError("model construction forbidden")
@@ -144,7 +150,7 @@ def test_readiness_and_close_do_not_create_embedding(source, tmp_path):
     wiring.build_document_services(
         source=source, create_missing=True, md5_directory=tmp_path, resources=resources, embedding_factory=forbidden
     )
-    resources.readiness()
+    manager.readiness()
     resources.close()
     resources.close()
 
@@ -163,11 +169,13 @@ async def test_async_embedding_injection_does_not_fall_back_to_another_splitter_
         return model
 
     resources = wiring.KnowledgeResources()
+    manager = get_model_manager()
     service = wiring.build_document_services(
         source=source,
         create_missing=True,
         md5_directory=tmp_path,
         resources=resources,
+        model_manager=manager,
         embedding_factory=forbidden,
         embed_documents=model.aembed_documents,
         embed_query=model.aembed_query,
@@ -214,11 +222,13 @@ async def test_default_embedding_uses_assembly_snapshot_and_closes_only_initiali
 
     monkeypatch.setattr(langchain_ollama, "OllamaEmbeddings", create)
     resources = wiring.KnowledgeResources()
+    manager = get_model_manager()
     service = wiring.build_document_services(
         source=source,
         create_missing=True,
         md5_directory=tmp_path,
         resources=resources,
+        model_manager=manager,
         env={
             "LAW_FULL_RERANK_ENABLED": "false",
             "EMBED_MODEL_TYPE": "OLLAMA",
@@ -236,6 +246,7 @@ async def test_default_embedding_uses_assembly_snapshot_and_closes_only_initiali
     assert created[0]["base_url"] == "http://127.0.0.1:12345"
     resources.close()
     resources.close()
+    manager.close()
     assert closed == [True]
 
 
@@ -253,11 +264,13 @@ async def test_aliyun_client_uses_snapshot_and_is_closed(source, tmp_path, monke
 
     monkeypatch.setattr(factory, "DashScopeEmbeddingsWrapper", create)
     resources = wiring.KnowledgeResources()
+    manager = get_model_manager()
     service = wiring.build_document_services(
         source=source,
         create_missing=True,
         md5_directory=tmp_path,
         resources=resources,
+        model_manager=manager,
         env={
             "LAW_FULL_RERANK_ENABLED": "false",
             "EMBED_MODEL_TYPE": "ALIYUN",
@@ -274,19 +287,21 @@ async def test_aliyun_client_uses_snapshot_and_is_closed(source, tmp_path, monke
     ]
     resources.close()
     resources.close()
+    manager.close()
     assert closed == [True]
 
 
 @pytest.mark.asyncio
 async def test_default_management_entry_initializes_once_and_reopens_existing_collection(tmp_path, monkeypatch):
     resources = wiring.KnowledgeResources()
+    manager = get_model_manager()
     monkeypatch.setattr(wiring, "knowledge_resources", resources)
     monkeypatch.setenv("CHROMA_PERSIST_DIRECTORY", str(tmp_path / "fresh-upload-store"))
     monkeypatch.setenv("CHROMA_COLLECTION_NAME", "fresh-upload-store")
     monkeypatch.setenv("CHROMA_MD5_STORE", str(tmp_path / "hashes" / "md5_hex_store.txt"))
     monkeypatch.setenv("LAW_FULL_RERANK_ENABLED", "false")
     model = Embedding()
-    monkeypatch.setattr(wiring, "_create_document_embedding", lambda values: model)
+    monkeypatch.setattr(manager._embedding_factory, "create", lambda config: model)
     service = wiring.get_document_service()
     assert wiring.get_document_service() is service
     await service.handle_add_vector_single(UploadFile(file=BytesIO(b"fresh content"), filename="case.txt"), "alice")
@@ -296,65 +311,3 @@ async def test_default_management_entry_initializes_once_and_reopens_existing_co
     assert reopened.repository.store._collection.id == collection_id
     assert (await reopened.handle_get_document_detail("alice", "case.txt"))["content"] == "fresh content"
     resources.close()
-
-
-def test_sync_close_releases_both_real_ollama_http_clients_without_network():
-    resources = wiring.KnowledgeResources()
-    proxy = resources.document_embeddings(
-        values={"EMBED_MODEL_TYPE": "OLLAMA", "OLLAMA_BASE_URL": "http://127.0.0.1:1"}
-    )
-    model = proxy._get_model()
-    assert not model._client._client.is_closed
-    assert not model._async_client._client.is_closed
-    try:
-        resources.close()
-        assert model._client._client.is_closed
-        assert model._async_client._client.is_closed
-    finally:
-        # Also keep the RED run from leaking the actual clients.
-        import asyncio
-
-        model._client.close()
-        asyncio.run(model._async_client.close())
-
-
-@pytest.mark.asyncio
-async def test_sync_close_in_running_loop_requires_awaited_async_close_without_losing_clients():
-    resources = wiring.KnowledgeResources()
-    proxy = resources.document_embeddings(
-        values={"EMBED_MODEL_TYPE": "OLLAMA", "OLLAMA_BASE_URL": "http://127.0.0.1:1"}
-    )
-    model = proxy._get_model()
-    try:
-        with pytest.raises(RuntimeError, match="aclose"):
-            resources.close()
-        assert not model._client._client.is_closed
-        assert not model._async_client._client.is_closed
-        await resources.aclose()
-        await resources.aclose()
-        assert model._client._client.is_closed
-        assert model._async_client._client.is_closed
-    finally:
-        model._client.close()
-        await model._async_client.close()
-
-
-@pytest.mark.parametrize("endpoint_setting", ["DASHSCOPE_BASE_URL", "ALIYUN_BASE_URL"])
-def test_aliyun_endpoint_snapshot_ignores_later_environment(endpoint_setting, monkeypatch):
-    snapshot = {
-        "EMBED_MODEL_TYPE": "ALIYUN",
-        "DASHSCOPE_API_KEY": "fake-snapshot-key",
-        endpoint_setting: "https://configured.example/v1",
-    }
-    monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://ambient.example/v1")
-    model = wiring._create_document_embedding(snapshot)
-    try:
-        assert str(model.client.base_url) == "https://configured.example/v1/"
-    finally:
-        model.close()
-
-
-def test_aliyun_missing_snapshot_key_cannot_borrow_ambient_key(monkeypatch):
-    monkeypatch.setenv("DASHSCOPE_API_KEY", "fake-ambient-key")
-    with pytest.raises(ValueError, match="API Key"):
-        wiring._create_document_embedding({"EMBED_MODEL_TYPE": "ALIYUN"})

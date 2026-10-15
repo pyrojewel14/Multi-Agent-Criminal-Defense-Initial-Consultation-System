@@ -31,7 +31,12 @@ class CloudCapture:
     """临时适配思考级别并记录实际云请求；退出时恢复工厂、流方法和事件钩子。"""
 
     def __init__(
-        self, model: str, thinking: str | bool, raw_output: Path, allowed_facts: set[str], articles: dict[str, Any]
+        self,
+        model: str,
+        thinking: str | bool,
+        raw_output: Path,
+        allowed_facts: set[str],
+        articles: dict[str, Any],
     ):
         self.model = model
         self.thinking = thinking
@@ -63,37 +68,42 @@ class CloudCapture:
             ):
                 raise ValueError("工具要件超出公开快照")
 
-    def __enter__(self):
+    async def __aenter__(self):
+        from app.infrastructure.llm.gateway import llm_gateway
+        from app.infrastructure.llm.manager import ModelManager
         from langchain_ollama import ChatOllama
 
-        from app.infrastructure.llm.factory import chat_model_factory
-
-        self.original_factory = chat_model_factory.create_precise_model
         self.original_stream = ChatOllama._acreate_chat_stream
-
-        def factory(temperature: float = 0.1):
-            model = self.original_factory(temperature)
-            if not isinstance(model, ChatOllama) or model.model != self.model:
-                raise ValueError("禁止回落至其他供应商或本地模型")
-            return model.model_copy(update={"reasoning": self.thinking})
-
+        self.original_manager = llm_gateway._model_manager
         owner = self
 
-        async def stream(self, messages, stop=None, **kwargs):
-            async for chunk in owner.capture(self, messages, stop, **kwargs):
+        class CaptureManager(ModelManager):
+            def get_chat(self, config):
+                # 原对象先登记所有权，再复制 thinking；防御校验失败也由本轮关闭客户端。
+                if config.provider != "OLLAMA" or config.model_name != owner.model:
+                    raise ValueError("禁止回落至其他供应商或本地模型")
+                model = super().get_chat(config)
+                if not isinstance(model, ChatOllama) or model.model != owner.model:
+                    raise ValueError("禁止回落至其他供应商或本地模型")
+                return model.model_copy(update={"reasoning": owner.thinking})
+
+        self.model_manager = CaptureManager()
+
+        async def stream(model, messages, stop=None, **kwargs):
+            async for chunk in owner.capture(model, messages, stop, **kwargs):
                 yield chunk
 
-        chat_model_factory.create_precise_model = factory
+        llm_gateway._model_manager = self.model_manager
         ChatOllama._acreate_chat_stream = stream
         return self
 
-    def __exit__(self, *_):
+    async def __aexit__(self, *_):
+        from app.infrastructure.llm.gateway import llm_gateway
         from langchain_ollama import ChatOllama
 
-        from app.infrastructure.llm.factory import chat_model_factory
-
-        chat_model_factory.create_precise_model = self.original_factory
+        llm_gateway._model_manager = self.original_manager
         ChatOllama._acreate_chat_stream = self.original_stream
+        await self.model_manager.aclose()
 
     async def capture(self, model, messages, stop=None, **kwargs):
         """保存无请求头的实际HTTP载荷与原始公开案例响应，部分流不伪填token。"""
@@ -159,8 +169,9 @@ class CloudCapture:
 
 async def evaluate(args) -> dict:
     """核实云能力后复用原正式评分；外部拒绝不回落，本机配置不永久修改。"""
-    from app.knowledge.law.repository import _build_article_index
     from app.knowledge.law.corpus import load_criminal_law_data
+    from app.knowledge.law.repository import _build_article_index
+
     from evaluation.run_full_eval import run_evaluation
 
     if not args.model.endswith(("-cloud", ":cloud")):
@@ -188,16 +199,26 @@ async def evaluate(args) -> dict:
             raise ValueError("show未确认该模型支持工具调用")
         response = await client.get("/api/tags")
         response.raise_for_status()
-        tag = next((item for item in response.json()["models"] if item["name"] == args.model), None)
+        tag = next(
+            (item for item in response.json()["models"] if item["name"] == args.model),
+            None,
+        )
     corpus = load_criminal_law_data(profile="full")
-    with CloudCapture(
+    async with CloudCapture(
         args.model,
         thinking,
         args.raw_output,
         masked_case_facts(selected, args.query_mode),
         _build_article_index(corpus),
     ) as capture:
-        result = await run_evaluation("live-lawref", args.output, args.case, args.query_mode, cases_path=args.cases)
+        result = await run_evaluation(
+            "live-lawref",
+            args.output,
+            args.case,
+            args.query_mode,
+            cases_path=args.cases,
+            model_manager=capture.model_manager,
+        )
     result["actual_execution"] = {
         "requested_model": args.model,
         "returned_models": sorted({row["last_response"]["model"] for row in capture.records if row["last_response"]}),

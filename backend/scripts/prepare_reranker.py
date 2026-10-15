@@ -10,8 +10,8 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.knowledge.retrieval.config import RerankerConfig
-from app.knowledge.retrieval.rerankers._execution import resolve_local_path
+from app.infrastructure.llm.config import RerankerConfig
+from app.infrastructure.llm.rerankers._execution import resolve_local_path
 
 
 def prepare_model(config: RerankerConfig, *, download: bool = False) -> str:

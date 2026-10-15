@@ -9,17 +9,24 @@ from main import app
 
 
 @pytest.fixture(autouse=True)
-def isolated_runtime(monkeypatch):
+async def isolated_runtime(monkeypatch):
     import main
     from app.consultation.workflow import ConsultationOrchestrator
     from app.infrastructure.database import db
     from app.infrastructure.database.readiness import SQLiteReadiness
+    from app.infrastructure.llm import manager as manager_module
+    from app.knowledge.resources import KnowledgeResources
 
+    manager = manager_module.ModelManager()
+    monkeypatch.setattr(manager_module, "_default_manager", manager)
+    monkeypatch.setattr(main, "knowledge_resources", KnowledgeResources())
     raw = SQLiteReadiness()
     monkeypatch.setattr(db, "database_readiness", raw)
     monkeypatch.setattr(main, "database_readiness", raw)
     monkeypatch.setattr(main, "checkpoint_readiness", SQLiteReadiness())
     monkeypatch.setattr(main, "orchestrator", ConsultationOrchestrator())
+    yield
+    await manager_module.get_model_manager().aclose()
 
 
 @pytest.mark.asyncio
@@ -41,7 +48,7 @@ async def test_ready_real_sqlite_startup_shutdown_and_no_model_call(tmp_path, mo
     monkeypatch.setattr(main, "preflight_law_knowledge", lambda: None)
     monkeypatch.setattr(main, "init_redis", AsyncMock())
     monkeypatch.setattr(main, "close_redis", AsyncMock())
-    monkeypatch.setattr(main.knowledge_resources, "readiness", lambda: {"available": True})
+    monkeypatch.setattr(main.get_model_manager(), "reranker_readiness", lambda: {"available": True})
 
     async def forbidden(*args, **kwargs):
         pytest.fail("readiness must never call models")
@@ -79,7 +86,7 @@ async def test_ready_real_sqlite_startup_shutdown_and_no_model_call(tmp_path, mo
                 with pytest.raises(asyncio.CancelledError):
                     await cancelled
             assert (await client.get("/ready")).json()["status"] == "ready"
-            with patch.object(main.knowledge_resources, "readiness", return_value={"available": False}):
+            with patch.object(main.get_model_manager(), "reranker_readiness", return_value={"available": False}):
                 assert (await client.get("/ready")).json()["status"] == "degraded"
             # 当前驱动失效时不重连，也不以配置冒充可用。
             await db.database_readiness._connection.close()
@@ -118,7 +125,7 @@ async def test_readiness_distinguishes_api_liveness_from_reranker_error():
         "type": "cross_encoder",
     }
     with patch("main.knowledge_resources", create=True) as reorder_service:
-        reorder_service.readiness.return_value = reranker_state
+        reorder_service.law_reranker_readiness.return_value = reranker_state
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             health_response = await client.get("/health")
             readiness_response = await client.get("/ready")
@@ -141,21 +148,19 @@ async def test_readiness_distinguishes_api_liveness_from_reranker_error():
 @pytest.mark.asyncio
 async def test_lifespan_awaits_real_document_client_shutdown(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
-    import main
-    from app.knowledge.wiring import KnowledgeResources
 
-    resources = KnowledgeResources()
-    proxy = resources.document_embeddings(
-        values={"EMBED_MODEL_TYPE": "OLLAMA", "OLLAMA_BASE_URL": "http://127.0.0.1:1"}
-    )
+    import main
+    from app.infrastructure.llm.config import EmbeddingConfig
+
+    manager = main.get_model_manager()
+    proxy = manager.get_embedding(EmbeddingConfig.from_env(
+        {"EMBED_MODEL_TYPE": "OLLAMA", "OLLAMA_BASE_URL": "http://127.0.0.1:1"}
+    ))
     model = proxy._get_model()
-    monkeypatch.setattr(main, "knowledge_resources", resources)
     monkeypatch.setattr(main, "preflight_law_knowledge", lambda: None)
     monkeypatch.setenv("LANGGRAPH_CHECKPOINT_DB_PATH", str(tmp_path / "checkpoint.db"))
     for name in ("init_db", "init_redis", "close_db", "close_redis"):
         monkeypatch.setattr(main, name, AsyncMock())
-    monkeypatch.setattr(main.chat_model_factory, "close", lambda: None)
-    monkeypatch.setattr(main.embed_model_factory, "close", lambda: None)
     try:
         async with main.lifespan(main.app):
             assert not model._client._client.is_closed
@@ -165,3 +170,99 @@ async def test_lifespan_awaits_real_document_client_shutdown(tmp_path, monkeypat
     finally:
         model._client.close()
         await model._async_client.close()
+
+
+@pytest.mark.asyncio
+async def test_repeated_lifespan_explicitly_replaces_closed_model_owner(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    import main
+
+    monkeypatch.setattr(main, "preflight_law_knowledge", lambda: None)
+    monkeypatch.setenv("LANGGRAPH_CHECKPOINT_DB_PATH", str(tmp_path / "checkpoint.db"))
+    for name in ("init_db", "init_redis", "close_db", "close_redis"):
+        monkeypatch.setattr(main, name, AsyncMock())
+    original = main.get_model_manager()
+    async with main.lifespan(app):
+        assert main.get_model_manager() is original
+    assert original.closed
+    # 提供器本身不隐式重开；新 lifespan 才建立下一位所有者。
+    assert main.get_model_manager() is original
+    async with main.lifespan(app):
+        replacement = main.get_model_manager()
+        assert replacement is not original and not replacement.closed
+    assert replacement.closed
+
+
+@pytest.mark.asyncio
+async def test_domain_configuration_error_overrides_model_readiness(monkeypatch):
+    import main
+
+    state = {"available": False, "status": "error", "error": "invalid_law_model", "type": "causal_lm"}
+    monkeypatch.setattr(main.knowledge_resources, "law_reranker_readiness", lambda: state)
+    manager = main.get_model_manager()
+    monkeypatch.setattr(manager, "reranker_readiness", lambda: pytest.fail("domain error must take precedence"))
+    assert (await main.readiness_check())["dependencies"]["reranker"] == state
+
+
+@pytest.mark.asyncio
+async def test_model_close_failure_still_closes_database_and_redis(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    import main
+
+    monkeypatch.setattr(main, "preflight_law_knowledge", lambda: None)
+    monkeypatch.setenv("LANGGRAPH_CHECKPOINT_DB_PATH", str(tmp_path / "checkpoint.db"))
+    for name in ("init_db", "init_redis", "close_db", "close_redis"):
+        monkeypatch.setattr(main, name, AsyncMock())
+    manager = main.get_model_manager()
+    original = manager.aclose
+    monkeypatch.setattr(manager, "aclose", AsyncMock(side_effect=RuntimeError("model close failed")))
+    try:
+        with pytest.raises(RuntimeError, match="model close failed"):
+            async with main.lifespan(app):
+                pass
+        main.close_redis.assert_awaited_once()
+        main.close_db.assert_awaited_once()
+    finally:
+        monkeypatch.setattr(manager, "aclose", original)
+
+
+@pytest.mark.asyncio
+async def test_next_lifespan_retries_failed_owner_before_replacing_it(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    import main
+    from app.infrastructure.llm.config import ChatConfig
+    from app.infrastructure.llm.manager import ModelManager
+
+    calls = []
+
+    class Model:
+        def close(self):
+            calls.append(True)
+            if len(calls) == 1:
+                raise RuntimeError("temporary close failure")
+
+    class Factory:
+        def create(self, config):
+            return Model()
+
+    owner = ModelManager(chat_factory=Factory())
+    main.set_model_manager(owner)
+    owner.get_chat(ChatConfig(provider="OLLAMA"))
+    monkeypatch.setattr(main, "preflight_law_knowledge", lambda: None)
+    monkeypatch.setenv("LANGGRAPH_CHECKPOINT_DB_PATH", str(tmp_path / "checkpoint.db"))
+    for name in ("init_db", "init_redis", "close_db", "close_redis"):
+        monkeypatch.setattr(main, name, AsyncMock())
+    try:
+        with pytest.raises(RuntimeError, match="temporary close failure"):
+            async with main.lifespan(app):
+                pass
+        assert owner.closed and owner.readiness()["chat_instances"] == 1
+        async with main.lifespan(app):
+            assert len(calls) == 2
+            assert owner.readiness()["chat_instances"] == 0
+            assert main.get_model_manager() is not owner
+    finally:
+        await owner.aclose()

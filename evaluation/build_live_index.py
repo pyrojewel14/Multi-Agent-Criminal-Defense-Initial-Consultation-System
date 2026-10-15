@@ -39,7 +39,12 @@ def build_index(
     embed_documents: Callable[[list[str]], list[list[float]]],
 ) -> dict:
     """Validate provenance first; never overwrite an existing index directory."""
-    from app.knowledge.storage.chroma import ChromaSource, ChromaStore, StoredRow, validate_embedding
+    from app.knowledge.storage.chroma import (
+        ChromaSource,
+        ChromaStore,
+        StoredRow,
+        validate_embedding,
+    )
 
     snapshot_path = Path(snapshot_path).resolve()
     index_dir = Path(index_dir).resolve()
@@ -144,16 +149,22 @@ def main() -> int:
     digests = {item.get("name"): item.get("digest") for item in tags.get("models", [])}
     if not digests.get(model):
         raise RuntimeError("embedding model unavailable")
-    from app.infrastructure.llm.factory import embed_model
+    from app.infrastructure.llm.config import EmbeddingConfig
+    from app.infrastructure.llm.manager import ModelManager
 
-    manifest = build_index(
-        SNAPSHOT,
-        args.index_dir,
-        args.collection,
-        model,
-        digests[model],
-        embed_model.embed_documents,
-    )
+    manager = ModelManager()
+    try:
+        embedding = manager.get_embedding(EmbeddingConfig.from_env())
+        manifest = build_index(
+            SNAPSHOT,
+            args.index_dir,
+            args.collection,
+            model,
+            digests[model],
+            embedding.embed_documents,
+        )
+    finally:
+        manager.close()
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
     return 0
 

@@ -441,10 +441,13 @@ class TestGetDocumentChunks:
 @pytest.fixture
 def real_document_service(tmp_path):
     import chromadb
+
+    from app.infrastructure.llm.manager import ModelManager
     from app.knowledge.storage.chroma import ChromaSource
     from app.knowledge.wiring import KnowledgeResources, build_document_services
 
     resources = KnowledgeResources()
+    manager = ModelManager()
     client = chromadb.PersistentClient(path=str(tmp_path / "uploads"))
 
     async def embed_documents(texts):
@@ -458,12 +461,14 @@ def real_document_service(tmp_path):
         create_missing=True,
         md5_directory=tmp_path / "hashes",
         resources=resources,
+        model_manager=manager,
         embed_documents=embed_documents,
         embed_query=embed_query,
         env={"LAW_FULL_RERANK_ENABLED": "false"},
     )
     yield service
     resources.close()
+    manager.close()
 
 
 @pytest.mark.asyncio
@@ -501,6 +506,7 @@ async def test_real_upload_management_and_delete_reupload_contract(admin_app, re
 @pytest.mark.asyncio
 async def test_real_stream_failure_preserves_sse_and_does_not_report_success(admin_app, real_document_service):
     import json
+
     from app.knowledge.wiring import get_document_service
 
     async def fail(texts):

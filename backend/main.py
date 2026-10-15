@@ -23,10 +23,10 @@ from app.errors.register import register_exception_handlers
 from app.infrastructure.database.db import close_db, database_readiness, init_db
 from app.infrastructure.database.readiness import SQLiteReadiness
 from app.infrastructure.database.redis import close_redis, init_redis
-from app.infrastructure.llm.factory import chat_model_factory, embed_model_factory
+from app.infrastructure.llm.manager import ModelManager, get_model_manager, set_model_manager
 from app.infrastructure.logging import get_logger
 from app.knowledge.law.corpus import preflight_law_knowledge
-from app.knowledge.wiring import knowledge_resources
+from app.knowledge.resources import knowledge_resources
 from app.security.rbac import attach_user_to_request
 
 load_dotenv()
@@ -38,6 +38,12 @@ checkpoint_readiness = SQLiteReadiness()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _logger.info("Starting up application...")
+    model_manager = get_model_manager()
+    if model_manager.closed:
+        # 先完成上次失败或取消的清理，不能替换后丢失旧资源的所有权。
+        await model_manager.aclose()
+        model_manager = ModelManager()
+        set_model_manager(model_manager)
     preflight_law_knowledge()
     checkpoint_path = Path(os.getenv("LANGGRAPH_CHECKPOINT_DB_PATH", "./data/langgraph_checkpoints.db"))
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,11 +62,17 @@ async def lifespan(_app: FastAPI):
             checkpoint_readiness.close()
             orchestrator.mark_checkpointer_closed()
             _logger.info("Shutting down application...")
-            await knowledge_resources.aclose()
-            chat_model_factory.close()
-            embed_model_factory.close()
-            await close_redis()
-            await close_db()
+            try:
+                await knowledge_resources.aclose()
+            finally:
+                # 一类资源释放失败不能阻止其余所有者执行退出清理。
+                try:
+                    await model_manager.aclose()
+                finally:
+                    try:
+                        await close_redis()
+                    finally:
+                        await close_db()
             _logger.info("Cleanup completed")
 
 
@@ -105,7 +117,7 @@ async def health_check():
 @app.get("/ready")
 async def readiness_check():
     """保留 HTTP 200，必要存储失败以 JSON not_ready 表示。"""
-    reranker_state = knowledge_resources.readiness()
+    reranker_state = knowledge_resources.law_reranker_readiness() or get_model_manager().reranker_readiness()
     raw_state, checkpoint_state = await asyncio.gather(database_readiness.check(), checkpoint_readiness.check())
     settings = MemorySettings.from_env()
     stores_ready = raw_state["available"] and checkpoint_state["available"]

@@ -67,14 +67,16 @@ async def traced_http(memory_db, monkeypatch, tmp_path):
             )
 
     law_provider = SyntheticLawProvider()
-    monkeypatch.setattr(gateway.chat_model_factory, "create_precise_model", lambda *_: law_provider)
+    monkeypatch.setenv("LLM_TYPE", "OLLAMA")
+    monkeypatch.setattr(gateway.get_model_manager(), "get_chat", lambda *_: law_provider)
 
     import chromadb
-    from app.knowledge.storage.chroma import ChromaSource, ChromaStore, StoredRow
-    from app.knowledge.retrieval.vector import ChromaVectorRetriever
+
     from app.knowledge.retrieval.bm25 import BM25Retriever
     from app.knowledge.retrieval.config import RetrievalConfig
     from app.knowledge.retrieval.pipeline import RetrievalPipeline
+    from app.knowledge.retrieval.vector import ChromaVectorRetriever
+    from app.knowledge.storage.chroma import ChromaSource, ChromaStore, StoredRow
     from app.knowledge.wiring import build_law_search_service
 
     source = ChromaSource("trace-law-snapshot", chromadb.PersistentClient(path=str(tmp_path / "law")), "law")

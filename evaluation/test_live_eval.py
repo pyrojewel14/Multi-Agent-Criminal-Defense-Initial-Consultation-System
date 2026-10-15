@@ -4,8 +4,9 @@ import asyncio
 import hashlib
 import json
 import os
-import pytest
 from pathlib import Path
+
+import pytest
 
 from evaluation.build_live_index import build_index
 from evaluation.run_live_eval import (
@@ -21,13 +22,24 @@ from evaluation.run_live_eval import (
 
 @pytest.fixture
 def evaluation_resources():
-    from app.knowledge.wiring import KnowledgeResources
+    from app.knowledge.resources import KnowledgeResources
 
     resources = KnowledgeResources()
     try:
         yield resources
     finally:
         resources.close()
+
+
+@pytest.fixture
+def evaluation_model_manager():
+    from app.infrastructure.llm.manager import ModelManager
+
+    manager = ModelManager()
+    try:
+        yield manager
+    finally:
+        manager.close()
 
 
 def test_metadata_records_actual_llm_deadlines(monkeypatch):
@@ -191,9 +203,12 @@ def test_runtime_paths_bind_snapshot_without_using_upload_library(monkeypatch):
     assert paths["index_dir"].name == "live_index"
 
 
-def test_snapshot_service_explicit_index_ignores_upload_library(tmp_path, monkeypatch, evaluation_resources):
-    from evaluation.run_live_eval import build_snapshot_search_service
+def test_snapshot_service_explicit_index_ignores_upload_library(
+    tmp_path, monkeypatch, evaluation_resources, evaluation_model_manager
+):
     from app.knowledge.retrieval.config import RetrievalConfig
+
+    from evaluation.run_live_eval import build_snapshot_search_service
 
     index = tmp_path / "snapshot"
     build_index(
@@ -211,6 +226,7 @@ def test_snapshot_service_explicit_index_ignores_upload_library(tmp_path, monkey
 
     service = build_snapshot_search_service(
         resources=evaluation_resources,
+        model_manager=evaluation_model_manager,
         index_dir=index,
         collection="snapshot_collection",
         law_path=LAW_PATH,
@@ -228,16 +244,27 @@ def test_snapshot_service_explicit_index_ignores_upload_library(tmp_path, monkey
     assert not (tmp_path / "do-not-open-upload-library").exists()
 
 
-def test_snapshot_service_rejects_mismatched_manifest_without_fallback(tmp_path, evaluation_resources):
+def test_snapshot_service_rejects_mismatched_manifest_without_fallback(
+    tmp_path, evaluation_resources, evaluation_model_manager
+):
     import pytest
+
     from evaluation.run_live_eval import build_snapshot_search_service
 
     law_path = Path(__file__).resolve().parents[1] / "backend/data/law_knowledge/criminal_law_chapters.json"
     index = tmp_path / "snapshot"
-    build_index(law_path, index, "snapshot_collection", "test", "test-digest", lambda texts: [[1.0] for _ in texts])
+    build_index(
+        law_path,
+        index,
+        "snapshot_collection",
+        "test",
+        "test-digest",
+        lambda texts: [[1.0] for _ in texts],
+    )
     with pytest.raises(ValueError, match="manifest"):
         build_snapshot_search_service(
             resources=evaluation_resources,
+            model_manager=evaluation_model_manager,
             index_dir=index,
             collection="snapshot_collection",
             law_path=law_path,
@@ -254,6 +281,7 @@ def test_snapshot_service_rejects_mismatched_manifest_without_fallback(tmp_path,
     with pytest.raises(ValueError, match="metadata"):
         build_snapshot_search_service(
             resources=evaluation_resources,
+            model_manager=evaluation_model_manager,
             index_dir=index,
             collection="snapshot_collection",
             law_path=law_path,

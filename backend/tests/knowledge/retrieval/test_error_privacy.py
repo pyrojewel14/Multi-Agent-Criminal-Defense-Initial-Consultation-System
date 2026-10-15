@@ -2,7 +2,9 @@
 
 import pytest
 
-from app.knowledge.retrieval.config import RerankerConfig, RetrievalConfig
+from app.infrastructure.llm.config import RerankerConfig
+from app.infrastructure.llm.rerankers import CrossEncoderReranker, QwenReranker
+from app.knowledge.retrieval.config import RetrievalConfig
 from app.knowledge.retrieval.models import (
     ChannelResult,
     RetrievalCandidate,
@@ -11,7 +13,6 @@ from app.knowledge.retrieval.models import (
     StageStatus,
 )
 from app.knowledge.retrieval.pipeline import RetrievalPipeline
-from app.knowledge.retrieval.rerankers import CrossEncoderReranker, QwenReranker
 
 SECRET = "13800138000"
 
