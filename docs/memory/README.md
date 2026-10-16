@@ -121,7 +121,7 @@ ContextBuilder 当前仅对 `fact_intake` 作特殊背景排除；其他任务�
 
 装配顺序是 system → 可装入的摘要 → 可装入的 case → 按完整命令组选择的近期背景 → 当前任务 → 可装入的完整工具历史。先预留 history 的最新完整消息组；该组是 AI tool call 时必须连同全部 observation，是普通纠偏消息时则预留该消息。可选摘要、case 各作为整条背景尝试，随后从新到旧选择 recent/history 组。预算不足可能舍弃整份 case，不是对每个字段进行价值评分。案情背景标明未核实或不可信，调用前仍经过 PII 兼容入口，但当前原样透传；背景标注不能保证模型免于提示注入或事实错误，也不提供 PII 掩码保护。
 
-RAG 检索结果在 LawRef 工具 observation 中随 AI tool call 成组，依据 tool_call_id 校验完整性。只删除完整旧组，保留必要最新组；孤立 ToolMessage、缺失/重复关联 ID 或最新组超预算会明确拒绝。LawRef 另外将已读取条文和要件放入当前任务证据，避免旧工具组淘汰后失去已读依据；这部分也必须适配必要输入预算。完整 observation 是当前局部研究输入，不是跨案记忆检索；`law_research` 持久化的是审计概要。部分知识库 HyDE/文档摘要直接使用 chain，不能把 Gateway 的边界宣称为项目所有模型调用都已受同一预算治理。
+RAG 检索结果先按 [工具输入边界](../knowledge/lawref_response_protocol.md#工具结果的模型输入边界) 精简，再在 LawRef 的 `ToolMessage` 中随 AI tool call 成组，依据 tool_call_id 校验完整性。完整检索和核验记录仍由程序持有，模型消息不携带各路分数、哈希与检索阶段记录。ContextBuilder 只删除完整旧组，保留必要最新组；孤立 ToolMessage、缺失/重复关联 ID 或最新组超预算会明确拒绝。LawRef 另外将已读取条文和要件放入当前任务证据，避免旧工具组淘汰后失去已读依据；这部分也必须适配必要输入预算。模型 observation 是当前局部研究输入，不是跨案记忆检索；`law_research` 持久化的是审计概要。部分知识库 HyDE/文档摘要直接使用 chain，不能把 Gateway 的边界宣称为项目所有模型调用都已受同一预算治理。
 
 ## 配置与预算
 

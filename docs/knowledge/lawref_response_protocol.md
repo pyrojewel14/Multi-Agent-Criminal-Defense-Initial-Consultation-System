@@ -50,6 +50,18 @@ backend/.venv/bin/python evaluation/run_local_lawref.py \
 
 修正后的[真实两例结果](../../evaluation/evidence/lawref_9b_tool_feedback_two_2026-10-16.json)为 2/2，六次 chat 均 HTTP 200、候选身份与载荷核验通过，轨迹均为搜索、读取、最终答案。仍保持 8192 窗口、7168 输入预算及 1024 输出上限；这是评测主动设置的值，不代表模型能力上限。两例评分完成后的临时汇总脚本发生属性访问错误，原进程退出 1；原始评分和响应均已保存，汇总从原产物离线补齐，没有重新推理或改分。其余四例、完整咨询和 Docker 索引均未因此重新验收。
 
+## 工具结果的模型输入边界
+
+`LegalToolRegistry.execute()` 仍返回完整工具结果；`run_legal_research()` 在写入关联 `ToolMessage` 前通过 `_model_observation()` 按允许字段筛选，不修改检索服务结果或内部 `searched` 记录。
+
+- `search_laws` 按原候选顺序只发送 `article_id`、`title`、`source`、`article_status`、`coverage_eligible`，整体保留 `rag_dependency_failed`。各通道分数、排名字段、origins、检索阶段与哈希不进入模型消息。
+- `get_article` 保留正文、原有完整构成要件、来源、覆盖资格与标注使用状态；正文来源保留 URL、复核状态和时间适用范围，省去校验哈希及语法解析辅助结构。
+- `search_elements` 保留条号、原有完整要件、复核状态及标注来源。工具执行状态、关联 ID、多调用拒绝反馈不变。
+
+来源验证、正文绑定、已搜索／已读取检查和最终要件校验仍由程序执行。精简模型输入不删除内部核验材料，也不把项目标注变成专业法律审核。模型窗口、输入预算、输出预留和估算算法没有随此修改。
+
+2026-10-17 的[真实原六例复测](../../evaluation/evidence/lawref_9b_compact_context_2026-10-17.json)为 **5/6**：21 次 chat 均 HTTP 200，模型身份与载荷核验通过，六例均越过检索后的模型调用，未出现上下文预算拒绝。继续使用 8192 窗口、7168 输入预算、1024 输出上限及四轮限制。醉驾自然语言例先被拒绝一次多工具请求，纠偏后读取成功，但最终把完整替代分支要件缩写，触发 `unknown_element`，四轮结束未接受答案；整轮退出码 1。保留完整要件名校验，不改案例、gold 或评分器。该证据只覆盖一轮固定组件评测，不代表完整咨询、容器索引或法律专业验收。
+
 ## 案情脱敏边界
 
 当前已停用案情 PII 掩码。`backend/app/security/sensitive_filter.py` 保留 `mask_pii(text)`、`sanitize_input(text)` 和 `_mask_name(text)` 的函数入口与签名，字符串原样返回；姓名、地址、手机号、身份证号和车牌规则均移除。`sanitize_input` 没有独立文本清理职责，保留的日志只记录长度；高风险检测仍由 `detect_high_risk` 独立执行。

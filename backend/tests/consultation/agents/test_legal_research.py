@@ -22,6 +22,21 @@ def candidate_final_protocol(monkeypatch):
     monkeypatch.setenv("LAW_AGENT_FINAL_PROTOCOL", "native_candidate")
 
 
+@pytest.fixture(autouse=True)
+def isolated_session_budget(monkeypatch):
+    from app.infrastructure.observability.tracing import SessionBudget
+
+    # Direct node tests share the fallback trace ID; each test must own its usage.
+    budget = SessionBudget(max_calls=40, max_tokens=120000)
+    for module in (
+        "app.consultation.agents.legal_research",
+        "app.knowledge.law.service",
+        "app.infrastructure.llm.gateway",
+        "app.infrastructure.observability.tracing",
+    ):
+        monkeypatch.setattr(f"{module}.session_budget", budget)
+
+
 @pytest.mark.asyncio
 async def test_application_default_keeps_candidate_protocol_disabled(monkeypatch):
     monkeypatch.delenv("LAW_AGENT_FINAL_PROTOCOL", raising=False)
@@ -359,6 +374,83 @@ def final(article_id="第264条"):
         "tool_calls": [],
         "has_tool_call": False,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("read_tool", ["get_article", "search_elements"])
+async def test_compact_tool_messages_fit_fixed_budget_without_losing_internal_evidence(monkeypatch, read_tool):
+    from copy import deepcopy
+
+    from langchain_core.messages import ToolMessage
+    from langchain_core.utils.function_calling import convert_to_openai_tool
+
+    from app.consultation.agents.legal_research import LegalToolRegistry
+    from app.infrastructure.llm.gateway import _bounded_messages
+
+    monkeypatch.setenv("LAW_AGENT_FINAL_PROTOCOL", "legacy")
+    monkeypatch.setenv("MEMORY_MODEL_WINDOW", "8192")
+    monkeypatch.setenv("MEMORY_CONTEXT_TOKEN_BUDGET", "7168")
+    monkeypatch.setenv("MEMORY_OUTPUT_RESERVE", "1024")
+    law_data = load_criminal_law_data(profile="full")
+    full_results = []
+    histories = []
+    costs = []
+    execute = LegalToolRegistry.execute
+
+    async def record_result(registry, *args):
+        result = await execute(registry, *args)
+        full_results.append(deepcopy(result[1]))
+        return result
+
+    async def respond(system, prompt, tools, **kwargs):
+        histories.append(list(kwargs["message_history"]))
+        built = _bounded_messages(
+            system,
+            prompt,
+            history=kwargs["message_history"],
+            schemas=[convert_to_openai_tool(tool) for tool in tools],
+        )
+        costs.append(built.estimated_input_tokens)
+        return [decision("search_laws", {"query": "盗窃"}), decision(read_tool, {"article_id": "第264条"}), final()][
+            len(histories) - 1
+        ]
+
+    with (
+        patch("app.consultation.agents.legal_research.llm_gateway.generate_with_tools", side_effect=respond),
+        patch.object(LegalToolRegistry, "execute", record_result),
+        patch_law_recall(return_value=[]),
+    ):
+        result = await run_legal_research(FACTS, "user", law_data, max_steps=3)
+
+    assert result.termination_reason == "final_answer"
+    assert len(costs) == 3 and max(costs) <= 7168
+    assert len(full_results[0]["candidates"]) == 5
+    original = full_results[0]["candidates"][0]
+    assert original["fingerprint"].startswith("sha256:")
+    assert original["origins"] and original["retrieval_status"]
+    search = json.loads(next(m.content for m in histories[1] if isinstance(m, ToolMessage)))["result"]
+    assert [c["article_id"] for c in search["candidates"]] == [c["article_id"] for c in full_results[0]["candidates"]]
+    assert set(search) == {"candidates", "rag_dependency_failed"}
+    assert set(search["candidates"][0]) == {"article_id", "title", "source", "article_status", "coverage_eligible"}
+    assert search["candidates"][0]["source"] == original["source"]
+    assert search["candidates"][0]["coverage_eligible"] == original["coverage_eligible"]
+    read = json.loads([m for m in histories[2] if isinstance(m, ToolMessage)][-1].content)["result"]
+    selected = result.candidate_laws[0]
+    assert selected["text_provenance"]["content_sha256"].startswith("sha256:")
+    assert selected["origins"] and selected["retrieval_status"]
+    if read_tool == "get_article":
+        article = read["article"]
+        assert article["content"] == selected["content"]
+        assert article["required_elements"] == selected["elements"]
+        assert article["coverage_eligible"] is True
+        assert "fingerprint" not in article and "text_structure" not in article
+        provenance = article["text_provenance"]
+        assert "content_sha256" not in provenance
+        assert provenance["url"] == selected["text_provenance"]["url"]
+        assert provenance["legal_review_status"] == "pending"
+        assert provenance["applicability"] == selected["text_provenance"]["applicability"]
+    else:
+        assert read == full_results[1]
 
 
 @pytest.mark.asyncio

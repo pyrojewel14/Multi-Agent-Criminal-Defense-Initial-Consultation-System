@@ -165,6 +165,55 @@ def _rejected_tool_feedback(calls: list[Any], step: int) -> list[BaseMessage]:
     return feedback
 
 
+def _model_observation(name: str, observation: dict[str, Any]) -> dict[str, Any]:
+    """筛选模型决策所需字段，完整工具结果和来源核验仍由程序持有。"""
+    if name == "search_laws" and "candidates" in observation:
+        # 候选顺序已体现相关性，不重复发送分数、通道轨迹和校验指纹。
+        return {
+            "candidates": [
+                {
+                    key: candidate[key]
+                    for key in ("article_id", "title", "source", "article_status", "coverage_eligible")
+                    if key in candidate
+                }
+                for candidate in observation["candidates"]
+            ],
+            "rag_dependency_failed": observation.get("rag_dependency_failed", False),
+        }
+    if name == "get_article" and "article" in observation:
+        article = observation["article"]
+        if article is None:
+            return {"article": None}
+        projected = {
+            key: article[key]
+            for key in (
+                "article_id",
+                "title",
+                "content",
+                "source",
+                "required_elements",
+                "coverage_eligible",
+                "annotation_usage",
+                "annotation_status",
+            )
+            if key in article
+        }
+        # 来源、专业复核状态与时间适用范围有判断价值；正文哈希留在内部核验。
+        projected["text_provenance"] = {
+            key: value
+            for key, value in article.get("text_provenance", {}).items()
+            if key in {"source_id", "url", "review_status", "validation_status", "legal_review_status", "applicability"}
+        }
+        return {"article": projected}
+    if name == "search_elements":
+        return {
+            key: observation[key]
+            for key in ("article_id", "required_elements", "review_status", "annotation_source")
+            if key in observation
+        }
+    return {}
+
+
 class LegalToolRegistry:
     """仅开放三种固定工具；模型返回的名称与参数均不直接执行。"""
 
@@ -194,7 +243,7 @@ class LegalToolRegistry:
             StructuredTool.from_function(
                 coroutine=self._search_laws,
                 name="search_laws",
-                description="根据简短法律关键词检索候选法条，返回编号、来源、分数和指纹。",
+                description="根据简短法律关键词检索候选法条，按相关性返回编号、名称、来源及要件使用资格。",
                 args_schema=SearchLawsArgs,
             ),
             StructuredTool.from_function(
@@ -603,7 +652,9 @@ async def run_legal_research(
                 )
                 message_history.append(
                     ToolMessage(
-                        content=json.dumps({"status": status, "result": observation}, ensure_ascii=False),
+                        content=json.dumps(
+                            {"status": status, "result": _model_observation(name, observation)}, ensure_ascii=False
+                        ),
                         tool_call_id=call_id,
                         name=name,
                     )
