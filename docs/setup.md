@@ -38,6 +38,15 @@ cp backend/.env.example backend/.env
 
 真实密钥、令牌和密码只放本地配置。公开注册只创建普通用户；管理员和律师账号的前置条件见 [接口说明](api.md#权限矩阵)。
 
+首次需要使用前端管理员工作台，且本地 SQLite 中还没有管理员时，可从交互式终端创建第一个管理员（只用于开发演示，不开放 HTTP 管理员注册）：
+
+```bash
+(cd backend && .venv/bin/python scripts/create_local_admin.py --username local-admin)
+```
+
+命令会隐式读取 `backend/.env` 对应的 `DATABASE_PATH`，交互式要求两次输入密码，并拒绝在已有管理员的数据库中新建另一个管理员。完成后用此前端账号登录，在「律师账号」中创建 lawyer，再到「案件分配」中点击选择案件和律师。注意停止使用同一 SQLite 的服务再做首次初始化，使用与后端相同的数据库路径。
+
+
 ## 3. 启动并配置模型
 
 先启动 Ollama 服务；尚未安装下面两个模型时再拉取：
