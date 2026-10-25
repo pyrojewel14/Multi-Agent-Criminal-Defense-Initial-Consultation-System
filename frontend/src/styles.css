@@ -229,3 +229,51 @@ code { overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+
+/* 管理员工作台：与现有咨询、律师工作台共享按钮和面板体系。 */
+.admin-workspace { min-height: calc(100vh - 68px); }
+.admin-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 30px clamp(20px, 3vw, 42px) 15px; }
+.admin-heading h1 { font-size: 29px; margin-bottom: 8px; }
+.admin-heading p:last-child { margin-bottom: 0; line-height: 1.65; }
+.admin-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 clamp(20px, 3vw, 42px) 18px; border-bottom: 1px solid var(--line); }
+.admin-tabs button { display: inline-flex; gap: 8px; align-items: center; min-height: 41px; padding: 9px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink-soft); font-weight: 750; }
+.admin-tabs button.selected { background: var(--ink); color: #fff; border-color: var(--ink); }
+.admin-body { padding: 24px clamp(20px, 3vw, 42px) 50px; }
+.admin-case-grid { display: grid; grid-template-columns: minmax(330px, 1.15fr) minmax(320px, .85fr); gap: 18px; align-items: start; }
+.admin-panel { min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.admin-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 16px; }
+.admin-panel-header h2 { margin-bottom: 0; font-size: 19px; }
+.admin-hint { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.admin-case-list { display: grid; gap: 9px; }
+.admin-case-item { display: grid; gap: 5px; min-width: 0; width: 100%; text-align: left; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: #faf9f5; color: var(--ink); }
+.admin-case-item:hover, .admin-case-item.selected { border-color: var(--sage); background: #f1f4ed; }
+.admin-case-item span { font-weight: 780; }
+.admin-case-item small, .admin-case-item code { color: var(--muted); overflow-wrap: anywhere; }
+.admin-case-item code { font-size: 11px; }
+.admin-pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 19px; font-size: 12px; color: var(--muted); }
+.admin-assignment { display: grid; gap: 11px; }
+.admin-assignment p { margin: 0; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.admin-assignment strong, .admin-lawyer-form label { font-size: 13px; font-weight: 750; color: var(--ink-soft); }
+.admin-assignment label { margin-top: 8px; font-size: 13px; font-weight: 750; color: var(--ink-soft); }
+.admin-assignment select, .admin-lawyer-form input { width: 100%; min-height: 45px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink); }
+.admin-assignment .primary-button { justify-self: start; }
+.admin-lawyer-form { display: grid; gap: 10px; }
+.admin-lawyer-form label:not(:first-child) { margin-top: 5px; }
+.admin-lawyer-form .primary-button { justify-self: start; margin-top: 8px; }
+.admin-roster { display: grid; gap: 10px; }
+.admin-roster-item { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.admin-roster-item:last-child { border-bottom: 0; }
+.admin-roster-item > div { display: grid; gap: 5px; }
+.admin-roster-item small { color: var(--muted); }
+.admin-success { padding: 11px 14px; border: 1px solid #b9d0bc; border-radius: 10px; color: #3c6541; background: #f0f6ef; font-size: 13px; }
+.admin-workspace .lawyer-workspace { min-height: calc(100vh - 210px); }
+@media (max-width: 920px) { .admin-case-grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+  .admin-heading { align-items: flex-start; flex-direction: column; padding: 22px 15px 16px; }
+  .admin-tabs { padding: 0 15px 15px; }
+  .admin-tabs button { flex: 1 1 auto; justify-content: center; }
+  .admin-body { padding: 17px 15px 40px; }
+  .admin-panel { padding: 16px; }
+  .admin-pagination .secondary-button { padding: 8px 10px; }
+}
